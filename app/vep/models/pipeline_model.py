@@ -363,6 +363,9 @@ class ConfigIniParams(BaseModel):
     allofus_mid: bool = False
     allofus_sas: bool = False
     allofus_oth: bool = False
+    # ClinVar clinical significance (human GRCh37/GRCh38). A VEP `custom` line
+    # surfacing the CLNSIG field; not assembly-specific.
+    clinvar: bool = False
     # Assembly name (from the selected species, e.g. "GRCh38"/"GRCh37"); used to
     # pick assembly-specific plugin data files. Defaults to GRCh38.
     assembly_name: str = ""
@@ -573,6 +576,18 @@ class ConfigIniParams(BaseModel):
                     f"fields={'%'.join(allofus_fields)},"
                     "format=vcf"
                 )
+
+        # ClinVar clinical significance (human GRCh37/GRCh38): custom line
+        # surfacing the CLNSIG field, from the assembly-specific ClinVar file.
+        if self.clinvar:
+            lines.append(
+                "custom "
+                f"file={PLUGIN_PATH}/clinvar_{assembly}.vcf.gz,"
+                "short_name=ClinVar,"
+                "fields=CLNSIG%CLNSIGCONF,"
+                "format=vcf,"
+                "type=exact"
+            )
 
         config_ini = "\n".join(lines) + "\n"
         try:

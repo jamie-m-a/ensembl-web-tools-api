@@ -283,6 +283,20 @@ def test_allofus_absent_below_grch38():
         assert "allofus" not in option_ids(panels)
 
 
+def test_clinvar_in_variant_associations_for_grch37_and_grch38():
+    for assembly in ("GRCh37.p13", "GRCh38.p14"):
+        panels = get_visible_panels(
+            species_taxonomy_id=HUMAN, assembly_name=assembly
+        )
+        va = next(p for p in panels if p["id"] == "variant_associations")
+        assert "clinvar" in [o["id"] for o in va["options"]]
+
+
+def test_clinvar_absent_for_non_human():
+    panels = get_visible_panels(species_taxonomy_id=MOUSE, assembly_name="GRCm39")
+    assert "clinvar" not in option_ids(panels)
+
+
 def test_option_ids_are_valid_config_ini_parameters():
     # The GRCh38 set is the superset of every option/sub-option.
     panels = get_visible_panels(

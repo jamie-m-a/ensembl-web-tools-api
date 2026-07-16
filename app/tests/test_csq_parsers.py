@@ -24,6 +24,7 @@ from app.vep.utils.vcf_results import (
     _parse_riboseq_orfs,
     _parse_spliceai,
     _parse_pathogenicity,
+    _parse_clinvar,
 )
 
 # A modern CSQ header: the columns the new plugin parsers read.
@@ -62,6 +63,8 @@ ALL_COLS = [
     "SpliceAI_pred_DP_AL", "SpliceAI_pred_DP_DG", "SpliceAI_pred_DP_DL",
     # pathogenicity
     "REVEL", "am_class", "am_pathogenicity", "EVE_CLASS", "EVE_SCORE",
+    # ClinVar
+    "ClinVar_CLNSIG", "ClinVar_CLNSIGCONF",
 ]
 
 HEADER = "Consequence annotations from Ensembl VEP. Format: " + "|".join(ALL_COLS)
@@ -364,6 +367,41 @@ def test_parse_pathogenicity_aggregates_nested_and_flat():
 
 def test_parse_pathogenicity_empty_is_none():
     assert _parse_pathogenicity(EMPTY, INDEX_MAP) is None
+
+
+# --- ClinVar clinical significance -------------------------------------------
+
+
+def test_parse_clinvar_non_conflicting_ignores_clnsigconf():
+    result = _parse_clinvar(
+        # CLNSIGCONF present but must be ignored when the class isn't conflicting
+        row_list(ClinVar_CLNSIG="Pathogenic", ClinVar_CLNSIGCONF="Benign_(3)"),
+        INDEX_MAP,
+    )
+    assert result.significance == ["Pathogenic"]
+    assert result.conflicting_breakdown == []
+
+
+def test_parse_clinvar_conflicting_extracts_clnsigconf_breakdown():
+    result = _parse_clinvar(
+        row_list(
+            ClinVar_CLNSIG="Conflicting_classifications_of_pathogenicity",
+            ClinVar_CLNSIGCONF=(
+                "Pathogenic_(10)&Likely_pathogenic_(6)&Uncertain_significance_(2)"
+            ),
+        ),
+        INDEX_MAP,
+    )
+    assert result.significance == ["Conflicting_classifications_of_pathogenicity"]
+    assert [(s.significance, s.count) for s in result.conflicting_breakdown] == [
+        ("Pathogenic", 10),
+        ("Likely_pathogenic", 6),
+        ("Uncertain_significance", 2),
+    ]
+
+
+def test_parse_clinvar_empty_is_none():
+    assert _parse_clinvar(EMPTY, INDEX_MAP) is None
 
 
 # --- allele frequencies (All of Us AoU_ prefix) ------------------------------

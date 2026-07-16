@@ -302,6 +302,22 @@ class Metadata(BaseModel):
     pagination: PaginationMetadata
 
 
+class ClinVarSignificance(BaseModel):
+    """A ClinVar clinical significance term and how many submissions reported it
+    (from the CLNSIGCONF breakdown, e.g. 'Pathogenic_(10)')."""
+    significance: str
+    count: int
+
+
+class ClinVarAnnotation(BaseModel):
+    """ClinVar clinical significance (CLNSIG). When the overall classification is
+    'Conflicting classifications of pathogenicity', `conflicting_breakdown` holds
+    the per-classification submission counts (from CLNSIGCONF); it is empty
+    otherwise (CLNSIGCONF is ignored for non-conflicting classifications)."""
+    significance: list[str]
+    conflicting_breakdown: list[ClinVarSignificance] = []
+
+
 class AlternativeVariantAllele(BaseModel):
     allele_sequence: str
     allele_type: str
@@ -316,6 +332,8 @@ class AlternativeVariantAllele(BaseModel):
     colocated_variants: list[str] = []  # Existing_variation
     phenotype_data: VariantPhenotypeData | None = None
     open_targets: OpenTargetsAssociation | None = None
+    # ClinVar clinical significance (from the ClinVar custom track).
+    clinvar: ClinVarAnnotation | None = None
     predicted_molecular_consequences: list[
         PredictedTranscriptConsequence | PredictedIntergenicConsequence
     ]

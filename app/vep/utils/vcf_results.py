@@ -638,6 +638,40 @@ def _parse_phenotype_data(csq_values, index_map) -> model.VariantPhenotypeData |
     )
 
 
+_CLNSIG_CONFLICTING = "Conflicting_classifications_of_pathogenicity"
+# A CLNSIGCONF token, e.g. "Likely_pathogenic_(6)" -> ("Likely_pathogenic", 6).
+_CLNSIGCONF_RE = re.compile(r"^(?P<term>.+)_\((?P<count>\d+)\)$")
+
+
+def _parse_clinvar(csq_values, index_map) -> model.ClinVarAnnotation | None:
+    """ClinVar clinical significance from the ClinVar custom track. CLNSIG is the
+    overall classification; CLNSIGCONF (the per-classification submission
+    breakdown) is surfaced only when the classification is conflicting, and
+    ignored otherwise. Returns None if there is no CLNSIG value."""
+    if not _has_any_column(index_map, "ClinVar_CLNSIG"):
+        return None
+    clnsig = _get_csq_value(csq_values, "ClinVar_CLNSIG", None, index_map)
+    if not clnsig:
+        return None
+    significance = _split_amp(clnsig)
+
+    breakdown: list[model.ClinVarSignificance] = []
+    if _CLNSIG_CONFLICTING in significance:
+        conf = _get_csq_value(csq_values, "ClinVar_CLNSIGCONF", None, index_map)
+        for token in _split_amp(conf):
+            match = _CLNSIGCONF_RE.match(token)
+            if match:
+                breakdown.append(
+                    model.ClinVarSignificance(
+                        significance=match.group("term"),
+                        count=int(match.group("count")),
+                    )
+                )
+    return model.ClinVarAnnotation(
+        significance=significance, conflicting_breakdown=breakdown
+    )
+
+
 def _raw_amp(value: str | None) -> list[str]:
     """Split a '&'-delimited CSQ list keeping every position (incl. 'NA'), so
     positionally-aligned subfields can be zipped together."""
@@ -725,6 +759,7 @@ def _get_alt_allele_details(
     hgvsg = None
     cadd_phred = None
     cadd_raw = None
+    clinvar = None
     allele_level_captured = False
 
     for str_csq in csqs:
@@ -753,6 +788,7 @@ def _get_alt_allele_details(
             cadd_raw = _to_float(
                 _get_csq_value(csq_values, "CADD_RAW", None, index_map)
             )
+            clinvar = _parse_clinvar(csq_values, index_map)
             allele_level_captured = True
 
         cons = _get_csq_value(csq_values, "Consequence", "", index_map)
@@ -847,6 +883,7 @@ def _get_alt_allele_details(
         colocated_variants=colocated_variants,
         phenotype_data=phenotype_data,
         open_targets=open_targets,
+        clinvar=clinvar,
         predicted_molecular_consequences=consequences,
     )
 

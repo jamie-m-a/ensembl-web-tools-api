@@ -134,6 +134,7 @@ _HUMAN_37_38_PANELS: list[dict] = [
         "label": "Variant associations",
         "options": [
             {"id": "geno2mp", "label": "Geno2MP", "type": "boolean", "default": False},
+            {"id": "clinvar", "label": "Clinical significance", "type": "boolean", "default": False},
         ],
     },
 ]

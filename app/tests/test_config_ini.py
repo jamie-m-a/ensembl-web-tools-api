@@ -562,3 +562,27 @@ def test_allofus_enabled_but_nothing_selected_emits_no_line(monkeypatch, tmp_pat
         build_lines(monkeypatch, tmp_path, allofus=True, allofus_all=False)
     )
     assert line is None
+
+
+# --- 14. ClinVar clinical significance (human GRCh37/38) ---------------------
+
+
+def test_clinvar_off_emits_no_line(monkeypatch, tmp_path):
+    assert find_line(build_lines(monkeypatch, tmp_path), "short_name=ClinVar") is None
+
+
+@pytest.mark.parametrize(
+    "assembly,expected_file",
+    [("GRCh38.p14", "clinvar_GRCh38.vcf.gz"), ("GRCh37.p13", "clinvar_GRCh37.vcf.gz")],
+)
+def test_clinvar_line_is_assembly_specific(
+    monkeypatch, tmp_path, assembly, expected_file
+):
+    line = find_line(
+        build_lines(monkeypatch, tmp_path, assembly=assembly, clinvar=True),
+        "short_name=ClinVar",
+    )
+    assert line == (
+        f"custom file={PLUGIN_PATH}/{expected_file},"
+        "short_name=ClinVar,fields=CLNSIG%CLNSIGCONF,format=vcf,type=exact"
+    )
