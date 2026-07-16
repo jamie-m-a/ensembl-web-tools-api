@@ -7,6 +7,8 @@ the metadata lookup so no network call is made, build the ini into a tmp dir,
 read it back, and assert on the emitted lines.
 """
 
+import re
+
 import pytest
 
 from app.vep.models.pipeline_model import ConfigIniParams, PLUGIN_PATH
@@ -333,3 +335,230 @@ def test_nearest_exon_jb_range_intronic_and_gff3(monkeypatch, tmp_path):
 def test_disabled_options_emit_no_plugin_lines(monkeypatch, tmp_path):
     # everything left at its default (off) => no `plugin ...` lines at all
     assert plugin_lines(build_lines(monkeypatch, tmp_path)) == []
+
+
+# --- 11. gnomAD exomes custom line (ancestry x sex field grammar) ------------
+
+
+def gnomad_exomes_line(lines):
+    return find_line(lines, "short_name=gnomAD_exomes")
+
+
+def gnomad_exomes_fields(lines):
+    line = gnomad_exomes_line(lines)
+    if line is None:
+        return None
+    return re.search(r"fields=([^,]+)", line).group(1)
+
+
+def test_gnomad_exomes_off_emits_no_line(monkeypatch, tmp_path):
+    assert gnomad_exomes_line(build_lines(monkeypatch, tmp_path)) is None
+
+
+def test_gnomad_exomes_default_is_all_both_ukb_included(monkeypatch, tmp_path):
+    # enabling with defaults (All + Both + include UKB) => fields=AF
+    line = gnomad_exomes_line(build_lines(monkeypatch, tmp_path, gnomad_exomes=True))
+    assert line is not None
+    assert (
+        f"file={PLUGIN_PATH}/gnomad.exomes.v4.1.sites.chr###CHR###.vcf.bgz" in line
+    )
+    assert "short_name=gnomAD_exomes" in line
+    assert line.endswith("format=vcf")
+    assert "fields=AF," in line
+
+
+def test_gnomad_exomes_all_female_and_male(monkeypatch, tmp_path):
+    # spec example 1: All, Female and Male -> AF_XX%AF_XY
+    fields = gnomad_exomes_fields(
+        build_lines(
+            monkeypatch,
+            tmp_path,
+            gnomad_exomes=True,
+            gnomad_exomes_all_both=False,
+            gnomad_exomes_all_female=True,
+            gnomad_exomes_all_male=True,
+        )
+    )
+    assert fields == "AF_XX%AF_XY"
+
+
+def test_gnomad_exomes_non_ukb_male(monkeypatch, tmp_path):
+    # spec example 2: All, male, excluding UK Biobank -> AF_non_ukb_XY
+    fields = gnomad_exomes_fields(
+        build_lines(
+            monkeypatch,
+            tmp_path,
+            gnomad_exomes=True,
+            gnomad_exomes_include_ukb=False,
+            gnomad_exomes_all_both=False,
+            gnomad_exomes_all_male=True,
+        )
+    )
+    assert fields == "AF_non_ukb_XY"
+
+
+def test_gnomad_exomes_multiple_ancestries_ordered(monkeypatch, tmp_path):
+    # afr (both) + nfe (female); ancestry order preserved, sex suffix applied
+    fields = gnomad_exomes_fields(
+        build_lines(
+            monkeypatch,
+            tmp_path,
+            gnomad_exomes=True,
+            gnomad_exomes_all=False,
+            gnomad_exomes_afr=True,
+            gnomad_exomes_nfe=True,
+            gnomad_exomes_nfe_both=False,
+            gnomad_exomes_nfe_female=True,
+        )
+    )
+    assert fields == "AF_afr%AF_nfe_XX"
+
+
+def test_gnomad_exomes_enabled_but_nothing_selected_emits_no_line(
+    monkeypatch, tmp_path
+):
+    # on, but "All" (the only default-on ancestry) has no sex selected => no line
+    line = gnomad_exomes_line(
+        build_lines(
+            monkeypatch,
+            tmp_path,
+            gnomad_exomes=True,
+            gnomad_exomes_all_both=False,
+        )
+    )
+    assert line is None
+
+
+# --- 12. gnomAD genomes custom line (no UKB subset; ami/remaining/grpmax) -----
+
+
+def gnomad_genomes_line(lines):
+    return find_line(lines, "short_name=gnomAD_genomes")
+
+
+def gnomad_genomes_fields(lines):
+    line = gnomad_genomes_line(lines)
+    if line is None:
+        return None
+    return re.search(r"fields=([^,]+)", line).group(1)
+
+
+def test_gnomad_genomes_off_emits_no_line(monkeypatch, tmp_path):
+    assert gnomad_genomes_line(build_lines(monkeypatch, tmp_path)) is None
+
+
+def test_gnomad_genomes_default_line(monkeypatch, tmp_path):
+    line = gnomad_genomes_line(build_lines(monkeypatch, tmp_path, gnomad_genomes=True))
+    assert line is not None
+    assert (
+        f"file={PLUGIN_PATH}/gnomad.genomes.v4.1.sites.chr###CHR###.vcf.bgz" in line
+    )
+    assert "short_name=gnomAD_genomes" in line
+    assert line.endswith("format=vcf")
+    assert "fields=AF," in line  # default: All + Both
+
+
+def test_gnomad_genomes_has_no_ukb_param(monkeypatch, tmp_path):
+    # genomes has no UK Biobank subset, so no _non_ukb fields are possible
+    assert "gnomad_genomes_include_ukb" not in ConfigIniParams.model_fields
+
+
+def test_gnomad_genomes_ancestry_and_sex(monkeypatch, tmp_path):
+    # Amish (both) + Remaining (male)
+    fields = gnomad_genomes_fields(
+        build_lines(
+            monkeypatch,
+            tmp_path,
+            gnomad_genomes=True,
+            gnomad_genomes_all=False,
+            gnomad_genomes_ami=True,
+            gnomad_genomes_remaining=True,
+            gnomad_genomes_remaining_both=False,
+            gnomad_genomes_remaining_male=True,
+        )
+    )
+    assert fields == "AF_ami%AF_remaining_XY"
+
+
+def test_gnomad_genomes_grpmax_has_no_sex_split(monkeypatch, tmp_path):
+    # grpmax on its own -> single AF_grpmax (no XX/XY)
+    fields = gnomad_genomes_fields(
+        build_lines(
+            monkeypatch,
+            tmp_path,
+            gnomad_genomes=True,
+            gnomad_genomes_all=False,
+            gnomad_genomes_grpmax=True,
+        )
+    )
+    assert fields == "AF_grpmax"
+
+
+def test_gnomad_genomes_all_plus_grpmax(monkeypatch, tmp_path):
+    # default All (both) plus grpmax -> AF%AF_grpmax
+    fields = gnomad_genomes_fields(
+        build_lines(monkeypatch, tmp_path, gnomad_genomes=True, gnomad_genomes_grpmax=True)
+    )
+    assert fields == "AF%AF_grpmax"
+
+
+# --- 13. NIH All of Us custom line -------------------------------------------
+
+
+def allofus_line(lines):
+    return find_line(lines, "short_name=AoU")
+
+
+def allofus_fields(lines):
+    line = allofus_line(lines)
+    if line is None:
+        return None
+    return re.search(r"fields=([^,]+)", line).group(1)
+
+
+def test_allofus_off_emits_no_line(monkeypatch, tmp_path):
+    assert allofus_line(build_lines(monkeypatch, tmp_path)) is None
+
+
+def test_allofus_default_line(monkeypatch, tmp_path):
+    line = allofus_line(build_lines(monkeypatch, tmp_path, allofus=True))
+    assert line is not None
+    assert f"file={PLUGIN_PATH}/AllOfUs_chr###CHR###.vcf.gz" in line
+    assert "short_name=AoU" in line
+    assert line.endswith("format=vcf")
+    assert "fields=gvs_all_af," in line  # default: All
+
+
+def test_allofus_max_emits_two_fields(monkeypatch, tmp_path):
+    # "Maximum subpopulation" contributes both gvs_max_af and gvs_max_subpop
+    fields = allofus_fields(
+        build_lines(
+            monkeypatch,
+            tmp_path,
+            allofus=True,
+            allofus_all=False,
+            allofus_max=True,
+        )
+    )
+    assert fields == "gvs_max_af%gvs_max_subpop"
+
+
+def test_allofus_multiple_populations_in_order(monkeypatch, tmp_path):
+    # order follows ALLOFUS_POPULATIONS (all, max, afr, ...)
+    fields = allofus_fields(
+        build_lines(
+            monkeypatch,
+            tmp_path,
+            allofus=True,
+            allofus_afr=True,
+            allofus_sas=True,
+        )
+    )
+    assert fields == "gvs_all_af%gvs_afr_af%gvs_sas_af"
+
+
+def test_allofus_enabled_but_nothing_selected_emits_no_line(monkeypatch, tmp_path):
+    line = allofus_line(
+        build_lines(monkeypatch, tmp_path, allofus=True, allofus_all=False)
+    )
+    assert line is None

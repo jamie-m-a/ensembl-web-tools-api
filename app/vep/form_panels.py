@@ -179,6 +179,143 @@ _MUTFUNC_SUBOPTIONS = [
 ]
 
 
+# gnomAD exomes v4.1 (human GRCh38): a master toggle revealing an "Include UK
+# Biobank samples" switch and a "Genetic ancestry group" of ancestry toggles,
+# each with Both / Female / Male sub-options. Option/sub-option ids match the
+# ConfigIniParams parameter names, so selections round-trip into the ini.
+_GNOMAD_EXOMES_ANCESTRIES = [
+    ("all", "All"),
+    ("afr", "African & African-American"),
+    ("amr", "Admixed American"),
+    ("asj", "Ashkenazi Jewish"),
+    ("eas", "East Asian"),
+    ("fin", "Finnish"),
+    ("mid", "Middle Eastern"),
+    ("nfe", "Non-Finnish European"),
+]
+
+
+def _gnomad_sex_suboptions(option_id: str) -> list[dict]:
+    """Both / Female / Male toggles for one ancestry option (Both on = combined
+    sexes). `option_id` is the ancestry option's id, e.g. `gnomad_exomes_afr`."""
+    return [
+        {"id": f"{option_id}_both", "label": "Both", "type": "boolean", "default": True},
+        {"id": f"{option_id}_female", "label": "Female", "type": "boolean", "default": False},
+        {"id": f"{option_id}_male", "label": "Male", "type": "boolean", "default": False},
+    ]
+
+
+def _gnomad_exomes_option() -> dict:
+    """The gnomAD Exomes v4.1.1 option (freshly built so callers can mutate it)."""
+    ancestry_options = [
+        {
+            "id": f"gnomad_exomes_{anc}",
+            "label": label,
+            "type": "boolean",
+            "default": anc == "all",  # "All" pre-selected -> fields=AF baseline
+            "sub_options": _gnomad_sex_suboptions(f"gnomad_exomes_{anc}"),
+        }
+        for anc, label in _GNOMAD_EXOMES_ANCESTRIES
+    ]
+    return {
+        "id": "gnomad_exomes",
+        "label": "gnomAD Exomes v4.1.1",
+        "type": "boolean",
+        "default": False,
+        "sub_options": [
+            {"id": "gnomad_exomes_include_ukb", "label": "Include UK BioBank samples", "type": "boolean", "default": True},
+            {"type": "group", "label": "Genetic ancestry group", "options": ancestry_options},
+        ],
+    }
+
+
+# gnomAD genomes v4.1 (human GRCh38): as exomes but no UK Biobank toggle, plus
+# Amish / Remaining, and "Maximum across all groups" (grpmax) which has no sex
+# split (a plain toggle).
+_GNOMAD_GENOMES_ANCESTRIES = [
+    ("all", "All"),
+    ("afr", "African & African-American"),
+    ("amr", "Admixed American"),
+    ("asj", "Ashkenazi Jewish"),
+    ("eas", "East Asian"),
+    ("fin", "Finnish"),
+    ("mid", "Middle Eastern"),
+    ("nfe", "Non-Finnish European"),
+    ("ami", "Amish"),
+    ("remaining", "Remaining"),
+]
+
+
+def _gnomad_genomes_option() -> dict:
+    """The gnomAD Genomes v4.1.1 option (freshly built so callers can mutate it)."""
+    ancestry_options = [
+        {
+            "id": f"gnomad_genomes_{anc}",
+            "label": label,
+            "type": "boolean",
+            "default": anc == "all",  # "All" pre-selected -> fields=AF baseline
+            "sub_options": _gnomad_sex_suboptions(f"gnomad_genomes_{anc}"),
+        }
+        for anc, label in _GNOMAD_GENOMES_ANCESTRIES
+    ]
+    # grpmax (max across groups) has no XX/XY split -> a plain toggle.
+    ancestry_options.append({
+        "id": "gnomad_genomes_grpmax",
+        "label": "Maximum across all groups",
+        "type": "boolean",
+        "default": False,
+    })
+    return {
+        "id": "gnomad_genomes",
+        "label": "gnomAD Genomes v4.1.1",
+        "type": "boolean",
+        "default": False,
+        "sub_options": [
+            {"type": "group", "label": "Genetic ancestry group", "options": ancestry_options},
+        ],
+    }
+
+
+# NIH All of Us (human GRCh38): a flat list of population toggles (no sex split).
+# "Maximum subpopulation" contributes two fields (gvs_max_af + gvs_max_subpop);
+# that is handled by the ini builder, not the form.
+_ALLOFUS_POPULATIONS = [
+    ("all", "All"),
+    ("max", "Maximum subpopulation"),
+    ("afr", "African"),
+    ("amr", "Latino/Ad Mixed American"),
+    ("eas", "East Asian"),
+    ("eur", "European"),
+    ("mid", "Middle Eastern"),
+    ("sas", "South Asian"),
+    ("oth", "Other"),
+]
+
+
+def _allofus_option() -> dict:
+    """The NIH All of Us option (freshly built so callers can mutate it)."""
+    population_options = [
+        {
+            "id": f"allofus_{pop}",
+            "label": label,
+            "type": "boolean",
+            "default": pop == "all",  # "All" pre-selected -> fields=gvs_all_af
+        }
+        for pop, label in _ALLOFUS_POPULATIONS
+    ]
+    return {
+        "id": "allofus",
+        "label": "NIH All of Us",
+        "type": "boolean",
+        "default": False,
+        # A label-less group keeps the population list full-width (reusing the
+        # nested-group renderer) without adding a heading.
+        "sub_options": [
+            {"type": "group", "options": population_options},
+        ],
+    }
+
+
 def _add_human_grch38_options(panels: list[dict]) -> None:
     """Layer the human GRCh38-only options onto the (already human 37/38) panels.
 
@@ -219,11 +356,14 @@ def _add_human_grch38_options(panels: list[dict]) -> None:
             {"id": "opentargets", "label": "OpenTargets", "type": "boolean", "default": False}
         )
 
-    # Allele frequencies: gnomAD mitochondrial.
+    # Allele frequencies: gnomAD exomes/genomes v4.1, NIH All of Us, gnomAD mito.
     panels.append({
         "id": "allele_frequencies",
         "label": "Allele frequencies",
         "options": [
+            _gnomad_exomes_option(),
+            _gnomad_genomes_option(),
+            _allofus_option(),
             {"id": "gnomad_mt", "label": "gnomAD mitochondrial", "type": "boolean", "default": False},
         ],
     })

@@ -218,6 +218,9 @@ class PopulationFrequencies(BaseModel):
     """An overall allele frequency plus per-population frequencies."""
     overall: float | None = None
     populations: dict[str, float] = {}
+    # For All of Us: the subpopulation code the "max" frequency came from
+    # (e.g. "eur"), from the AoU_gvs_max_subpop label column. None otherwise.
+    max_subpopulation: str | None = None
 
 
 class AlleleFrequencies(BaseModel):

@@ -151,6 +151,50 @@ PLUGIN_CONFIG_LINES_BY_ASSEMBLY: dict[str, dict[str, str]] = {
     },
 }
 
+# gnomAD exomes v4.1 custom-line field building (human GRCh38). The `fields`
+# value is assembled from the selected ancestry x sex combinations.
+# Ancestry param suffix -> field code component ("" = the all-ancestries field).
+GNOMAD_EXOMES_ANCESTRIES: list[tuple[str, str]] = [
+    ("all", ""),
+    ("afr", "afr"),
+    ("amr", "amr"),
+    ("asj", "asj"),
+    ("eas", "eas"),
+    ("fin", "fin"),
+    ("mid", "mid"),
+    ("nfe", "nfe"),
+]
+# gnomAD genomes v4.1: the same sex-split ancestries as exomes plus Amish and
+# Remaining ("grpmax" — max across groups — is handled separately: no XX/XY
+# split; and genomes has no UK Biobank subset, so no _non_ukb fields).
+GNOMAD_GENOMES_ANCESTRIES: list[tuple[str, str]] = GNOMAD_EXOMES_ANCESTRIES + [
+    ("ami", "ami"),
+    ("remaining", "remaining"),
+]
+
+# Sex param suffix -> field code component ("" = both/combined sexes;
+# XX = female, XY = male). Shared by gnomAD exomes and genomes.
+GNOMAD_SEXES: list[tuple[str, str]] = [
+    ("both", ""),
+    ("female", "XX"),
+    ("male", "XY"),
+]
+
+# NIH All of Us (AoU) population toggles (human GRCh38). Param suffix -> the
+# custom `fields` code(s) it contributes. "Maximum subpopulation" uniquely emits
+# two fields (the max AF and the subpopulation label).
+ALLOFUS_POPULATIONS: list[tuple[str, list[str]]] = [
+    ("all", ["gvs_all_af"]),
+    ("max", ["gvs_max_af", "gvs_max_subpop"]),
+    ("afr", ["gvs_afr_af"]),
+    ("amr", ["gvs_amr_af"]),
+    ("eas", ["gvs_eas_af"]),
+    ("eur", ["gvs_eur_af"]),
+    ("mid", ["gvs_mid_af"]),
+    ("sas", ["gvs_sas_af"]),
+    ("oth", ["gvs_oth_af"]),
+]
+
 
 class ConfigIniParams(BaseModel):
     genome_id: str
@@ -219,11 +263,162 @@ class ConfigIniParams(BaseModel):
     mutfunc_exp: bool = False
     # gnomAD mitochondrial frequencies (human GRCh38).
     gnomad_mt: bool = False
+    # gnomAD exomes v4.1 frequencies (human GRCh38). Rendered as a VEP `custom`
+    # line whose `fields` list is built from the selected genetic-ancestry groups
+    # x sexes (and whether UK Biobank samples are included). Field grammar:
+    # AF[_non_ukb][_<ancestry>][_XX|_XY] (XX=female, XY=male; base = both sexes).
+    gnomad_exomes: bool = False
+    gnomad_exomes_include_ukb: bool = True  # False -> the _non_ukb subset fields
+    # Ancestry toggles ("all" pre-selected so enabling the option yields fields=AF).
+    gnomad_exomes_all: bool = True
+    gnomad_exomes_afr: bool = False
+    gnomad_exomes_amr: bool = False
+    gnomad_exomes_asj: bool = False
+    gnomad_exomes_eas: bool = False
+    gnomad_exomes_fin: bool = False
+    gnomad_exomes_mid: bool = False
+    gnomad_exomes_nfe: bool = False
+    # Per-ancestry sex sub-options (Both defaults on = the base combined-sex field).
+    gnomad_exomes_all_both: bool = True
+    gnomad_exomes_all_female: bool = False
+    gnomad_exomes_all_male: bool = False
+    gnomad_exomes_afr_both: bool = True
+    gnomad_exomes_afr_female: bool = False
+    gnomad_exomes_afr_male: bool = False
+    gnomad_exomes_amr_both: bool = True
+    gnomad_exomes_amr_female: bool = False
+    gnomad_exomes_amr_male: bool = False
+    gnomad_exomes_asj_both: bool = True
+    gnomad_exomes_asj_female: bool = False
+    gnomad_exomes_asj_male: bool = False
+    gnomad_exomes_eas_both: bool = True
+    gnomad_exomes_eas_female: bool = False
+    gnomad_exomes_eas_male: bool = False
+    gnomad_exomes_fin_both: bool = True
+    gnomad_exomes_fin_female: bool = False
+    gnomad_exomes_fin_male: bool = False
+    gnomad_exomes_mid_both: bool = True
+    gnomad_exomes_mid_female: bool = False
+    gnomad_exomes_mid_male: bool = False
+    gnomad_exomes_nfe_both: bool = True
+    gnomad_exomes_nfe_female: bool = False
+    gnomad_exomes_nfe_male: bool = False
+    # gnomAD genomes v4.1 frequencies (human GRCh38). Same custom-line grammar as
+    # exomes but with no UK Biobank subset (no _non_ukb), extra ancestry groups
+    # (Amish, Remaining) and grpmax (max across groups; no XX/XY split).
+    gnomad_genomes: bool = False
+    # Ancestry toggles ("all" pre-selected so enabling yields fields=AF).
+    gnomad_genomes_all: bool = True
+    gnomad_genomes_afr: bool = False
+    gnomad_genomes_amr: bool = False
+    gnomad_genomes_asj: bool = False
+    gnomad_genomes_eas: bool = False
+    gnomad_genomes_fin: bool = False
+    gnomad_genomes_mid: bool = False
+    gnomad_genomes_nfe: bool = False
+    gnomad_genomes_ami: bool = False
+    gnomad_genomes_remaining: bool = False
+    gnomad_genomes_grpmax: bool = False  # no sex sub-options (no XX/XY)
+    # Per-ancestry sex sub-options (Both on = base combined-sex field). grpmax has
+    # none.
+    gnomad_genomes_all_both: bool = True
+    gnomad_genomes_all_female: bool = False
+    gnomad_genomes_all_male: bool = False
+    gnomad_genomes_afr_both: bool = True
+    gnomad_genomes_afr_female: bool = False
+    gnomad_genomes_afr_male: bool = False
+    gnomad_genomes_amr_both: bool = True
+    gnomad_genomes_amr_female: bool = False
+    gnomad_genomes_amr_male: bool = False
+    gnomad_genomes_asj_both: bool = True
+    gnomad_genomes_asj_female: bool = False
+    gnomad_genomes_asj_male: bool = False
+    gnomad_genomes_eas_both: bool = True
+    gnomad_genomes_eas_female: bool = False
+    gnomad_genomes_eas_male: bool = False
+    gnomad_genomes_fin_both: bool = True
+    gnomad_genomes_fin_female: bool = False
+    gnomad_genomes_fin_male: bool = False
+    gnomad_genomes_mid_both: bool = True
+    gnomad_genomes_mid_female: bool = False
+    gnomad_genomes_mid_male: bool = False
+    gnomad_genomes_nfe_both: bool = True
+    gnomad_genomes_nfe_female: bool = False
+    gnomad_genomes_nfe_male: bool = False
+    gnomad_genomes_ami_both: bool = True
+    gnomad_genomes_ami_female: bool = False
+    gnomad_genomes_ami_male: bool = False
+    gnomad_genomes_remaining_both: bool = True
+    gnomad_genomes_remaining_female: bool = False
+    gnomad_genomes_remaining_male: bool = False
+    # NIH All of Us frequencies (human GRCh38). A VEP `custom` line whose `fields`
+    # list is built from the selected population toggles (no sex split).
+    allofus: bool = False
+    allofus_all: bool = True  # pre-selected so enabling yields fields=gvs_all_af
+    allofus_max: bool = False  # -> gvs_max_af + gvs_max_subpop
+    allofus_afr: bool = False
+    allofus_amr: bool = False
+    allofus_eas: bool = False
+    allofus_eur: bool = False
+    allofus_mid: bool = False
+    allofus_sas: bool = False
+    allofus_oth: bool = False
     # Assembly name (from the selected species, e.g. "GRCh38"/"GRCh37"); used to
     # pick assembly-specific plugin data files. Defaults to GRCh38.
     assembly_name: str = ""
     gff: str = ""
     fasta: str = ""
+
+    def _gnomad_exomes_fields(self) -> list[str]:
+        """The `fields` values for the gnomAD exomes custom line, one per selected
+        ancestry x sex. Grammar: AF[_non_ukb][_<ancestry>][_XX|_XY] — base `AF` is
+        all ancestries, both sexes, UKB included; XX=female, XY=male."""
+        fields: list[str] = []
+        for anc_param, anc_code in GNOMAD_EXOMES_ANCESTRIES:
+            if not getattr(self, f"gnomad_exomes_{anc_param}"):
+                continue
+            for sex_param, sex_code in GNOMAD_SEXES:
+                if not getattr(self, f"gnomad_exomes_{anc_param}_{sex_param}"):
+                    continue
+                parts = ["AF"]
+                if not self.gnomad_exomes_include_ukb:
+                    parts.append("non_ukb")
+                if anc_code:
+                    parts.append(anc_code)
+                if sex_code:
+                    parts.append(sex_code)
+                fields.append("_".join(parts))
+        return fields
+
+    def _gnomad_genomes_fields(self) -> list[str]:
+        """The `fields` values for the gnomAD genomes custom line. Grammar:
+        AF[_<ancestry>][_XX|_XY] (no UK Biobank subset). grpmax (max across
+        groups) has no sex split, so it contributes a single `AF_grpmax`."""
+        fields: list[str] = []
+        for anc_param, anc_code in GNOMAD_GENOMES_ANCESTRIES:
+            if not getattr(self, f"gnomad_genomes_{anc_param}"):
+                continue
+            for sex_param, sex_code in GNOMAD_SEXES:
+                if not getattr(self, f"gnomad_genomes_{anc_param}_{sex_param}"):
+                    continue
+                parts = ["AF"]
+                if anc_code:
+                    parts.append(anc_code)
+                if sex_code:
+                    parts.append(sex_code)
+                fields.append("_".join(parts))
+        if self.gnomad_genomes_grpmax:
+            fields.append("AF_grpmax")
+        return fields
+
+    def _allofus_fields(self) -> list[str]:
+        """The `fields` values for the All of Us custom line, in population order.
+        "Maximum subpopulation" contributes both gvs_max_af and gvs_max_subpop."""
+        fields: list[str] = []
+        for pop, codes in ALLOFUS_POPULATIONS:
+            if getattr(self, f"allofus_{pop}"):
+                fields.extend(codes)
+        return fields
 
     def create_config_ini_file(self, directory):
         vep_support_location = get_vep_support_location(self.genome_id)
@@ -339,6 +534,45 @@ class ConfigIniParams(BaseModel):
                 f"intronic={1 if self.nearest_exon_jb_intronic else 0},"
                 f"{gff3}"
             )
+
+        # gnomAD exomes v4.1 (human GRCh38): a VEP `custom` line whose `fields`
+        # list is built from the selected ancestry x sex combinations. Emitted
+        # only when at least one field resolves (nothing selected -> no line).
+        if self.gnomad_exomes:
+            exome_fields = self._gnomad_exomes_fields()
+            if exome_fields:
+                lines.append(
+                    "custom "
+                    f"file={PLUGIN_PATH}/gnomad.exomes.v4.1.sites.chr###CHR###.vcf.bgz,"
+                    "short_name=gnomAD_exomes,"
+                    f"fields={'%'.join(exome_fields)},"
+                    "format=vcf"
+                )
+
+        # gnomAD genomes v4.1 (human GRCh38): as gnomAD exomes above.
+        if self.gnomad_genomes:
+            genome_fields = self._gnomad_genomes_fields()
+            if genome_fields:
+                lines.append(
+                    "custom "
+                    f"file={PLUGIN_PATH}/gnomad.genomes.v4.1.sites.chr###CHR###.vcf.bgz,"
+                    "short_name=gnomAD_genomes,"
+                    f"fields={'%'.join(genome_fields)},"
+                    "format=vcf"
+                )
+
+        # NIH All of Us (human GRCh38): custom line built from the selected
+        # population fields.
+        if self.allofus:
+            allofus_fields = self._allofus_fields()
+            if allofus_fields:
+                lines.append(
+                    "custom "
+                    f"file={PLUGIN_PATH}/AllOfUs_chr###CHR###.vcf.gz,"
+                    "short_name=AoU,"
+                    f"fields={'%'.join(allofus_fields)},"
+                    "format=vcf"
+                )
 
         config_ini = "\n".join(lines) + "\n"
         try:

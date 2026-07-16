@@ -12,6 +12,7 @@ from app.vep.models import vcf_results_model as model
 from app.vep.utils.vcf_results import (
     _get_prediction_index_map,
     _get_alt_allele_details,
+    _parse_frequencies,
     _parse_protvar,
     _parse_protvar_pocket,
     _parse_intact,
@@ -363,6 +364,75 @@ def test_parse_pathogenicity_aggregates_nested_and_flat():
 
 def test_parse_pathogenicity_empty_is_none():
     assert _parse_pathogenicity(EMPTY, INDEX_MAP) is None
+
+
+# --- allele frequencies (All of Us AoU_ prefix) ------------------------------
+
+
+def test_parse_frequencies_allofus_uses_aou_prefix():
+    # short_name=AoU means the custom columns come back prefixed AoU_gvs_*
+    cols = [
+        "AoU_gvs_all_af",
+        "AoU_gvs_afr_af",
+        "AoU_gvs_max_af",
+        "AoU_gvs_max_subpop",
+    ]
+    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
+    values = ["0.10", "0.20", "0.30", "eur"]
+
+    result = _parse_frequencies(values, index_map)
+    assert result is not None
+    aou = result.all_of_us
+    assert aou.overall == 0.10  # AoU_gvs_all_af
+    assert aou.populations["afr"] == 0.20
+    assert aou.populations["max"] == 0.30  # AoU_gvs_max_af
+    # the label column AoU_gvs_max_subpop is not a frequency and is excluded
+    assert "max_subpop" not in aou.populations
+
+
+def test_parse_frequencies_ignores_legacy_allofus_prefix():
+    # the old AllOfUs_ prefix must no longer be picked up
+    cols = ["AllOfUs_gvs_all_af", "AllOfUs_gvs_afr_af"]
+    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
+    assert _parse_frequencies(["0.4", "0.5"], index_map) is None
+
+
+def test_parse_frequencies_gnomad_exomes_uses_custom_prefix():
+    # short_name=gnomAD_exomes -> gnomAD_exomes_AF (overall) + AF_<...> variants
+    cols = [
+        "gnomAD_exomes_AF",
+        "gnomAD_exomes_AF_afr",
+        "gnomAD_exomes_AF_nfe_XX",
+    ]
+    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
+    result = _parse_frequencies(["0.01", "0.02", "0.03"], index_map)
+    assert result is not None
+    exomes = result.gnomad_exomes
+    assert exomes.overall == 0.01
+    assert exomes.populations["afr"] == 0.02
+    assert exomes.populations["nfe_XX"] == 0.03  # sex-split variant captured
+
+
+def test_parse_frequencies_gnomad_genomes_uses_custom_prefix():
+    cols = [
+        "gnomAD_genomes_AF",
+        "gnomAD_genomes_AF_ami",
+        "gnomAD_genomes_AF_grpmax",
+    ]
+    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
+    result = _parse_frequencies(["0.10", "0.20", "0.30"], index_map)
+    assert result is not None
+    genomes = result.gnomad_genomes
+    assert genomes.overall == 0.10
+    assert genomes.populations["ami"] == 0.20
+    assert genomes.populations["grpmax"] == 0.30
+
+
+def test_parse_frequencies_ignores_legacy_gnomad_prefixes():
+    # the old gnomADe_/gnomADg_ prefixes must no longer match
+    cols = ["gnomADe_AF", "gnomADg_AF", "gnomADe_afr_AF"]
+    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
+    assert _parse_frequencies(["0.1", "0.2", "0.3"], index_map) is None
 
 
 # --- end-to-end allele (modern header) ---------------------------------------

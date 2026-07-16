@@ -41,12 +41,23 @@ def panel_ids(panels):
 
 def option_ids(panels, *, include_sub_options=True):
     ids = set()
+
+    def add_option(option):
+        ids.add(option["id"])
+        if not include_sub_options:
+            return
+        for sub in option.get("sub_options", []):
+            # A 'group' sub-option has no id of its own; recurse into its nested
+            # options (e.g. gnomAD exomes' ancestry toggles + their sex options).
+            if sub.get("type") == "group":
+                for nested in sub["options"]:
+                    add_option(nested)
+            else:
+                ids.add(sub["id"])
+
     for panel in panels:
         for option in panel["options"]:
-            ids.add(option["id"])
-            if include_sub_options:
-                for sub in option.get("sub_options", []):
-                    ids.add(sub["id"])
+            add_option(option)
     return ids
 
 
@@ -165,6 +176,111 @@ def test_module_constants_are_not_mutated_between_calls():
 
 
 # --- 5. id contract: option ids are ConfigIniParams parameters --------------
+
+
+def test_gnomad_exomes_structure_grch38():
+    panels = get_visible_panels(
+        species_taxonomy_id=HUMAN, assembly_name="GRCh38.p14"
+    )
+    af = next(p for p in panels if p["id"] == "allele_frequencies")
+    exomes = next(o for o in af["options"] if o["id"] == "gnomad_exomes")
+
+    sub_ids = [s.get("id") for s in exomes["sub_options"]]
+    assert "gnomad_exomes_include_ukb" in sub_ids
+
+    group = next(s for s in exomes["sub_options"] if s.get("type") == "group")
+    assert group["label"] == "Genetic ancestry group"
+    assert [o["id"] for o in group["options"]] == [
+        f"gnomad_exomes_{a}"
+        for a in ["all", "afr", "amr", "asj", "eas", "fin", "mid", "nfe"]
+    ]
+
+    all_ancestry = group["options"][0]
+    assert all_ancestry["default"] is True  # "All" pre-selected
+    assert [s["id"] for s in all_ancestry["sub_options"]] == [
+        "gnomad_exomes_all_both",
+        "gnomad_exomes_all_female",
+        "gnomad_exomes_all_male",
+    ]
+    both, female, male = all_ancestry["sub_options"]
+    assert both["default"] is True  # combined sexes on by default
+    assert female["default"] is False and male["default"] is False
+
+
+def test_gnomad_exomes_absent_below_grch38():
+    for assembly in ("GRCh37.p13", "T2T-CHM13v2.0"):
+        panels = get_visible_panels(
+            species_taxonomy_id=HUMAN, assembly_name=assembly
+        )
+        assert "gnomad_exomes" not in option_ids(panels)
+
+
+def test_gnomad_genomes_structure_grch38():
+    panels = get_visible_panels(
+        species_taxonomy_id=HUMAN, assembly_name="GRCh38.p14"
+    )
+    af = next(p for p in panels if p["id"] == "allele_frequencies")
+    genomes = next(o for o in af["options"] if o["id"] == "gnomad_genomes")
+
+    # no UK Biobank toggle for genomes; only the ancestry group
+    assert all(s.get("type") == "group" for s in genomes["sub_options"])
+    group = genomes["sub_options"][0]
+    assert [o["id"] for o in group["options"]] == [
+        f"gnomad_genomes_{a}"
+        for a in [
+            "all", "afr", "amr", "asj", "eas", "fin", "mid", "nfe",
+            "ami", "remaining", "grpmax",
+        ]
+    ]
+
+    # grpmax is a plain toggle: no sex sub-options
+    grpmax = next(o for o in group["options"] if o["id"] == "gnomad_genomes_grpmax")
+    assert "sub_options" not in grpmax
+
+    # the other ancestries carry Both/Female/Male
+    ami = next(o for o in group["options"] if o["id"] == "gnomad_genomes_ami")
+    assert [s["id"] for s in ami["sub_options"]] == [
+        "gnomad_genomes_ami_both",
+        "gnomad_genomes_ami_female",
+        "gnomad_genomes_ami_male",
+    ]
+
+
+def test_gnomad_genomes_absent_below_grch38():
+    for assembly in ("GRCh37.p13", "T2T-CHM13v2.0"):
+        panels = get_visible_panels(
+            species_taxonomy_id=HUMAN, assembly_name=assembly
+        )
+        assert "gnomad_genomes" not in option_ids(panels)
+
+
+def test_allofus_structure_grch38():
+    panels = get_visible_panels(
+        species_taxonomy_id=HUMAN, assembly_name="GRCh38.p14"
+    )
+    af = next(p for p in panels if p["id"] == "allele_frequencies")
+    allofus = next(o for o in af["options"] if o["id"] == "allofus")
+
+    group = allofus["sub_options"][0]
+    assert group["type"] == "group"
+    assert "label" not in group  # no heading
+    assert [o["id"] for o in group["options"]] == [
+        f"allofus_{p}"
+        for p in ["all", "max", "afr", "amr", "eas", "eur", "mid", "sas", "oth"]
+    ]
+    # population toggles are plain booleans (no sex sub-options)
+    assert all("sub_options" not in o for o in group["options"])
+    # "All" pre-selected
+    all_pop = next(o for o in group["options"] if o["id"] == "allofus_all")
+    assert all_pop["default"] is True
+
+
+def test_allofus_absent_below_grch38():
+    for assembly in ("GRCh37.p13", "T2T-CHM13v2.0"):
+        panels = get_visible_panels(
+            species_taxonomy_id=HUMAN, assembly_name=assembly
+        )
+        assert "allofus" not in option_ids(panels)
 
 
 def test_option_ids_are_valid_config_ini_parameters():
