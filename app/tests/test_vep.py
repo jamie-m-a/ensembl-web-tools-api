@@ -1,4 +1,7 @@
 from io import StringIO
+import gzip
+import os
+import tempfile
 from pydantic import FilePath
 import pytest
 
@@ -6,6 +9,8 @@ from app.vep.models import vcf_results_model as model
 from app.vep.utils.vcf_results import (
     get_results_from_path,
     get_results_from_stream,
+    stream_vep_tsv,
+    gzip_text_stream,
     _get_prediction_index_map,
     TARGET_COLUMNS,
 )
@@ -249,3 +254,55 @@ def test_get_results_with_file_and_dump():
     #assert results.variants[0].name =="rs1405511870"
     assert results.metadata.pagination.total == 1
     assert len(results.variants) == 1
+
+
+def test_gzip_text_stream_roundtrip():
+    """The download compressor yields a valid gzip container that decompresses
+    back to the concatenated input text."""
+    chunks = ["Uploaded_variation\tLocation\n", "rs1\t19:100\n", "rs2\t19:200\n"]
+    compressed = b"".join(gzip_text_stream(iter(chunks)))
+    assert compressed[:2] == b"\x1f\x8b"  # gzip magic
+    assert gzip.decompress(compressed).decode() == "".join(chunks)
+
+
+def test_stream_vep_tsv_gzip_matches_plain(tmp_path):
+    """Gzipping the TSV stream decompresses to the same bytes as the plain TSV."""
+    vcf_path = tmp_path / "output.vcf.gz"
+    with gzip.open(vcf_path, "wt") as f:
+        f.write(TEST_VCF)
+
+    plain = "".join(stream_vep_tsv(FilePath(vcf_path)))
+    compressed = b"".join(gzip_text_stream(stream_vep_tsv(FilePath(vcf_path))))
+    assert gzip.decompress(compressed).decode() == plain
+
+
+def test_stream_vep_tsv(tmp_path):
+    """The flattened TSV export: one row per CSQ entry (transcript AND
+    intergenic), with location/ref columns plus every CSQ field."""
+    vcf_path = tmp_path / "output.vcf.gz"
+    with gzip.open(vcf_path, "wt") as f:
+        f.write(TEST_VCF)
+
+    rows = list(stream_vep_tsv(FilePath(vcf_path)))
+    lines = [r.rstrip("\n").split("\t") for r in rows]
+
+    header = lines[0]
+    # Uploaded_variation, Location, Ref + every CSQ field.
+    assert header[:4] == ["Uploaded_variation", "Location", "Ref", "Allele"]
+    assert header == ["Uploaded_variation", "Location", "Ref"] + CSQ_DESCRIPTION.split("Format: ")[1].split("|")
+
+    data = lines[1:]
+    # Two records carry CSQ (CSQ_1, CSQ_2); the third has no CSQ and is skipped.
+    assert len(data) == 2
+
+    first = dict(zip(header, data[0]))
+    assert first["Uploaded_variation"] == "."
+    assert first["Location"] == "19:82664"  # "chr" prefix stripped
+    assert first["Ref"] == "C"
+    assert first["Allele"] == "T"
+    assert first["Consequence"] == "upstream_gene_variant"
+
+    # The intergenic entry is fully expanded too.
+    intergenic = dict(zip(header, data[1]))
+    assert intergenic["Consequence"] == "intergenic_variant"
+    assert intergenic["Location"] == "19:82829"

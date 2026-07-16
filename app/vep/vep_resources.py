@@ -19,11 +19,12 @@ limitations under the License.
 from enum import Enum
 import json
 import logging
+import re
 
 from fastapi import Request, status, APIRouter
 from pydantic import FilePath
 from requests import HTTPError
-from starlette.responses import JSONResponse, FileResponse
+from starlette.responses import JSONResponse, FileResponse, StreamingResponse
 
 from core.config import MOCK_PIPELINE
 from core.error_response import response_error_handler
@@ -38,7 +39,11 @@ from vep.models.pipeline_model import (
 from vep.models.submission_form import Dropdown, FormConfig
 from vep.models.upload_vcf_files import Streamer, MaxBodySizeException
 from vep.utils.nextflow import launch_workflow, get_workflow_status
-from vep.utils.vcf_results import get_results_from_path
+from vep.utils.vcf_results import (
+    get_results_from_path,
+    stream_vep_tsv,
+    gzip_text_stream,
+)
 from vep.utils.web_metadata import get_genome_metadata
 from vep.form_panels import get_visible_panels
 
@@ -132,8 +137,32 @@ def get_vep_results_file_path(input_vcf_file: str) -> FilePath:
     return vep_results_file
 
 
+# Build the download response for a resolved results VCF path. `format=vcf`
+# (default) serves the raw VCF; `format=tsv` streams the flattened, fully
+# expanded "columnar" table (spreadsheet-friendly), gzip-compressed.
+def _results_download_response(results_path: FilePath, output_format: str):
+    if output_format in ("tsv", "txt", "table"):
+        base = re.sub(r"\.vcf(\.gz)?$", "", results_path.name) or "vep_results"
+        # Compress the table before it's sent (plain gzip, for compatibility).
+        # It's served as the payload (application/gzip, .txt.gz filename), not via
+        # Content-Encoding, so the browser saves the compressed file rather than
+        # transparently decompressing it.
+        return StreamingResponse(
+            gzip_text_stream(stream_vep_tsv(results_path)),
+            media_type="application/gzip",
+            headers={"Content-Disposition": f'attachment; filename="{base}.txt.gz"'},
+        )
+    return FileResponse(
+        results_path,
+        media_type="application/gzip",
+        filename=results_path.name,
+    )
+
+
 @router.get("/submissions/{submission_id}/download", name="download_results")
-async def download_results(request: Request, submission_id: str):
+async def download_results(
+    request: Request, submission_id: str, format: str = "vcf"
+):
     try:
         workflow_status = await get_workflow_status(submission_id)
         submission_status = PipelineStatus(
@@ -143,11 +172,7 @@ async def download_results(request: Request, submission_id: str):
             input_vcf_file = workflow_status["workflow"]["params"]["input"]
             results_file_path = get_vep_results_file_path(input_vcf_file)
             if results_file_path.exists():
-                return FileResponse(
-                    results_file_path,
-                    media_type="application/gzip",
-                    filename=results_file_path.name,
-                )
+                return _results_download_response(results_file_path, format)
             else:
                 response_msg = {
                     "details": f"A submission with id {submission_id} succeeded but could not find output file",

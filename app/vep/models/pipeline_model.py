@@ -63,6 +63,9 @@ class PipelineParams(BaseModel):
 
 # Placeholder root for plugin data files. These paths are not yet resolved
 # per-genome; they will be substituted for real locations later.
+# TODO (pre-production, required): replace this placeholder with real per-genome
+# plugin-data resolution. Every `plugin ...` line below interpolates it, so no
+# plugin can run against real data until this is wired up.
 PLUGIN_PATH = "/[placeholder_path]"
 
 # Maps an annotation option (also the boolean parameter name sent by the client)
