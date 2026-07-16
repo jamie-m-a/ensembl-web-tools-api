@@ -70,20 +70,85 @@ PLUGIN_PATH = "/[placeholder_path]"
 # the order the lines appear in the generated ini.
 PLUGIN_CONFIG_LINES: dict[str, str] = {
     "mavedb": f"plugin MaveDB,file={PLUGIN_PATH}/MaveDB_variants.tsv.gz",
-    "revel": f"plugin REVEL,file={PLUGIN_PATH}/new_tabbed_revel_grch38.tsv.gz",
     "riboseqorfs": f"plugin RiboseqORFs,file={PLUGIN_PATH}/Ribo-seq_ORFs.phase2.comprehensive.v1like.final.bed.gz",
-    "alphamissense": f"plugin AlphaMissense,file={PLUGIN_PATH}/AlphaMissense_hg38.tsv.gz",
     "opentargets": f"plugin OpenTargets,file={PLUGIN_PATH}/open_targets_vep.tsv.gz",
     "eve": f"plugin EVE,file={PLUGIN_PATH}/eve_merged.vcf.gz,popeve_file={PLUGIN_PATH}/grch38_popEVE_ukbb.vcf.gz",
-    "cadd": f"plugin CADD,snv={PLUGIN_PATH}/CADD_GRCh38_1.7_InDels.tsv.gz",
-    "spliceai": (
-        f"plugin SpliceAI,snv={PLUGIN_PATH}/spliceai_scores.masked.snv.hg38.vcf.gz,"
-        f"indel={PLUGIN_PATH}/spliceai_scores.masked.indel.hg38.vcf.gz,"
-        f"snv_ensembl={PLUGIN_PATH}/spliceai_scores.raw.snv.ensembl_mane.grch38.110.vcf.gz"
+    "maxentscan": f"plugin MaxEntScan,file={PLUGIN_PATH}/",
+    "gnomad_mt": f"plugin gnomADMt,file={PLUGIN_PATH}/gnomad.genomes.v3.1.sites.chrM.vcf.bgz",
+    # ProtVar's stability/pocket/int sub-flags are filled in from the client's
+    # sub-options at build time (see create_config_ini_file).
+    "protvar": (
+        f"plugin ProtVar,db={PLUGIN_PATH}/ProtVar_data.db,"
+        "stability={stability},pocket={pocket},int={int}"
     ),
-    "protvar": f"plugin ProtVar,db={PLUGIN_PATH}/ProtVar_data.db,stability=1,pocket=1,int=1",
-    "loeuf": f"plugin LOEUF,file={PLUGIN_PATH}/loeuf_dataset_grch38.tsv.gz,match_by=gene",
+    # IntAct base line; the selected sub-option flags (or `all=1`) are appended
+    # at build time (see create_config_ini_file).
+    "intact": (
+        f"plugin IntAct,mutation_file={PLUGIN_PATH}/mutations.tsv,"
+        f"mapping_file={PLUGIN_PATH}/mutation_gc_map.txt.gz"
+    ),
+    # mutfunc sub-flags filled in at build time; extended is always on.
+    "mutfunc": (
+        "plugin mutfunc,motif={motif},int={int},mod={mod},exp={exp},extended=1,"
+        f"db={PLUGIN_PATH}/mutfunc_data.db"
+    ),
+    # DosageSensitivity's `cover` sub-flag is filled in at build time.
+    "dosage_sensitivity": (
+        f"plugin DosageSensitivity,"
+        f"file={PLUGIN_PATH}/Collins_rCNV_2022.dosage_sensitivity_scores.tsv.gz,"
+        "cover={cover}"
+    ),
     "phenotypes": f"plugin Phenotypes,dir={PLUGIN_PATH}/,phenotype_feature=1,exclude_sources=COSMIC\\&HGMD-PUBLIC\\&Cancer_Gene_Census",
+}
+
+# Assembly-specific plugin lines: option -> {assembly: line}. Resolved against
+# the submission's assembly (GRCh37/GRCh38) at build time.
+PLUGIN_CONFIG_LINES_BY_ASSEMBLY: dict[str, dict[str, str]] = {
+    "alphamissense": {
+        "GRCh38": f"plugin AlphaMissense,file={PLUGIN_PATH}/AlphaMissense_hg38.tsv.gz",
+        "GRCh37": f"plugin AlphaMissense,file={PLUGIN_PATH}/AlphaMissense_hg19.tsv.gz",
+    },
+    "cadd": {
+        "GRCh38": (
+            f"plugin CADD,snv={PLUGIN_PATH}/CADD_GRCh38_1.7_whole_genome_SNVs.tsv.gz,"
+            f"indels={PLUGIN_PATH}/CADD_GRCh38_1.7_InDels.tsv.gz"
+        ),
+        "GRCh37": (
+            f"plugin CADD,snv={PLUGIN_PATH}/CADD_GRCh37_1.7_whole_genome_SNVs.tsv.gz,"
+            f"indels={PLUGIN_PATH}/CADD_GRCh37_1.7_InDels.tsv.gz"
+        ),
+    },
+    "revel": {
+        "GRCh38": f"plugin REVEL,file={PLUGIN_PATH}/new_tabbed_revel_grch38.tsv.gz",
+        "GRCh37": f"plugin REVEL,file={PLUGIN_PATH}/new_tabbed_revel_grch37.tsv.gz",
+    },
+    "loeuf": {
+        "GRCh38": f"plugin LOEUF,file={PLUGIN_PATH}/loeuf_dataset_grch38.tsv.gz,match_by=gene",
+        "GRCh37": f"plugin LOEUF,file={PLUGIN_PATH}/loeuf_dataset_grch37.tsv.gz,match_by=gene",
+    },
+    "geno2mp": {
+        "GRCh38": f"plugin Geno2MP,file={PLUGIN_PATH}/Geno2MP.variants_GRCh38.vcf.gz",
+        "GRCh37": f"plugin Geno2MP,file={PLUGIN_PATH}/Geno2MP.variants_GRCh37.vcf.gz",
+    },
+    "enformer": {
+        "GRCh38": f"plugin Enformer,file={PLUGIN_PATH}/enformer_grch38.vcf.gz",
+        "GRCh37": f"plugin Enformer,file={PLUGIN_PATH}/enformer_grch37.vcf.gz",
+    },
+    "spliceai": {
+        "GRCh38": (
+            f"plugin SpliceAI,snv={PLUGIN_PATH}/spliceai_scores.masked.snv.hg38.vcf.gz,"
+            f"indel={PLUGIN_PATH}/spliceai_scores.masked.indel.hg38.vcf.gz,"
+            f"snv_ensembl={PLUGIN_PATH}/spliceai_scores.raw.snv.ensembl_mane.grch38.110.vcf.gz"
+        ),
+        "GRCh37": (
+            f"plugin SpliceAI,snv={PLUGIN_PATH}/spliceai_scores.masked.snv.hg19.vcf.gz,"
+            f"indel={PLUGIN_PATH}/spliceai_scores.masked.indel.hg19.vcf.gz"
+        ),
+    },
+    "utrannotator": {
+        "GRCh38": f"plugin UTRAnnotator,file={PLUGIN_PATH}/uORF_5UTR_GRCh38_PUBLIC.txt",
+        "GRCh37": f"plugin UTRAnnotator,file={PLUGIN_PATH}/uORF_5UTR_GRCh37_PUBLIC.txt",
+    },
 }
 
 
@@ -107,6 +172,10 @@ class ConfigIniParams(BaseModel):
     cadd: bool = False
     spliceai: bool = False
     protvar: bool = False
+    # ProtVar sub-features (only used when protvar is on); default all on.
+    protvar_stability: bool = True
+    protvar_pocket: bool = True
+    protvar_int: bool = True
     loeuf: bool = False
     phenotypes: bool = False
     # SPDI variant notation (flag line, like hgvs/hgvsg).
@@ -123,6 +192,36 @@ class ConfigIniParams(BaseModel):
     nearest_exon_jb: bool = False
     nearest_exon_jb_max_range: int = 10000  # max search range (bp)
     nearest_exon_jb_intronic: bool = False
+    # MaxEntScan splicing (MaxEntScan plugin).
+    maxentscan: bool = False
+    # Geno2MP variant associations (assembly-specific; see *_BY_ASSEMBLY).
+    geno2mp: bool = False
+    # Enformer non-coding predictions (assembly-specific; see *_BY_ASSEMBLY).
+    enformer: bool = False
+    # UTRAnnotator 5' UTR variants (assembly-specific; see *_BY_ASSEMBLY).
+    utrannotator: bool = False
+    # Dosage sensitivity (DosageSensitivity plugin); `cover` sub-flag.
+    dosage_sensitivity: bool = False
+    dosage_sensitivity_cover: bool = False
+    # IntAct molecular interactions (human GRCh38). Sub-flags default off.
+    intact: bool = False
+    intact_feature_ac: bool = False
+    intact_feature_short_label: bool = False
+    intact_feature_annotation: bool = False
+    intact_ap_ac: bool = False
+    intact_interaction_participants: bool = False
+    intact_pmid: bool = False
+    # mutfunc (human GRCh38). Sub-flags default off.
+    mutfunc: bool = False
+    mutfunc_motif: bool = False
+    mutfunc_int: bool = False
+    mutfunc_mod: bool = False
+    mutfunc_exp: bool = False
+    # gnomAD mitochondrial frequencies (human GRCh38).
+    gnomad_mt: bool = False
+    # Assembly name (from the selected species, e.g. "GRCh38"/"GRCh37"); used to
+    # pick assembly-specific plugin data files. Defaults to GRCh38.
+    assembly_name: str = ""
     gff: str = ""
     fasta: str = ""
 
@@ -170,8 +269,49 @@ class ConfigIniParams(BaseModel):
 
         # Append a `plugin ...` line for every enabled plugin option.
         for option, plugin_line in PLUGIN_CONFIG_LINES.items():
+            if not getattr(self, option):
+                continue
+            if option == "protvar":
+                plugin_line = plugin_line.format(
+                    stability=int(self.protvar_stability),
+                    pocket=int(self.protvar_pocket),
+                    int=int(self.protvar_int),
+                )
+            elif option == "dosage_sensitivity":
+                plugin_line = plugin_line.format(
+                    cover=int(self.dosage_sensitivity_cover)
+                )
+            elif option == "intact":
+                # Append the selected IntAct sub-option flags: none -> base line
+                # only; all selected -> `all=1`; otherwise just the chosen ones.
+                intact_flags = {
+                    "feature_ac": self.intact_feature_ac,
+                    "feature_short_label": self.intact_feature_short_label,
+                    "feature_annotation": self.intact_feature_annotation,
+                    "ap_ac": self.intact_ap_ac,
+                    "interaction_participants": self.intact_interaction_participants,
+                    "pmid": self.intact_pmid,
+                }
+                selected = [name for name, on in intact_flags.items() if on]
+                if len(selected) == len(intact_flags):
+                    plugin_line = f"{plugin_line},all=1"
+                elif selected:
+                    plugin_line = plugin_line + "," + ",".join(
+                        f"{name}=1" for name in selected
+                    )
+            elif option == "mutfunc":
+                plugin_line = plugin_line.format(
+                    motif=int(self.mutfunc_motif),
+                    int=int(self.mutfunc_int),
+                    mod=int(self.mutfunc_mod),
+                    exp=int(self.mutfunc_exp),
+                )
+            lines.append(plugin_line)
+
+        # Assembly-specific plugins (GRCh37/GRCh38 data files).
+        for option, by_assembly in PLUGIN_CONFIG_LINES_BY_ASSEMBLY.items():
             if getattr(self, option):
-                lines.append(plugin_line)
+                lines.append(by_assembly.get(assembly, by_assembly["GRCh38"]))
 
         # gff3-based Genes & transcripts plugins, built from their sub-options.
         # gff3 points at the genome's resolved gff (same as the `gff` line above).

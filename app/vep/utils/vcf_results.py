@@ -169,19 +169,15 @@ def _parse_protein_matches(csq_values, index_map) -> list[model.ProteinMatch]:
 def _parse_protvar_pocket(raw: str) -> model.ProtVarPocket:
     """Parse a ProtVar_pocket value, positionally:
     id & energy & energy_per_volume & score & buriedness & radius_of_gyration &
-    residues. The leading id and trailing residue token are non-numeric; the
-    middle parts are numeric scores."""
+    residues. The leading id (and trailing residue token) are non-numeric; the
+    middle parts are the numeric scores captured here. Residues are ignored."""
     parts = raw.split("&")
     pocket_id = parts[0] if parts else ""
     numeric: list[float | None] = []
-    residues: list[str] = []
     for part in parts[1:]:
         number = _to_float(part)
         if number is not None:
             numeric.append(number)
-        elif part:
-            # residue token, e.g. "p79p81p82" -> ["79", "81", "82"]
-            residues.extend(r for r in part.split("p") if r)
     numeric += [None] * (5 - len(numeric))
     return model.ProtVarPocket(
         pocket_id=pocket_id,
@@ -190,7 +186,6 @@ def _parse_protvar_pocket(raw: str) -> model.ProtVarPocket:
         score=numeric[2],
         buriedness=numeric[3],
         radius_of_gyration=numeric[4],
-        residues=residues,
         raw=raw,
     )
 
@@ -229,20 +224,44 @@ def _parse_protvar(csq_values, index_map) -> model.ProtVarAnnotation | None:
 
 
 def _parse_intact(csq_values, index_map) -> model.IntActAnnotation | None:
-    """Build an IntAct annotation; returns None if no IntAct columns present."""
-    feature_ac = _get_csq_value(csq_values, "IntAct_feature_ac", None, index_map)
-    feature_type = _get_csq_value(
-        csq_values, "IntAct_feature_type", None, index_map
-    )
-    interaction_ac = _get_csq_value(
-        csq_values, "IntAct_interaction_ac", None, index_map
-    )
-    if not any([feature_ac, feature_type, interaction_ac]):
+    """Build an IntAct annotation; returns None if no IntAct columns present.
+
+    Besides the base feature_type / interaction_ac, the plugin emits one column
+    per selected sub-option (IntAct_<flag>), so read those too."""
+    def col(name):
+        return _get_csq_value(csq_values, name, None, index_map)
+
+    feature_type = col("IntAct_feature_type")
+    interaction_ac = col("IntAct_interaction_ac")
+    # Sub-option columns (present when the corresponding flag was selected).
+    feature_ac = col("IntAct_feature_ac")
+    feature_short_label = col("IntAct_feature_short_label")
+    feature_annotation = col("IntAct_feature_annotation")
+    ap_ac = col("IntAct_ap_ac")
+    interaction_participants = col("IntAct_interaction_participants")
+    pmid = col("IntAct_pmid")
+    if not any(
+        [
+            feature_type,
+            interaction_ac,
+            feature_ac,
+            feature_short_label,
+            feature_annotation,
+            ap_ac,
+            interaction_participants,
+            pmid,
+        ]
+    ):
         return None
     return model.IntActAnnotation(
-        feature_ac=feature_ac,
         feature_type=feature_type,
         interaction_ac=interaction_ac,
+        feature_ac=feature_ac,
+        feature_short_label=feature_short_label,
+        feature_annotation=feature_annotation,
+        ap_ac=ap_ac,
+        interaction_participants=interaction_participants,
+        pmid=pmid,
     )
 
 
@@ -268,21 +287,60 @@ def _normalise_na(value: str | None) -> str | None:
     return None if value in (None, "NA") else value
 
 
+def _first_amp(value: str | None) -> str | None:
+    """First real (non-empty, non-'NA') item of a '&'-joined CSQ list."""
+    for item in _split_amp(value):
+        return item
+    return None
+
+
 def _parse_mavedb(csq_values, index_map) -> model.MaveDBAnnotation | None:
-    """Build a MaveDB annotation; returns None if no MaveDB columns present."""
+    """Build a MaveDB annotation; returns None if no MaveDB columns present.
+
+    The MaveDB plugin reports several assays for one variant as parallel
+    '&'-joined lists (score/urn/pro). Zip score and urn positionally into one
+    assay each, so every score pairs with its score-set URN."""
     score = _get_csq_value(csq_values, "MaveDB_score", None, index_map)
     urn = _get_csq_value(csq_values, "MaveDB_urn", None, index_map)
-    doi = _get_csq_value(csq_values, "MaveDB_doi", None, index_map)
-    nt = _get_csq_value(csq_values, "MaveDB_nt", None, index_map)
     pro = _get_csq_value(csq_values, "MaveDB_pro", None, index_map)
-    if not any([score, urn, doi, nt, pro]):
+    if not any([score, urn, pro]):
+        return None
+    scores = _raw_amp(score)
+    urns = _raw_amp(urn)
+    assays: list[model.MaveDBAssay] = []
+    for i in range(max(len(scores), len(urns))):
+        raw_urn = urns[i] if i < len(urns) else ""
+        assay_urn = raw_urn if raw_urn and raw_urn != "NA" else None
+        assay_score = _to_float(scores[i]) if i < len(scores) else None
+        if assay_urn is None and assay_score is None:
+            continue
+        assays.append(model.MaveDBAssay(urn=assay_urn, score=assay_score))
+    if not assays:
         return None
     return model.MaveDBAnnotation(
+        protein_variant=_first_amp(pro),
+        assays=assays,
+    )
+
+
+def _parse_popeve(csq_values, index_map) -> model.PopEve | None:
+    """Build popEVE scores; returns None if no popEVE columns present."""
+    def v(name):
+        return _get_csq_value(csq_values, name, None, index_map)
+
+    score = v("popEVE_SCORE")
+    if not any([score, v("popEVE_EVE"), v("popEVE_mutant")]):
+        return None
+    return model.PopEve(
         score=_to_float(score),
-        urn=_normalise_na(urn),
-        doi=_normalise_na(doi),
-        nucleotide_variant=_normalise_na(nt),
-        protein_variant=_normalise_na(pro),
+        eve=_to_float(v("popEVE_EVE")),
+        esm1v=_to_float(v("popEVE_ESM1v")),
+        pop_adjusted_eve=_to_float(v("popEVE_pop_adjusted_EVE")),
+        pop_adjusted_esm1v=_to_float(v("popEVE_pop_adjusted_ESM1v")),
+        gene=v("popEVE_gene"),
+        protein=v("popEVE_protein"),
+        mutant=v("popEVE_mutant"),
+        gap_frequency=_to_float(v("popEVE_gap_frequency")),
     )
 
 
@@ -291,6 +349,80 @@ def _split_amp(value: str | None) -> list[str]:
     if not value:
         return []
     return [v for v in value.split("&") if v and v != "NA"]
+
+
+def _parse_dosage_sensitivity(
+    csq_values, index_map
+) -> model.DosageSensitivity | None:
+    """Build gnomAD dosage-sensitivity probabilities (pHaplo/pTriplo);
+    returns None if neither column is present."""
+    phaplo = _get_csq_value(csq_values, "pHaplo", None, index_map)
+    ptriplo = _get_csq_value(csq_values, "pTriplo", None, index_map)
+    if not any([phaplo, ptriplo]):
+        return None
+    return model.DosageSensitivity(
+        phaplo=_to_float(phaplo), ptriplo=_to_float(ptriplo)
+    )
+
+
+def _parse_utr_annotation(
+    csq_values, index_map
+) -> model.FivePrimeUtrAnnotation | None:
+    """Build a UTRAnnotator 5' UTR annotation; returns None if no 5'UTR /
+    uORF columns are present."""
+    consequence = _get_csq_value(csq_values, "5UTR_consequence", None, index_map)
+    annotation = _get_csq_value(csq_values, "5UTR_annotation", None, index_map)
+    uorfs = _get_csq_value(csq_values, "Existing_uORFs", None, index_map)
+    inframe = _get_csq_value(
+        csq_values, "Existing_InFrame_oORFs", None, index_map
+    )
+    outofframe = _get_csq_value(
+        csq_values, "Existing_OutOfFrame_oORFs", None, index_map
+    )
+    if not any([consequence, annotation, uorfs, inframe, outofframe]):
+        return None
+    return model.FivePrimeUtrAnnotation(
+        consequence=consequence,
+        annotation=annotation,
+        existing_uorfs=uorfs,
+        existing_inframe_oorfs=inframe,
+        existing_outofframe_oorfs=outofframe,
+    )
+
+
+def _parse_riboseq_orfs(
+    csq_values, index_map
+) -> model.RiboseqOrfsAnnotation | None:
+    """Build a Ribo-seq ORFs annotation; returns None if no RiboseqORFs
+    columns are present."""
+    orf_id = _get_csq_value(csq_values, "RiboseqORFs_id", None, index_map)
+    consequences = _split_amp(
+        _get_csq_value(csq_values, "RiboseqORFs_consequences", None, index_map)
+    )
+    impact = _get_csq_value(csq_values, "RiboseqORFs_impact", None, index_map)
+    protein_position = _get_csq_value(
+        csq_values, "RiboseqORFs_protein_position", None, index_map
+    )
+    codons = _get_csq_value(csq_values, "RiboseqORFs_codons", None, index_map)
+    amino_acids = _get_csq_value(
+        csq_values, "RiboseqORFs_amino_acids", None, index_map
+    )
+    publications = _split_amp(
+        _get_csq_value(csq_values, "RiboseqORFs_publications", None, index_map)
+    )
+    if not any(
+        [orf_id, consequences, impact, protein_position, codons, amino_acids, publications]
+    ):
+        return None
+    return model.RiboseqOrfsAnnotation(
+        orf_id=orf_id,
+        consequences=consequences,
+        impact=impact,
+        protein_position=protein_position,
+        codons=codons,
+        amino_acids=amino_acids,
+        publications=publications,
+    )
 
 
 _PREDICTION_RE = re.compile(r"^(?P<prediction>[^(]+)\((?P<score>[-\d.eE]+)\)$")
@@ -368,6 +500,7 @@ def _parse_pathogenicity(csq_values, index_map) -> model.PathogenicityPrediction
         spliceai=spliceai,
         eve_class=v("EVE_CLASS"),
         eve_score=_to_float(v("EVE_SCORE")),
+        popeve=_parse_popeve(csq_values, index_map),
     )
     if not any(value is not None for value in fields.values()):
         return None
@@ -429,39 +562,67 @@ def _parse_phenotype_data(csq_values, index_map) -> model.VariantPhenotypeData |
     )
 
 
+def _raw_amp(value: str | None) -> list[str]:
+    """Split a '&'-delimited CSQ list keeping every position (incl. 'NA'), so
+    positionally-aligned subfields can be zipped together."""
+    return value.split("&") if value else []
+
+
 def _parse_open_targets(csq_values, index_map) -> model.OpenTargetsAssociation | None:
-    diseases = _split_amp(
-        _get_csq_value(csq_values, "OpenTargets_gwasDiseases", None, index_map)
-    )
-    gene_ids = _split_amp(
-        _get_csq_value(csq_values, "OpenTargets_gwasGeneId", None, index_map)
-    )
-    l2g = [
-        score
-        for score in (
-            _to_float(s)
-            for s in _split_amp(
-                _get_csq_value(
-                    csq_values, "OpenTargets_gwasLocusToGeneScore", None, index_map
-                )
+    def raw(name):
+        return _raw_amp(_get_csq_value(csq_values, name, None, index_map))
+
+    diseases = raw("OpenTargets_gwasDiseases")
+    gene_ids = raw("OpenTargets_gwasGeneId")
+    l2g = raw("OpenTargets_gwasLocusToGeneScore")
+    qtl_genes = raw("OpenTargets_qtlGeneId")
+    qtl_biosamples = raw("OpenTargets_qtlBiosampleName")
+
+    # GWAS: disease / gene / L2G are positionally aligned. Keep real (non-NA)
+    # rows and de-duplicate (the plugin currently emits duplicate rows).
+    gwas_associations = []
+    seen_gwas = set()
+    for disease, gene_id, score in zip(diseases, gene_ids, l2g):
+        if not disease or disease == "NA":
+            continue
+        key = (disease, gene_id, score)
+        if key in seen_gwas:
+            continue
+        seen_gwas.add(key)
+        gwas_associations.append(
+            model.OpenTargetsGwasAssociation(
+                disease=disease, gene_id=gene_id, l2g_score=_to_float(score)
             )
         )
-        if score is not None
-    ]
-    qtl_genes = _split_amp(
-        _get_csq_value(csq_values, "OpenTargets_qtlGeneId", None, index_map)
+
+    # QTL: gene / biosample are positionally aligned. Keep real rows, unique.
+    qtl_associations = []
+    seen_qtl = set()
+    for gene_id, biosample in zip(qtl_genes, qtl_biosamples):
+        if not gene_id or gene_id == "NA":
+            continue
+        key = (gene_id, biosample)
+        if key in seen_qtl:
+            continue
+        seen_qtl.add(key)
+        qtl_associations.append(
+            model.OpenTargetsQtlAssociation(
+                gene_id=gene_id,
+                biosample=None if biosample in ("", "NA") else biosample,
+            )
+        )
+
+    # Strongest associations first (missing scores last).
+    gwas_associations.sort(
+        key=lambda a: a.l2g_score if a.l2g_score is not None else float("-inf"),
+        reverse=True,
     )
-    qtl_biosamples = _split_amp(
-        _get_csq_value(csq_values, "OpenTargets_qtlBiosampleName", None, index_map)
-    )
-    if not any([diseases, gene_ids, l2g, qtl_genes, qtl_biosamples]):
+
+    if not gwas_associations and not qtl_associations:
         return None
     return model.OpenTargetsAssociation(
-        gwas_diseases=diseases,
-        gwas_gene_ids=gene_ids,
-        gwas_l2g_scores=l2g,
-        qtl_gene_ids=qtl_genes,
-        qtl_biosamples=qtl_biosamples,
+        gwas_associations=gwas_associations,
+        qtl_associations=qtl_associations,
     )
 
 
@@ -577,6 +738,12 @@ def _get_alt_allele_details(
                     loeuf=_to_float(
                         _get_csq_value(csq_values, "LOEUF", None, index_map)
                     ),
+                    dosage_sensitivity=_parse_dosage_sensitivity(
+                        csq_values, index_map
+                    ),
+                    # Transcript-level predictions
+                    utr_annotation=_parse_utr_annotation(csq_values, index_map),
+                    riboseq_orfs=_parse_riboseq_orfs(csq_values, index_map),
                 )
             )
         elif "intergenic_variant" in cons:

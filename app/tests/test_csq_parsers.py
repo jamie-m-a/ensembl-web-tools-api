@@ -175,7 +175,7 @@ def test_parse_mutfunc_empty_is_none():
 # --- MaveDB (multi-assay) ----------------------------------------------------
 
 
-def test_parse_mavedb_multi_assay_first_score_and_count():
+def test_parse_mavedb_multi_assay_pairs_urn_and_score():
     result = _parse_mavedb(
         row_list(
             MaveDB_score="1.5&2.5&NA",
@@ -186,11 +186,13 @@ def test_parse_mavedb_multi_assay_first_score_and_count():
         ),
         INDEX_MAP,
     )
-    assert result.score == 1.5  # first numeric score
-    assert result.assay_count == 2  # two numeric scores (NA dropped)
-    assert result.urn == "urn:1"  # first non-NA of each list
-    assert result.doi == "10.1/a"
-    assert result.nucleotide_variant == "c.1A>G"
+    # Three assays, each pairing its urn with its (positional) score. The third
+    # score is NA -> None, but its urn is present so the assay is kept.
+    assert [(a.urn, a.score) for a in result.assays] == [
+        ("urn:1", 1.5),
+        ("urn:2", 2.5),
+        ("urn:3", None),
+    ]
     assert result.protein_variant == "p.Lys1Arg"
 
 

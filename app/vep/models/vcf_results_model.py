@@ -63,14 +63,13 @@ class ProtVarPocket(BaseModel):
     NOTE: field order is parsed positionally from the ProtVar_pocket CSQ value
     (id & energy & energy_per_volume & score & buriedness & radius_of_gyration &
     residues). The names are best-effort; `raw` preserves the original value so
-    nothing is lost if the ProtVar format differs."""
+    nothing is lost if the ProtVar format differs. Residues are not captured."""
     pocket_id: str
     energy: float | None = None
     energy_per_volume: float | None = None
     score: float | None = None
     buriedness: float | None = None
     radius_of_gyration: float | None = None
-    residues: list[str] = []
     raw: str
 
 
@@ -90,10 +89,17 @@ class ProtVarAnnotation(BaseModel):
 
 
 class IntActAnnotation(BaseModel):
-    """IntAct molecular interaction annotation (from the IntAct VEP plugin)."""
-    feature_ac: str | None = None
+    """IntAct molecular interaction annotation (from the IntAct VEP plugin).
+    Besides the base feature_type / interaction_ac, each field corresponds to a
+    selected IntAct sub-option (emitted only when its flag was set)."""
     feature_type: str | None = None
     interaction_ac: str | None = None
+    feature_ac: str | None = None
+    feature_short_label: str | None = None
+    feature_annotation: str | None = None
+    ap_ac: str | None = None  # affected protein AC
+    interaction_participants: str | None = None
+    pmid: str | None = None
 
 
 class MutfuncAnnotation(BaseModel):
@@ -105,13 +111,18 @@ class MutfuncAnnotation(BaseModel):
     protein_structure_experimental: float | None = None  # mutfunc_exp
 
 
-class MaveDBAnnotation(BaseModel):
-    """MaveDB multiplexed assay measurement for the variant."""
-    score: float | None = None
+class MaveDBAssay(BaseModel):
+    """One MaveDB multiplexed-assay measurement: a score-set URN and its score."""
     urn: str | None = None
-    doi: str | None = None
-    nucleotide_variant: str | None = None  # MaveDB_nt
+    score: float | None = None
+
+
+class MaveDBAnnotation(BaseModel):
+    """MaveDB multiplexed-assay measurements for the variant. The plugin reports
+    several assays as parallel &-joined columns; each (urn, score) pair is one
+    assay. `protein_variant` is the (shared) protein change."""
     protein_variant: str | None = None  # MaveDB_pro
+    assays: list[MaveDBAssay] = []
 
 
 # --- HGVS, pathogenicity, conservation (consequence level) ------------------
@@ -141,6 +152,20 @@ class SpliceAiScores(BaseModel):
     dp_donor_loss: int | None = None  # DP_DL
 
 
+class PopEve(BaseModel):
+    """popEVE scores (population-adjusted EVE/ESM1v), from the EVE plugin's
+    popeve_file. One prediction per protein-altering variant."""
+    score: float | None = None  # popEVE_SCORE
+    eve: float | None = None  # popEVE_EVE
+    esm1v: float | None = None  # popEVE_ESM1v
+    pop_adjusted_eve: float | None = None  # popEVE_pop_adjusted_EVE
+    pop_adjusted_esm1v: float | None = None  # popEVE_pop_adjusted_ESM1v
+    gene: str | None = None
+    protein: str | None = None
+    mutant: str | None = None
+    gap_frequency: float | None = None
+
+
 class PathogenicityPredictions(BaseModel):
     sift: PredictionWithScore | None = None
     polyphen: PredictionWithScore | None = None
@@ -152,6 +177,38 @@ class PathogenicityPredictions(BaseModel):
     spliceai: SpliceAiScores | None = None
     eve_class: str | None = None
     eve_score: float | None = None
+    popeve: PopEve | None = None
+
+
+# --- gene constraint, UTR, Ribo-seq (consequence level) ---------------------
+
+
+class DosageSensitivity(BaseModel):
+    """gnomAD dosage sensitivity probabilities (gene-level, shown per
+    transcript). From the DosageSensitivity plugin."""
+    phaplo: float | None = None  # pHaplo: haploinsufficiency probability
+    ptriplo: float | None = None  # pTriplo: triplosensitivity probability
+
+
+class FivePrimeUtrAnnotation(BaseModel):
+    """UTRAnnotator 5' UTR consequence for variants affecting upstream ORFs."""
+    consequence: str | None = None  # 5UTR_consequence
+    annotation: str | None = None  # 5UTR_annotation (raw detail string)
+    existing_uorfs: str | None = None  # Existing_uORFs
+    existing_inframe_oorfs: str | None = None  # Existing_InFrame_oORFs
+    existing_outofframe_oorfs: str | None = None  # Existing_OutOfFrame_oORFs
+
+
+class RiboseqOrfsAnnotation(BaseModel):
+    """Ribo-seq ORFs plugin: overlap with translated ORFs identified by
+    Ribo-seq (Ensembl/GENCODE phase 2)."""
+    orf_id: str | None = None  # RiboseqORFs_id
+    consequences: list[str] = []  # RiboseqORFs_consequences (&-split)
+    impact: str | None = None  # RiboseqORFs_impact
+    protein_position: str | None = None  # RiboseqORFs_protein_position
+    codons: str | None = None  # RiboseqORFs_codons
+    amino_acids: str | None = None  # RiboseqORFs_amino_acids
+    publications: list[str] = []  # RiboseqORFs_publications (&-split)
 
 
 # --- frequencies, phenotypes, associations (allele level) -------------------
@@ -175,12 +232,22 @@ class VariantPhenotypeData(BaseModel):
     pubmed_ids: list[str] = []
 
 
+class OpenTargetsGwasAssociation(BaseModel):
+    disease: str  # EFO ontology id
+    gene_id: str  # Ensembl gene id
+    l2g_score: float | None = None  # locus-to-gene confidence
+
+
+class OpenTargetsQtlAssociation(BaseModel):
+    gene_id: str  # Ensembl gene id
+    biosample: str | None = None  # affected tissue
+
+
 class OpenTargetsAssociation(BaseModel):
-    gwas_diseases: list[str] = []
-    gwas_gene_ids: list[str] = []
-    gwas_l2g_scores: list[float] = []
-    qtl_gene_ids: list[str] = []
-    qtl_biosamples: list[str] = []
+    # Structured, de-duplicated associations. The parallel CSQ subfields are
+    # positionally aligned, so they are zipped together at parse time.
+    gwas_associations: list[OpenTargetsGwasAssociation] = []
+    qtl_associations: list[OpenTargetsQtlAssociation] = []
 
 
 class PredictedTranscriptConsequence(BaseModel):
@@ -212,6 +279,10 @@ class PredictedTranscriptConsequence(BaseModel):
     hgvs: HgvsNotations | None = None
     pathogenicity: PathogenicityPredictions | None = None
     loeuf: float | None = None  # gnomAD LOEUF (gene-level, shown per transcript)
+    dosage_sensitivity: DosageSensitivity | None = None
+    # Transcript-level predictions (populated when the relevant plugins ran).
+    utr_annotation: FivePrimeUtrAnnotation | None = None
+    riboseq_orfs: RiboseqOrfsAnnotation | None = None
 
 
 class ReferenceVariantAllele(BaseModel):
