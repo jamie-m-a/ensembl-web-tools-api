@@ -1,5 +1,3 @@
-import uuid
-
 import requests
 
 from vep.models.pipeline_model import PipelineParams
@@ -7,15 +5,10 @@ from core.config import (
     NF_TOKEN,
     SEQERA_API,
     NF_WORKSPACE_ID,
-    MOCK_PIPELINE,
-    MOCK_INPUT_VCF,
 )
 
 
 def launch_workflow(pipeline_params: PipelineParams):
-    if MOCK_PIPELINE:
-        # Pretend Seqera accepted the launch; return a fake workflow id.
-        return f"mock-{uuid.uuid4().hex[:12]}"
     try:
         headers = {
             "Content-Type": "application/json",
@@ -54,15 +47,6 @@ def launch_workflow(pipeline_params: PipelineParams):
 
 
 async def get_workflow_status(submission_id):
-    if MOCK_PIPELINE:
-        # Pretend the pipeline finished successfully; point the results at the
-        # bundled fixture (its <stem>_VEP.vcf.gz sibling holds the VEP output).
-        return {
-            "workflow": {
-                "status": "SUCCEEDED",
-                "params": {"input": MOCK_INPUT_VCF},
-            }
-        }
     try:
         _headers = {
             "Content-Type": "application/json",

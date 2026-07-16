@@ -26,7 +26,7 @@ from pydantic import FilePath
 from requests import HTTPError
 from starlette.responses import JSONResponse, FileResponse, StreamingResponse
 
-from core.config import MOCK_PIPELINE
+from core.config import DUMP_INI, LOCAL_RESULTS_VCF
 from core.error_response import response_error_handler
 from core.logging import InterceptHandler
 from vep.models.pipeline_model import (
@@ -39,6 +39,7 @@ from vep.models.pipeline_model import (
 from vep.models.submission_form import Dropdown, FormConfig
 from vep.models.upload_vcf_files import Streamer, MaxBodySizeException
 from vep.utils.nextflow import launch_workflow, get_workflow_status
+from vep.utils.dump_ini import dump_config_ini
 from vep.utils.vcf_results import (
     get_results_from_path,
     stream_vep_tsv,
@@ -68,14 +69,14 @@ async def submit_vep(request: Request):
         stream_result = await request_streamer.stream()
         if not stream_result:
             raise Exception("Failed to upload VEP input files")
-        if MOCK_PIPELINE:
-            # Skip building the VEP config / contacting the runner; the mock
-            # always resolves to the bundled fixture results.
-            return {"submission_id": launch_workflow(None)}
         vep_job_parameters = request_streamer.parameters.value.decode()
         genome_id = request_streamer.genome_id.value.decode()
         vep_job_parameters_dict = json.loads(vep_job_parameters)
         ini_parameters = ConfigIniParams(**vep_job_parameters_dict, genome_id=genome_id)
+        if DUMP_INI:
+            # Temporary: dump the generated config.ini to disk and return a fake
+            # id, without building launch params or contacting the runner.
+            return {"submission_id": dump_config_ini(ini_parameters)}
         ini_file = ini_parameters.create_config_ini_file(request_streamer.temp_dir)
 
         vep_job_config_parameters = VEPConfigParams(
@@ -109,6 +110,17 @@ async def submit_vep(request: Request):
 @router.get("/submissions/{submission_id}/status", name="submission_status")
 async def vep_status(request: Request, submission_id: str):
     try:
+        # Dev short-circuit: in DUMP_INI / LOCAL_RESULTS_VCF mode there is no real
+        # pipeline run to poll (the submission returned a fake id), so report
+        # SUCCEEDED straight away and let the results endpoint serve the local
+        # VCF. TEMPORARY: paired with DUMP_INI / LOCAL_RESULTS_VCF.
+        if DUMP_INI or LOCAL_RESULTS_VCF:
+            return JSONResponse(
+                content={
+                    "submission_id": submission_id,
+                    "status": VepStatus.succeeded.value,
+                }
+            )
         workflow_status = await get_workflow_status(submission_id)
         submission_status = PipelineStatus(
             submission_id=submission_id, status=workflow_status
@@ -165,6 +177,11 @@ async def download_results(
     request: Request, submission_id: str, format: str = "vcf"
 ):
     try:
+        # Temporary local-results mode: serve the VEP output VCF on disk directly,
+        # bypassing the Seqera status lookup. Enabled by setting LOCAL_RESULTS_VCF
+        # (the same file the results view parses). Discrete and easily removed.
+        if LOCAL_RESULTS_VCF:
+            return _results_download_response(FilePath(LOCAL_RESULTS_VCF), format)
         workflow_status = await get_workflow_status(submission_id)
         submission_status = PipelineStatus(
             submission_id=submission_id, status=workflow_status
@@ -225,6 +242,15 @@ async def fetch_results(
             return JSONResponse(
                 content={"details": f"Invalid filters: {exc}"},
                 status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        # Temporary local-results mode: parse a VEP output VCF on disk directly,
+        # bypassing the Seqera status lookup. Enabled by setting LOCAL_RESULTS_VCF.
+        if LOCAL_RESULTS_VCF:
+            return get_results_from_path(
+                vcf_path=FilePath(LOCAL_RESULTS_VCF),
+                page=page,
+                page_size=per_page,
+                filters=active_filters,
             )
         workflow_status = await get_workflow_status(submission_id)
         submission_status = PipelineStatus(

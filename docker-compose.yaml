@@ -15,3 +15,36 @@ services:
       - ./tmpdir:/nfs/public/rw/enswbsites
     ports:
       - 8013:8013
+
+  # Local dev variant: `docker compose up dev`.
+  # Instead of launching the Nextflow/Seqera pipeline, a submission builds the
+  # VEP config.ini and dumps it to a local dir (DUMP_INI), and the results
+  # endpoint parses a local VEP output VCF (LOCAL_RESULTS_VCF) rather than
+  # resolving the submission via Seqera. Both read from / write to ./dev-data on
+  # the host (mounted at /dev-data); override the host dir with DEV_DATA_DIR and
+  # the VCF path with LOCAL_RESULTS_VCF.
+  #   mkdir -p dev-data && cp your-vep-output.vcf.gz dev-data/output.vcf.gz
+  #   docker compose up dev
+  # Behind the "dev" profile, so a bare `docker compose up` still runs only
+  # tools_api.
+  dev:
+    extends:
+      service: tools_api
+    profiles:
+      - dev
+    container_name: tools-api-dev
+    environment:
+      - DEBUG=True
+      - DUMP_INI=True
+      - DUMP_INI_DIR=/dev-data
+      - LOCAL_RESULTS_VCF=${LOCAL_RESULTS_VCF:-/dev-data/output.vcf.gz}
+      # Override any host-specific NF_WORK_DIR from app/.env with a path that
+      # exists inside the container (created in the Dockerfile, mounted to
+      # ./tmpdir); the Streamer mkdtemp()s here on upload.
+      - NF_WORK_DIR=/nfs/public/rw/enswbsites
+      # Resolve GFF/FASTA (get_vep_support_location) from staging, matching the
+      # genome ids the frontend gets from staging species search — the default
+      # (beta) doesn't recognise them, so config generation would 404.
+      - WEB_METADATA_API=https://staging-2020.ensembl.org/api/metadata/
+    volumes:
+      - ${DEV_DATA_DIR:-./dev-data}:/dev-data

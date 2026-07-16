@@ -8,4 +8,6 @@ __pycache__
 .DS_Store
 report.xml
 tmpdir/
-venv*results_meta.json
+venv*
+results_meta.json
+dev-data/

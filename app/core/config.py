@@ -63,21 +63,22 @@ logger.configure(handlers=[{"sink": sys.stderr, "level": LOGGING_LEVEL}])
 
 import os
 
-# Mock pipeline switch (dev): when enabled, the Nextflow/Seqera calls are
-# bypassed — a submission immediately "succeeds" and results are served from a
-# fixture VCF (whose <stem>_VEP.vcf.gz sibling holds the VEP output), pretending
-# the Nextflow pipeline returned it. Flip MOCK_PIPELINE off to use the real
-# runner. See app/tests/fixtures/vep for the bundled fixture.
-MOCK_PIPELINE: bool = config("MOCK_PIPELINE", cast=bool, default=False)
-_default_mock_input = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "tests",
-    "fixtures",
-    "vep",
-    "mock_submission.vcf",
+# Dump-ini switch (dev/testing, temporary): when enabled, a submission builds
+# the VEP config.ini and writes it to DUMP_INI_DIR instead of launching the
+# pipeline, returning a fake submission id. Used to inspect the form -> ini
+# stage end to end. DUMP_INI_DIR defaults to the shared repo data/output dir
+# (sibling of this repo), overridable via the env var.
+DUMP_INI: bool = config("DUMP_INI", cast=bool, default=False)
+_default_dump_dir = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "output")
 )
-MOCK_INPUT_VCF: str = config("MOCK_INPUT_VCF", default=_default_mock_input)
+DUMP_INI_DIR: str = config("DUMP_INI_DIR", default=_default_dump_dir)
+
+# Local results mode (dev/testing, temporary): when LOCAL_RESULTS_VCF is set to
+# a VEP output VCF path, the results endpoint parses that file directly instead
+# of resolving the submission via Seqera. Off by default; discrete and easily
+# removed. Example: LOCAL_RESULTS_VCF=/path/to/data/output/output.vcf.gz
+LOCAL_RESULTS_VCF: str = config("LOCAL_RESULTS_VCF", default="")
 
 # Nextflow Configurations. Defaults are empty so the app can run in mock mode
 # without Seqera credentials; the real runner requires these to be set.
@@ -92,3 +93,21 @@ WEB_METADATA_API = config(
     "WEB_METADATA_API", default="https://beta.ensembl.org/api/metadata/"
 )
 VEP_SUPPORT_PATH = config("VEP_SUPPORT_PATH", default="/tmpdir")
+
+# Genome-metadata API base used for form config (get_genome_metadata). Defaults
+# to staging so it matches the species-search source; flip GENOME_METADATA_LIVE
+# on to use the live API. Either URL can be overridden explicitly.
+GENOME_METADATA_API_STAGING = config(
+    "GENOME_METADATA_API_STAGING",
+    default="https://staging-2020.ensembl.org/api/metadata/",
+)
+GENOME_METADATA_API_LIVE = config(
+    "GENOME_METADATA_API_LIVE",
+    default="https://beta.ensembl.org/api/metadata/",
+)
+GENOME_METADATA_LIVE: bool = config(
+    "GENOME_METADATA_LIVE", cast=bool, default=False
+)
+GENOME_METADATA_API = (
+    GENOME_METADATA_API_LIVE if GENOME_METADATA_LIVE else GENOME_METADATA_API_STAGING
+)

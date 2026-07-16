@@ -2,7 +2,7 @@ import requests
 
 from vep.models.submission_form import GenomeAnnotationProvider
 
-from core.config import WEB_METADATA_API, VEP_SUPPORT_PATH
+from core.config import WEB_METADATA_API, VEP_SUPPORT_PATH, GENOME_METADATA_API
 
 
 def get_vep_support_location(genome_id: str) -> dict:
@@ -39,7 +39,7 @@ def get_vep_support_location(genome_id: str) -> dict:
 async def get_genome_metadata(genome_id: str) -> GenomeAnnotationProvider:
     try:
         response = requests.get(
-            WEB_METADATA_API
+            GENOME_METADATA_API
             + "genome/"
             + genome_id
             + "/dataset/genebuild/attributes?"
