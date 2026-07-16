@@ -37,7 +37,16 @@ ALLOWED_HOSTS: list[str] = config(
     cast=CommaSeparatedStrings,
     default="*",
 )
-with open("/data/blast_config.json") as f:
+# In the container the data dir is mounted at /data; for local dev fall back to
+# the repo's own data/ directory so the app boots without that mount.
+import os as _os
+
+_blast_config_path = "/data/blast_config.json"
+if not _os.path.exists(_blast_config_path):
+    _blast_config_path = _os.path.join(
+        _os.path.dirname(__file__), "..", "..", "data", "blast_config.json"
+    )
+with open(_blast_config_path) as f:
     BLAST_CONFIG = json.load(f)
 
 
@@ -52,13 +61,32 @@ for logger_name in LOGGERS:
 
 logger.configure(handlers=[{"sink": sys.stderr, "level": LOGGING_LEVEL}])
 
-# Nextflow Configurations
-NF_TOKEN = config("NF_TOKEN")
-NF_COMPUTE_ENV_ID = config("NF_COMPUTE_ENV_ID")
-NF_PIPELINE_URL = config("NF_PIPELINE_URL")
-NF_WORK_DIR = config("NF_WORK_DIR")
-SEQERA_API = config("SEQERA_API")
-NF_WORKSPACE_ID = config("NF_WORKSPACE_ID")
+import os
+
+# Mock pipeline switch (dev): when enabled, the Nextflow/Seqera calls are
+# bypassed — a submission immediately "succeeds" and results are served from a
+# fixture VCF (whose <stem>_VEP.vcf.gz sibling holds the VEP output), pretending
+# the Nextflow pipeline returned it. Flip MOCK_PIPELINE off to use the real
+# runner. See app/tests/fixtures/vep for the bundled fixture.
+MOCK_PIPELINE: bool = config("MOCK_PIPELINE", cast=bool, default=False)
+_default_mock_input = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "tests",
+    "fixtures",
+    "vep",
+    "mock_submission.vcf",
+)
+MOCK_INPUT_VCF: str = config("MOCK_INPUT_VCF", default=_default_mock_input)
+
+# Nextflow Configurations. Defaults are empty so the app can run in mock mode
+# without Seqera credentials; the real runner requires these to be set.
+NF_TOKEN = config("NF_TOKEN", default="")
+NF_COMPUTE_ENV_ID = config("NF_COMPUTE_ENV_ID", default="")
+NF_PIPELINE_URL = config("NF_PIPELINE_URL", default="")
+NF_WORK_DIR = config("NF_WORK_DIR", default="")
+SEQERA_API = config("SEQERA_API", default="")
+NF_WORKSPACE_ID = config("NF_WORKSPACE_ID", default="")
 
 WEB_METADATA_API = config(
     "WEB_METADATA_API", default="https://beta.ensembl.org/api/metadata/"

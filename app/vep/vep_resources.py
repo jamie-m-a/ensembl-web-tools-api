@@ -25,6 +25,7 @@ from pydantic import FilePath
 from requests import HTTPError
 from starlette.responses import JSONResponse, FileResponse
 
+from core.config import MOCK_PIPELINE
 from core.error_response import response_error_handler
 from core.logging import InterceptHandler
 from vep.models.pipeline_model import (
@@ -39,6 +40,7 @@ from vep.models.upload_vcf_files import Streamer, MaxBodySizeException
 from vep.utils.nextflow import launch_workflow, get_workflow_status
 from vep.utils.vcf_results import get_results_from_path
 from vep.utils.web_metadata import get_genome_metadata
+from vep.form_panels import get_visible_panels
 
 logging.getLogger().handlers = [InterceptHandler()]
 
@@ -58,6 +60,12 @@ async def submit_vep(request: Request):
     try:
         request_streamer = Streamer(request=request)
         stream_result = await request_streamer.stream()
+        if not stream_result:
+            raise Exception("Failed to upload VEP input files")
+        if MOCK_PIPELINE:
+            # Skip building the VEP config / contacting the runner; the mock
+            # always resolves to the bundled fixture results.
+            return {"submission_id": launch_workflow(None)}
         vep_job_parameters = request_streamer.parameters.value.decode()
         genome_id = request_streamer.genome_id.value.decode()
         vep_job_parameters_dict = json.loads(vep_job_parameters)
@@ -222,7 +230,12 @@ async def fetch_results(request: Request, submission_id: str, page: int, per_pag
 
 
 @router.get("/form_config/{genome_id}", name="get_form_config")
-async def get_form_config(request: Request, genome_id: str):
+async def get_form_config(
+    request: Request,
+    genome_id: str,
+    species_taxonomy_id: str | None = None,
+    assembly_name: str | None = None,
+):
     try:
         attributes = await get_genome_metadata(genome_id)
         annotation_provider_name = attributes.get("genebuild.provider_name", "")
@@ -249,7 +262,17 @@ async def get_form_config(request: Request, genome_id: str):
         )
 
         form_config = FormConfig(transcript_set=transcript_set)
-        return {"parameters": form_config}
+        # Panels/options to show on the input form for this genome. Currently the
+        # always-visible set for every species; the genome `attributes` are the
+        # hook for species-conditional visibility later.
+        return {
+            "parameters": form_config,
+            "panels": get_visible_panels(
+                attributes,
+                species_taxonomy_id=species_taxonomy_id,
+                assembly_name=assembly_name,
+            ),
+        }
 
     except HTTPError as e:
         if e.response.status_code == 404:
