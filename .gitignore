@@ -11,3 +11,4 @@ tmpdir/
 venv*
 results_meta.json
 dev-data/
+app/tmp*/
