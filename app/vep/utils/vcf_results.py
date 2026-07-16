@@ -623,6 +623,24 @@ def _parse_frequencies(csq_values, index_map) -> model.AlleleFrequencies | None:
     )
 
 
+def _parse_go(csq_values, index_map) -> list[model.GoTerm]:
+    """Gene Ontology terms from the GO plugin's GO column. Each '&'-separated
+    entry is `GO:<id>:<term>` (term underscore-delimited), e.g.
+    `GO:0001558:regulation_of_cell_growth` -> id 'GO:0001558', name
+    'regulation of cell growth'."""
+    if not _has_any_column(index_map, "GO"):
+        return []
+    terms: list[model.GoTerm] = []
+    for entry in _split_amp(_get_csq_value(csq_values, "GO", None, index_map)):
+        parts = entry.split(":")
+        if len(parts) < 3:
+            continue
+        go_id = ":".join(parts[:2])  # "GO:0001558"
+        name = ":".join(parts[2:]).replace("_", " ").strip()
+        terms.append(model.GoTerm(id=go_id, name=name))
+    return terms
+
+
 def _parse_phenotype_data(csq_values, index_map) -> model.VariantPhenotypeData | None:
     if not _has_any_column(index_map, "PHENOTYPES", "CLIN_SIG", "PUBMED"):
         return None
@@ -861,6 +879,7 @@ def _get_alt_allele_details(
                     # Transcript-level predictions
                     utr_annotation=_parse_utr_annotation(csq_values, index_map),
                     riboseq_orfs=_parse_riboseq_orfs(csq_values, index_map),
+                    go_terms=_parse_go(csq_values, index_map),
                 )
             )
         elif "intergenic_variant" in cons:

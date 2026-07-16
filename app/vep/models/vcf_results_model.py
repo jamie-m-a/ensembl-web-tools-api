@@ -211,6 +211,13 @@ class RiboseqOrfsAnnotation(BaseModel):
     publications: list[str] = []  # RiboseqORFs_publications (&-split)
 
 
+class GoTerm(BaseModel):
+    """A Gene Ontology annotation for a transcript (from the GO plugin's GO
+    column): the GO id plus its (human-readable) term name."""
+    id: str  # e.g. GO:0001558
+    name: str  # e.g. "regulation of cell growth"
+
+
 # --- frequencies, phenotypes, associations (allele level) -------------------
 
 
@@ -286,6 +293,7 @@ class PredictedTranscriptConsequence(BaseModel):
     # Transcript-level predictions (populated when the relevant plugins ran).
     utr_annotation: FivePrimeUtrAnnotation | None = None
     riboseq_orfs: RiboseqOrfsAnnotation | None = None
+    go_terms: list[GoTerm] = []
 
 
 class ReferenceVariantAllele(BaseModel):

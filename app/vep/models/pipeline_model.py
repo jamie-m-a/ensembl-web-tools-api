@@ -98,7 +98,14 @@ PLUGIN_CONFIG_LINES: dict[str, str] = {
         f"file={PLUGIN_PATH}/Collins_rCNV_2022.dosage_sensitivity_scores.tsv.gz,"
         "cover={cover}"
     ),
-    "phenotypes": f"plugin Phenotypes,dir={PLUGIN_PATH}/,phenotype_feature=1,exclude_sources=COSMIC\\&HGMD-PUBLIC\\&Cancer_Gene_Census",
+    # Phenotypes: species/assembly-specific data file. Only the human GRCh38 file
+    # exists for now; other species files follow (then move to a species-keyed
+    # map, like PLUGIN_CONFIG_LINES_BY_ASSEMBLY). The form only offers this option
+    # for human GRCh38, so the single GRCh38 line is safe here.
+    "phenotypes": f"plugin Phenotypes,file={PLUGIN_PATH}/Phenotypes.pm_homo_sapiens_116_GRCh38.gvf.gz",
+    # Gene Ontology: species/assembly-specific data file, same GRCh38-only caveat
+    # as phenotypes above (see phenotypes-species-todo.md).
+    "go": f"plugin GO,file={PLUGIN_PATH}/GO.pm_homo_sapiens_116_GRCh38.gff.gz",
 }
 
 # Assembly-specific plugin lines: option -> {assembly: line}. Resolved against
@@ -222,6 +229,8 @@ class ConfigIniParams(BaseModel):
     protvar_int: bool = True
     loeuf: bool = False
     phenotypes: bool = False
+    # Gene Ontology terms (GO plugin; human GRCh38 for now).
+    go: bool = False
     # SPDI variant notation (flag line, like hgvs/hgvsg).
     spdi: bool = False
     # Protein ID (VEP --protein, adds the Ensembl protein id). Flag line.

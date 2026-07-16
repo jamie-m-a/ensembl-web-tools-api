@@ -324,10 +324,12 @@ def _add_human_grch38_options(panels: list[dict]) -> None:
     """
     by_id = {panel["id"]: panel for panel in panels}
 
-    # Genes & transcripts: RiboSeqORFs.
-    by_id["genes_and_transcripts"]["options"].append(
-        {"id": "riboseqorfs", "label": "RiboSeqORFs", "type": "boolean", "default": False}
-    )
+    # Genes & transcripts: RiboSeqORFs + Gene Ontology.
+    by_id["genes_and_transcripts"]["options"].extend([
+        {"id": "riboseqorfs", "label": "RiboSeqORFs", "type": "boolean", "default": False},
+        # GO plugin (human GRCh38 for now; other species to follow).
+        {"id": "go", "label": "Gene Ontology", "type": "boolean", "default": False},
+    ])
 
     # Protein & functional: Protein (protein + ProtVar) / Functional (MaveDB,
     # IntAct, mutfunc).
@@ -351,11 +353,13 @@ def _add_human_grch38_options(panels: list[dict]) -> None:
             {"id": "eve", "label": "EVE", "type": "boolean", "default": False, "category": "Missense"}
         )
 
-    # Variant associations: OpenTargets.
+    # Variant associations: OpenTargets + Phenotypes.
     if "variant_associations" in by_id:
-        by_id["variant_associations"]["options"].append(
-            {"id": "opentargets", "label": "OpenTargets", "type": "boolean", "default": False}
-        )
+        by_id["variant_associations"]["options"].extend([
+            {"id": "opentargets", "label": "OpenTargets", "type": "boolean", "default": False},
+            # Phenotypes plugin (human GRCh38 for now; other species to follow).
+            {"id": "phenotypes", "label": "Phenotypes", "type": "boolean", "default": False},
+        ])
 
     # Allele frequencies: gnomAD exomes/genomes v4.1, NIH All of Us, gnomAD mito.
     panels.append({
