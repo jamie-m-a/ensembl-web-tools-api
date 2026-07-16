@@ -4,6 +4,7 @@ object as defined in APISpecification"""
 from io import StringIO
 import gzip
 import json
+import logging
 import re
 import struct
 import subprocess
@@ -13,6 +14,7 @@ from typing import Iterator
 from pydantic import FilePath
 import vcfpy
 from vep.models import vcf_results_model as model
+from vep.utils import results_filters
 
 TARGET_COLUMNS = [
     "Allele",
@@ -1120,12 +1122,83 @@ def _read_indexed_page(
     return b"".join(header_lines).decode(), b"".join(rows).decode()
 
 
+def _csq_index_map_from_header(header_lines: list[str]) -> dict[str, int]:
+    """CSQ column -> index, parsed from the raw ##INFO=<ID=CSQ ...> header line.
+    Used by the filter scan, which reads raw text rather than via vcfpy."""
+    for line in header_lines:
+        if line.startswith("##INFO=<ID=CSQ"):
+            match = re.search(r'Description="([^"]*)"', line)
+            if match:
+                return _get_prediction_index_map(match.group(1))
+    return {}
+
+
+def _get_filtered_results(
+    page_size: int,
+    page: int,
+    vcf_path: FilePath,
+    filters: list[results_filters.ResultsFilter],
+) -> model.VepResultsResponse:
+    """Scan the whole results VCF applying the filter pipeline, then paginate the
+    filtered records. The page-index fast path can't be used once records are
+    filtered (positions shift), so this is a full sequential pass. Attaches
+    per-filter removed counts to the response metadata and logs them.
+
+    Note: this loads the kept records into memory and rescans per request. Fine
+    for current result sizes; a filtered-index cache keyed by the filter set
+    would remove the rescan later (see pagination-design.md)."""
+    header_lines: list[str] = []
+    data_lines: list[str] = []
+    with gzip.open(vcf_path, "rt") as handle:
+        for line in handle:
+            (header_lines if line.startswith("#") else data_lines).append(line)
+
+    index_map = _csq_index_map_from_header(header_lines)
+    compiled = results_filters.compile_filters(filters, index_map)
+    kept, stats = results_filters.apply_filter_pipeline(data_lines, compiled)
+
+    filtered_total = len(kept)
+    page = max(page, 1)
+    page_size = max(page_size, 0)
+    start = (page - 1) * page_size
+    page_rows = kept[start : start + page_size] if page_size > 0 else []
+
+    stream = StringIO("".join(header_lines) + "".join(page_rows))
+    response = get_results_from_stream(
+        page_size, page, filtered_total, stream, presliced=True
+    )
+    response.metadata.filters = model.FilterMetadata(
+        unfiltered_total=len(data_lines),
+        filtered_total=filtered_total,
+        stats=[
+            model.FilterStat(field=stat.field, removed=stat.removed)
+            for stat in stats
+        ],
+    )
+    logging.info(
+        "VEP results filtered: %d -> %d records (%s)",
+        len(data_lines),
+        filtered_total,
+        ", ".join(f"{stat.field} removed {stat.removed}" for stat in stats)
+        or "no active filters",
+    )
+    return response
+
+
 def get_results_from_path(
-    page_size: int, page: int, vcf_path: FilePath
+    page_size: int,
+    page: int,
+    vcf_path: FilePath,
+    filters: list[results_filters.ResultsFilter] | None = None,
 ) -> model.VepResultsResponse:
     """Returns a page of VCF data from the given filepath.
     Slices the input VCF file to a smaller one
     and converts it to stream for get_results_from_stream"""
+
+    # Filtered requests can't use the page index (filtering shifts record
+    # positions), so they take a dedicated scan-and-filter path.
+    if filters:
+        return _get_filtered_results(page_size, page, vcf_path, filters)
 
     # Fast path: if the pipeline emitted a page-index sidecar, seek to the page
     # instead of scanning the file / shelling out to bcftools.
@@ -1245,11 +1318,21 @@ def _get_results_from_vcfpy(
                 )
             )
 
+    available_af_sources = [
+        model.AfSource(**descriptor)
+        for descriptor in (
+            results_filters.af_source_descriptor(column)
+            for column in results_filters.af_columns(prediction_index_map)
+        )
+        if descriptor
+    ]
+
     return model.VepResultsResponse(
         metadata=model.Metadata(
             pagination=model.PaginationMetadata(
                 page=page, per_page=page_size, total=total
-            )
+            ),
+            available_af_sources=available_af_sources,
         ),
         variants=variants,
     )

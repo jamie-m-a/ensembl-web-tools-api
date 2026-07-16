@@ -1,0 +1,448 @@
+"""Server-side filtering of VEP result records.
+
+Filters are applied during a sequential scan of the results VCF. The page-index
+fast path (see vcf_results.get_results_from_path) can't be used once records are
+filtered, because a filtered record's position no longer maps to a fixed page
+offset — so a filtered request scans and applies predicates.
+
+Filters operate at the CSQ-entry (per transcript/consequence) level: a record's
+matching entries are those satisfying every condition, and the record is kept if
+at least one entry matches. Crucially, the *non-matching entries are pruned* from
+the kept record, so a filtered variant only carries the transcripts that actually
+match (e.g. filtering by a consequence hides the variant's other-consequence
+transcripts). Allele-level annotations are identical across an allele's CSQ rows,
+so they survive as long as one entry for that allele remains.
+
+Filters run as an ordered *pipeline*: for each record the entry set is narrowed
+by each filter in turn, short-circuiting the moment nothing survives. We tally
+how many records each filter removed (among those that reached it), so the
+ordering can later be tuned to run the cheapest / highest-yield filters first.
+We don't rank them yet — this just captures the numbers to inform that later.
+
+This module is deliberately self-contained: it owns the request model, the
+predicate compilation and the pipeline, so the whole feature can be removed in
+one piece.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from typing import Callable, Iterable
+
+from pydantic import BaseModel
+
+# Field identifiers understood by the query builder. Must match the frontend's
+# filter `field` values (see the results filters UI).
+CONSEQUENCE_FIELD = "consequence"
+TRANSCRIPT_FIELD = "transcript"
+GENE_SYMBOL_FIELD = "gene_symbol"
+GENE_ID_FIELD = "gene_id"
+TRANSCRIPT_GROUP_FIELD = "transcript_group"
+ALLELE_FREQUENCY_FIELD = "allele_frequency"
+
+# Operators understood by the query builder.
+OPERATOR_IN = "in"  # "is any of"
+# Numeric comparisons (allele frequency): <=, ==, >=.
+OPERATOR_LE = "le"
+OPERATOR_EQ = "eq"
+OPERATOR_GE = "ge"
+
+# Allele-frequency match modes.
+AF_MATCH_ANY = "any"  # keep if any tested AF meets the comparison
+AF_MATCH_ALL = "all"  # keep only if every tested AF meets the comparison
+
+
+def _strip_version(feature_id: str) -> str:
+    """The stable-id portion of a versioned feature id (drop the '.version')."""
+    return feature_id.split(".", 1)[0]
+
+
+class ResultsFilter(BaseModel):
+    """One condition from the results query builder. Conditions are AND-combined
+    (a CSQ entry must satisfy every condition to be kept)."""
+
+    field: str
+    operator: str
+    values: list[str] = []
+    # Allele-frequency filter only: the comparison threshold (0-1) and whether to
+    # match any/all of the tested AF columns.
+    threshold: float | None = None
+    match: str | None = None
+
+
+class FilterError(ValueError):
+    """Raised for a malformed filters payload or an unsupported field/operator."""
+
+
+@dataclass
+class CompiledFilter:
+    """A ready-to-run predicate for one condition. `keep_entry` takes a single
+    CSQ entry (already split on '|') and returns whether that entry matches."""
+
+    field: str
+    keep_entry: Callable[[list[str]], bool]
+
+
+@dataclass
+class FilterStat:
+    """How many records a filter removed, among those that reached it."""
+
+    field: str
+    removed: int
+
+
+def parse_filters(raw: str | None) -> list[ResultsFilter]:
+    """Parse the `filters` query param (a JSON array of conditions) into models.
+
+    Returns [] when the param is absent or empty. Raises FilterError on malformed
+    JSON or shape, so the route can turn it into a 4xx rather than a 500."""
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise FilterError(f"filters is not valid JSON: {exc}") from exc
+    if not isinstance(data, list):
+        raise FilterError("filters must be a JSON array")
+    try:
+        return [ResultsFilter.model_validate(item) for item in data]
+    except Exception as exc:  # pydantic ValidationError et al.
+        raise FilterError(f"invalid filter condition: {exc}") from exc
+
+
+def _split_line(line: str) -> tuple[list[str], bool]:
+    """Split a VCF data line into columns, remembering whether it had a newline."""
+    has_newline = line.endswith("\n")
+    return (line[:-1] if has_newline else line).split("\t"), has_newline
+
+
+def _find_csq(columns: list[str]) -> tuple[int, int, list[list[str]]] | None:
+    """Locate the CSQ annotation in a record's columns.
+
+    Returns (info_part_index, info_field_count_marker, entries) where entries is a
+    list of CSQ entries each split into its '|' subfields; or None if the record
+    has no CSQ (or too few columns to have an INFO field)."""
+    if len(columns) < 8:
+        return None
+    info_parts = columns[7].split(";")
+    for part_index, part in enumerate(info_parts):
+        if part.startswith("CSQ="):
+            entries = [entry.split("|") for entry in part[4:].split(",")]
+            return part_index, len(info_parts), entries
+    return None
+
+
+def extract_csq_entries(line: str) -> list[list[str]]:
+    """The CSQ entries of a raw data line, each split into '|' subfields; empty
+    when the line has no CSQ. (Convenience for tests / callers that only read.)"""
+    columns, _ = _split_line(line)
+    found = _find_csq(columns)
+    return found[2] if found else []
+
+
+def _rebuild_line(
+    columns: list[str],
+    csq_part_index: int,
+    kept_entries: list[list[str]],
+    has_newline: bool,
+) -> str:
+    """Rebuild a data line with its CSQ narrowed to `kept_entries`."""
+    info_parts = columns[7].split(";")
+    info_parts[csq_part_index] = "CSQ=" + ",".join(
+        "|".join(entry) for entry in kept_entries
+    )
+    columns = list(columns)
+    columns[7] = ";".join(info_parts)
+    return "\t".join(columns) + ("\n" if has_newline else "")
+
+
+def _require_operator(f: "ResultsFilter", *allowed: str) -> None:
+    if f.operator not in allowed:
+        raise FilterError(
+            f"unsupported operator {f.operator!r} for field {f.field!r}"
+        )
+
+
+def _compile_consequence(f: ResultsFilter, index_map: dict[str, int]) -> CompiledFilter | None:
+    """A CSQ entry matches if its Consequence carries one of the selected terms.
+    VEP '&'-joins co-occurring terms within an entry."""
+    _require_operator(f, OPERATOR_IN)
+    if not f.values:
+        return None
+    consequence_index = index_map.get("Consequence")
+    if consequence_index is None:
+        raise FilterError("Consequence column missing from CSQ header")
+    selected = set(f.values)
+
+    def keep_entry(entry: list[str]) -> bool:
+        if consequence_index >= len(entry):
+            return False
+        return bool(selected.intersection(entry[consequence_index].split("&")))
+
+    return CompiledFilter(field=CONSEQUENCE_FIELD, keep_entry=keep_entry)
+
+
+def _compile_transcript(f: ResultsFilter, index_map: dict[str, int]) -> CompiledFilter | None:
+    """A CSQ entry matches if its Feature (transcript) stable id is one of the
+    selected ids. Match is version-insensitive: the '.version' suffix is ignored
+    on both sides, so 'ENST0000012345' and 'ENST0000012345.7' are equivalent."""
+    _require_operator(f, OPERATOR_IN)
+    selected = {_strip_version(value) for value in f.values if value}
+    if not selected:
+        return None
+    feature_index = index_map.get("Feature")
+    if feature_index is None:
+        raise FilterError("Feature column missing from CSQ header")
+
+    def keep_entry(entry: list[str]) -> bool:
+        if feature_index >= len(entry):
+            return False
+        feature = entry[feature_index]
+        if not feature:
+            return False
+        return _strip_version(feature) in selected
+
+    return CompiledFilter(field=TRANSCRIPT_FIELD, keep_entry=keep_entry)
+
+
+def _compile_gene_symbol(f: ResultsFilter, index_map: dict[str, int]) -> CompiledFilter | None:
+    """A CSQ entry matches if its SYMBOL (gene name) is one of the selected names.
+    Match is case-insensitive (human symbols are conventionally upper-case)."""
+    _require_operator(f, OPERATOR_IN)
+    selected = {value.upper() for value in f.values if value}
+    if not selected:
+        return None
+    symbol_index = index_map.get("SYMBOL")
+    if symbol_index is None:
+        raise FilterError("SYMBOL column missing from CSQ header")
+
+    def keep_entry(entry: list[str]) -> bool:
+        if symbol_index >= len(entry):
+            return False
+        symbol = entry[symbol_index]
+        return bool(symbol) and symbol.upper() in selected
+
+    return CompiledFilter(field=GENE_SYMBOL_FIELD, keep_entry=keep_entry)
+
+
+def _compile_gene_id(f: ResultsFilter, index_map: dict[str, int]) -> CompiledFilter | None:
+    """A CSQ entry matches if its Gene (Ensembl gene stable id) is one of the
+    selected ids. Version-insensitive, like the transcript filter."""
+    _require_operator(f, OPERATOR_IN)
+    selected = {_strip_version(value) for value in f.values if value}
+    if not selected:
+        return None
+    gene_index = index_map.get("Gene")
+    if gene_index is None:
+        raise FilterError("Gene column missing from CSQ header")
+
+    def keep_entry(entry: list[str]) -> bool:
+        if gene_index >= len(entry):
+            return False
+        gene = entry[gene_index]
+        return bool(gene) and _strip_version(gene) in selected
+
+    return CompiledFilter(field=GENE_ID_FIELD, keep_entry=keep_entry)
+
+
+def _entry_value(entry: list[str], name: str, index_map: dict[str, int]) -> str | None:
+    """A CSQ subfield value for an entry, or None if the column is absent/empty."""
+    i = index_map.get(name)
+    if i is None or i >= len(entry) or not entry[i]:
+        return None
+    return entry[i]
+
+
+# Transcript-group id -> a per-entry test. Mirrors the canonical / MANE detection
+# in vcf_results._get_alt_allele_details, so the filter agrees with what the
+# results view labels each transcript.
+_TRANSCRIPT_GROUP_TESTS: dict[str, Callable[[list[str], dict[str, int]], bool]] = {
+    "canonical": lambda entry, index_map: _entry_value(entry, "CANONICAL", index_map)
+    == "YES",
+    "mane_select": lambda entry, index_map: bool(
+        _entry_value(entry, "MANE_SELECT", index_map)
+    )
+    or _entry_value(entry, "MANE", index_map) == "MANE_Select",
+    "mane_plus_clinical": lambda entry, index_map: bool(
+        _entry_value(entry, "MANE_PLUS_CLINICAL", index_map)
+    )
+    or _entry_value(entry, "MANE", index_map) == "MANE_Plus_Clinical",
+}
+
+
+def _compile_transcript_group(f: ResultsFilter, index_map: dict[str, int]) -> CompiledFilter | None:
+    """A CSQ entry matches if it belongs to any of the selected transcript groups
+    (canonical / MANE Select / MANE Plus Clinical). Which groups are offered is a
+    frontend, species-dependent concern; unknown group ids are rejected here."""
+    _require_operator(f, OPERATOR_IN)
+    if not f.values:
+        return None
+    tests = []
+    for group in f.values:
+        test = _TRANSCRIPT_GROUP_TESTS.get(group)
+        if test is None:
+            raise FilterError(f"unsupported transcript group: {group!r}")
+        tests.append(test)
+
+    def keep_entry(entry: list[str]) -> bool:
+        return any(test(entry, index_map) for test in tests)
+
+    return CompiledFilter(field=TRANSCRIPT_GROUP_FIELD, keep_entry=keep_entry)
+
+
+def af_columns(index_map: dict[str, int]) -> list[str]:
+    """The AF-bearing CSQ columns present, in header order. These are exactly the
+    allele-frequency options selected at input (VEP only emits chosen ones):
+    gnomAD exomes/genomes `*_AF[_pop]` and All of Us `AoU_gvs_<pop>_af` (the
+    `AoU_gvs_max_subpop` label column is excluded)."""
+    columns = [
+        name
+        for name in index_map
+        if name.startswith(("gnomAD_exomes_AF", "gnomAD_genomes_AF"))
+        or (name.startswith("AoU_gvs_") and name.endswith("_af"))
+    ]
+    return sorted(columns, key=lambda name: index_map[name])
+
+
+def af_source_descriptor(column: str) -> dict | None:
+    """Split an AF column into {key, source, population} for the results metadata
+    (population "" = the source's overall AF). None for non-AF columns."""
+    if column.startswith("gnomAD_exomes_AF"):
+        return {
+            "key": column,
+            "source": "gnomad_exomes",
+            "population": column[len("gnomAD_exomes_AF"):].lstrip("_"),
+        }
+    if column.startswith("gnomAD_genomes_AF"):
+        return {
+            "key": column,
+            "source": "gnomad_genomes",
+            "population": column[len("gnomAD_genomes_AF"):].lstrip("_"),
+        }
+    if column.startswith("AoU_gvs_") and column.endswith("_af"):
+        population = column[len("AoU_gvs_"):-len("_af")]
+        return {
+            "key": column,
+            "source": "all_of_us",
+            "population": "" if population == "all" else population,
+        }
+    return None
+
+
+def _compile_allele_frequency(f: ResultsFilter, index_map: dict[str, int]) -> CompiledFilter | None:
+    """Keep an allele whose AF meets the comparison. AF is allele-level (identical
+    across an allele's CSQ rows), so this reads like an entry test but effectively
+    keeps/drops whole alleles. Tests either the specified AF columns (`values`) or,
+    when none are given, all AF columns present. `match` = any/all across them.
+
+    NO-DATA: missing/empty AF values are ignored (not tested). If an allele has no
+    AF data at all for the tested columns it is currently dropped. The no-data
+    semantics need revisiting (see results-filtering-notes.md)."""
+    _require_operator(f, OPERATOR_LE, OPERATOR_EQ, OPERATOR_GE)
+    if f.threshold is None:
+        return None  # nothing to compare against -> no-op
+    threshold = f.threshold
+
+    requested = [c for c in f.values if c]
+    columns = requested or af_columns(index_map)
+    indices = [index_map[c] for c in columns if c in index_map]
+    if not indices:
+        return None  # no AF columns to test (e.g. AF not run) -> no-op
+
+    if f.operator == OPERATOR_LE:
+        compare = lambda value: value <= threshold
+    elif f.operator == OPERATOR_GE:
+        compare = lambda value: value >= threshold
+    else:
+        compare = lambda value: value == threshold
+    match_all = f.match == AF_MATCH_ALL
+
+    def keep_entry(entry: list[str]) -> bool:
+        values: list[float] = []
+        for i in indices:
+            if i < len(entry) and entry[i] not in ("", ".", None):
+                try:
+                    values.append(float(entry[i]))
+                except ValueError:
+                    pass  # non-numeric -> treat as no-data
+        if not values:  # all no-data -> excluded for now (revisit)
+            return False
+        return all(map(compare, values)) if match_all else any(map(compare, values))
+
+    return CompiledFilter(field=ALLELE_FREQUENCY_FIELD, keep_entry=keep_entry)
+
+
+# Field id -> builder that compiles a ResultsFilter into a CompiledFilter (or None
+# for a no-op). Adding a filter is a matter of adding an entry here plus its
+# builder.
+_BUILDERS: dict[
+    str, Callable[[ResultsFilter, dict[str, int]], CompiledFilter | None]
+] = {
+    CONSEQUENCE_FIELD: _compile_consequence,
+    TRANSCRIPT_FIELD: _compile_transcript,
+    GENE_SYMBOL_FIELD: _compile_gene_symbol,
+    GENE_ID_FIELD: _compile_gene_id,
+    TRANSCRIPT_GROUP_FIELD: _compile_transcript_group,
+    ALLELE_FREQUENCY_FIELD: _compile_allele_frequency,
+}
+
+
+def compile_filters(
+    filters: list[ResultsFilter], index_map: dict[str, int]
+) -> list[CompiledFilter]:
+    """Validate and compile request filters against the file's CSQ layout. A
+    builder returns None for a no-op condition (e.g. empty values), which is
+    skipped."""
+    compiled: list[CompiledFilter] = []
+    for f in filters:
+        builder = _BUILDERS.get(f.field)
+        if builder is None:
+            raise FilterError(f"unsupported filter field: {f.field!r}")
+        cf = builder(f, index_map)
+        if cf is not None:
+            compiled.append(cf)
+    return compiled
+
+
+def apply_filter_pipeline(
+    data_lines: Iterable[str], compiled: list[CompiledFilter]
+) -> tuple[list[str], list[FilterStat]]:
+    """Run the ordered filter pipeline over raw VCF data lines.
+
+    For each record the CSQ entry set is narrowed by each filter in turn; a filter
+    that leaves no surviving entry drops the record (and is credited with the
+    removal). Kept records are rebuilt with only their surviving entries, so
+    downstream parsing sees just the matching transcripts.
+
+    Returns the kept (rebuilt) lines in order, and per filter how many records it
+    removed among those that reached it."""
+    removed = [0] * len(compiled)
+    kept: list[str] = []
+    for line in data_lines:
+        columns, has_newline = _split_line(line)
+        found = _find_csq(columns)
+        if found is None:
+            # No CSQ to match against — a consequence-style filter can't keep it.
+            if compiled:
+                removed[0] += 1
+            continue
+        csq_part_index, _, entries = found
+
+        dropped = False
+        for i, cf in enumerate(compiled):
+            survivors = [entry for entry in entries if cf.keep_entry(entry)]
+            if not survivors:
+                removed[i] += 1
+                dropped = True
+                break
+            entries = survivors
+
+        if not dropped:
+            kept.append(_rebuild_line(columns, csq_part_index, entries, has_newline))
+
+    stats = [
+        FilterStat(field=cf.field, removed=removed[i])
+        for i, cf in enumerate(compiled)
+    ]
+    return kept, stats

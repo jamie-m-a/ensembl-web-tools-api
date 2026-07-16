@@ -306,8 +306,45 @@ class Location(BaseModel):
     end: int
 
 
+class FilterStat(BaseModel):
+    """How many records a single active filter removed (among those that reached
+    it in the pipeline). Captured so the filter ordering can be tuned later."""
+
+    field: str
+    removed: int
+
+
+class FilterMetadata(BaseModel):
+    """Summary of server-side filtering, present only when filters were applied."""
+
+    unfiltered_total: int = Field(
+        description="Total records before any filtering"
+    )
+    filtered_total: int = Field(
+        description="Records remaining after all filters (the paginated total)"
+    )
+    stats: list[FilterStat] = Field(
+        description="Per-filter removed counts, in the order the pipeline ran"
+    )
+
+
+class AfSource(BaseModel):
+    """An allele-frequency column available to filter on (i.e. an AF option that
+    was selected at input). `population` is empty for the source's overall AF."""
+
+    key: str = Field(description="CSQ column name, e.g. gnomAD_exomes_AF_nfe")
+    source: str = Field(
+        description="gnomad_exomes | gnomad_genomes | all_of_us"
+    )
+    population: str = Field(description="Population code, or '' for overall")
+
+
 class Metadata(BaseModel):
     pagination: PaginationMetadata
+    filters: FilterMetadata | None = None
+    # AF columns present in this result set (the AF options chosen at input),
+    # so the frontend can populate the allele-frequency filter.
+    available_af_sources: list[AfSource] = []
 
 
 class ClinVarSignificance(BaseModel):

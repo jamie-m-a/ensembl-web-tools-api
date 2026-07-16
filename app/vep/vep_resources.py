@@ -44,6 +44,7 @@ from vep.utils.vcf_results import (
     stream_vep_tsv,
     gzip_text_stream,
 )
+from vep.utils.results_filters import parse_filters, FilterError
 from vep.utils.web_metadata import get_genome_metadata
 from vep.form_panels import get_visible_panels
 
@@ -207,9 +208,24 @@ async def download_results(
 
 
 @router.get("/submissions/{submission_id}/results", name="view_results")
-async def fetch_results(request: Request, submission_id: str, page: int, per_page: int):
+async def fetch_results(
+    request: Request,
+    submission_id: str,
+    page: int,
+    per_page: int,
+    filters: str | None = None,
+):
     results_file_path = None
     try:
+        # Optional server-side filtering: `filters` is a JSON array of query-builder
+        # conditions. Malformed input is a client error (400), not a 500.
+        try:
+            active_filters = parse_filters(filters)
+        except FilterError as exc:
+            return JSONResponse(
+                content={"details": f"Invalid filters: {exc}"},
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
         workflow_status = await get_workflow_status(submission_id)
         submission_status = PipelineStatus(
             submission_id=submission_id, status=workflow_status
@@ -219,7 +235,10 @@ async def fetch_results(request: Request, submission_id: str, page: int, per_pag
             results_file_path = get_vep_results_file_path(input_vcf_file)
             if results_file_path.exists():
                 return get_results_from_path(
-                    vcf_path=results_file_path, page=page, page_size=per_page
+                    vcf_path=results_file_path,
+                    page=page,
+                    page_size=per_page,
+                    filters=active_filters,
                 )
             else:
                 response_msg = {
