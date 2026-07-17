@@ -392,6 +392,179 @@
           ]
         }
       ]
+    },
+    {
+      "plugin": "go",
+      "scope": "transcript",
+      "output": "go_terms",
+      "csq_fields": [
+        "GO"
+      ],
+      "targets": [
+        {
+          "field": "go_terms",
+          "from": "GO",
+          "transform": "regex",
+          "each": true,
+          "pattern": "^(?P<id>[^:]+:[^:]+):(?P<name>.*)$",
+          "as": [
+            {
+              "field": "id",
+              "type": "string"
+            },
+            {
+              "field": "name",
+              "type": "string",
+              "replace": {
+                "_": " "
+              },
+              "strip": true
+            }
+          ]
+        }
+      ],
+      "require_any_output": [
+        "go_terms"
+      ]
+    },
+    {
+      "plugin": "spliceai",
+      "scope": "transcript",
+      "output": "spliceai",
+      "csq_fields": [
+        "SpliceAI_pred_DS_AG"
+      ],
+      "require_any_output": [
+        "ds_acceptor_gain",
+        "ds_acceptor_loss",
+        "ds_donor_gain",
+        "ds_donor_loss",
+        "dp_acceptor_gain",
+        "dp_acceptor_loss",
+        "dp_donor_gain",
+        "dp_donor_loss"
+      ],
+      "targets": [
+        {
+          "field": "symbol",
+          "from": "SpliceAI_pred_SYMBOL",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "ds_acceptor_gain",
+          "from": "SpliceAI_pred_DS_AG",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "ds_acceptor_loss",
+          "from": "SpliceAI_pred_DS_AL",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "ds_donor_gain",
+          "from": "SpliceAI_pred_DS_DG",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "ds_donor_loss",
+          "from": "SpliceAI_pred_DS_DL",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "dp_acceptor_gain",
+          "from": "SpliceAI_pred_DP_AG",
+          "transform": "scalar",
+          "type": "int"
+        },
+        {
+          "field": "dp_acceptor_loss",
+          "from": "SpliceAI_pred_DP_AL",
+          "transform": "scalar",
+          "type": "int"
+        },
+        {
+          "field": "dp_donor_gain",
+          "from": "SpliceAI_pred_DP_DG",
+          "transform": "scalar",
+          "type": "int"
+        },
+        {
+          "field": "dp_donor_loss",
+          "from": "SpliceAI_pred_DP_DL",
+          "transform": "scalar",
+          "type": "int"
+        }
+      ]
+    },
+    {
+      "plugin": "riboseq_orfs",
+      "scope": "transcript",
+      "output": "riboseq_orfs",
+      "csq_fields": [
+        "RiboseqORFs_id",
+        "RiboseqORFs_consequences",
+        "RiboseqORFs_impact",
+        "RiboseqORFs_protein_position",
+        "RiboseqORFs_codons",
+        "RiboseqORFs_amino_acids",
+        "RiboseqORFs_publications"
+      ],
+      "require_any_output": [
+        "orf_id",
+        "consequences",
+        "impact",
+        "protein_position",
+        "codons",
+        "amino_acids",
+        "publications"
+      ],
+      "targets": [
+        {
+          "field": "orf_id",
+          "from": "RiboseqORFs_id",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "consequences",
+          "from": "RiboseqORFs_consequences",
+          "transform": "list"
+        },
+        {
+          "field": "impact",
+          "from": "RiboseqORFs_impact",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "protein_position",
+          "from": "RiboseqORFs_protein_position",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "codons",
+          "from": "RiboseqORFs_codons",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "amino_acids",
+          "from": "RiboseqORFs_amino_acids",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "publications",
+          "from": "RiboseqORFs_publications",
+          "transform": "list"
+        }
+      ]
     }
   ]
 }

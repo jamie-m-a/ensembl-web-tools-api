@@ -17,6 +17,8 @@ from app.vep.utils.spec_interpreter import apply_plugin_spec
 from app.vep.utils.spec_loader import SPEC_DIR, load_spec_file
 from app.vep.utils.vcf_results import (
     _parse_clinvar,
+    _parse_go,
+    _parse_spliceai,
     _parse_open_targets,
     _parse_protvar,
     _parse_protvar_pocket,
@@ -71,6 +73,9 @@ def test_bundled_spec_validates():
         "clinvar",
         "protvar",
         "opentargets",
+        "go",
+        "spliceai",
+        "riboseq_orfs",
         "gnomad_exomes",
         "gnomad_genomes",
         "all_of_us",
@@ -487,3 +492,81 @@ def test_opentargets_empty_matches():
 
 def test_opentargets_absent_columns_is_none():
     assert run("opentargets", ["A"], index_map_for("Allele")) is None
+
+
+# --- GO: regex + replace/strip -----------------------------------------------
+
+GO_INDEX = index_map_for("GO")
+
+
+def test_go_terms_match_hand_written_parser():
+    values = ["GO:0001558:regulation_of_cell_growth&GO:0005509:calcium_ion_binding"]
+    result = run("go", values, GO_INDEX)
+    assert result["go_terms"] == [t.model_dump() for t in _parse_go(values, GO_INDEX)]
+    assert result["go_terms"] == [
+        {"id": "GO:0001558", "name": "regulation of cell growth"},
+        {"id": "GO:0005509", "name": "calcium ion binding"},
+    ]
+
+
+def test_go_entry_without_a_term_name_is_null_not_empty_string():
+    """DIVERGENCE (deliberate).
+
+    Real data carries ids with no name at all (38 of 368 distinct GO ids in
+    dev-data/output.vcf.gz, e.g. "GO:0050911:"). The parser reports name "";
+    the spec reports null, consistently with how it treats every other absent
+    value. This is the only difference between the two paths across 182,786
+    real GO annotations.
+    """
+    values = ["GO:0050911:"]
+    spec_terms = run("go", values, GO_INDEX)["go_terms"]
+    assert spec_terms == [{"id": "GO:0050911", "name": None}]
+    assert [t.model_dump() for t in _parse_go(values, GO_INDEX)] == [
+        {"id": "GO:0050911", "name": ""}
+    ]
+
+
+def test_go_entry_without_a_name_part_is_skipped():
+    """Fewer than three ':'-parts is not a term, in either path."""
+    values = ["GO:0001558"]
+    assert run("go", values, GO_INDEX) is None
+    assert _parse_go(values, GO_INDEX) == []
+
+
+def test_go_absent_is_none():
+    assert run("go", [""], GO_INDEX) is None
+
+
+# --- SpliceAI: mixed float/int scalars ---------------------------------------
+
+SPLICEAI_COLS = [
+    "SpliceAI_pred_SYMBOL", "SpliceAI_pred_DS_AG", "SpliceAI_pred_DS_AL",
+    "SpliceAI_pred_DS_DG", "SpliceAI_pred_DS_DL", "SpliceAI_pred_DP_AG",
+    "SpliceAI_pred_DP_AL", "SpliceAI_pred_DP_DG", "SpliceAI_pred_DP_DL",
+]
+SPLICEAI_INDEX = index_map_for(*SPLICEAI_COLS)
+
+
+def test_spliceai_matches_hand_written_parser():
+    values = ["BRCA1", "0.01", "0.02", "0.03", "0.04", "-5", "10", "-20", "30"]
+    result = run("spliceai", values, SPLICEAI_INDEX)
+    assert result == dump(_parse_spliceai(values, SPLICEAI_INDEX))
+    assert result["symbol"] == "BRCA1"
+    assert result["ds_acceptor_gain"] == 0.01
+    assert result["dp_donor_loss"] == 30
+
+
+def test_spliceai_zero_scores_are_kept():
+    """0.00 is the commonest real value (170k+ entries): a real score, not
+    absence. require_any_output must not discard it."""
+    values = ["BRCA1", "0.00", "", "", "", "", "", "", ""]
+    result = run("spliceai", values, SPLICEAI_INDEX)
+    assert result == dump(_parse_spliceai(values, SPLICEAI_INDEX))
+    assert result is not None
+    assert result["ds_acceptor_gain"] == 0.0
+
+
+def test_spliceai_symbol_alone_is_not_an_annotation():
+    values = ["BRCA1", "", "", "", "", "", "", "", ""]
+    assert run("spliceai", values, SPLICEAI_INDEX) is None
+    assert _parse_spliceai(values, SPLICEAI_INDEX) is None

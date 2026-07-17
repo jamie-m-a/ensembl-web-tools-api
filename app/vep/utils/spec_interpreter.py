@@ -40,7 +40,7 @@ def _is_present(value) -> bool:
     return True
 
 
-def _coerce(raw: str | None, value_type: str):
+def _coerce(raw: str | None, value_type: str, field_spec=None):
     """A raw CSQ value as `value_type`, or None if absent/'NA'/unparseable."""
     if raw is None or raw in _NULLISH:
         return None
@@ -51,6 +51,11 @@ def _coerce(raw: str | None, value_type: str):
             return int(raw)
         except (TypeError, ValueError):
             return None
+    if field_spec is not None:
+        for find, replacement in (field_spec.replace or {}).items():
+            raw = raw.replace(find, replacement)
+        if field_spec.strip:
+            raw = raw.strip()
     return raw
 
 
@@ -108,7 +113,7 @@ def _apply_zip(csq_values, index_map, target: TargetSpec) -> list[dict]:
     for i in range(length):
         row = {
             field_spec.field: _coerce(
-                column[i] if i < len(column) else None, field_spec.type
+                column[i] if i < len(column) else None, field_spec.type, field_spec
             )
             for column, field_spec in zip(columns, target.as_fields)
         }
@@ -131,7 +136,9 @@ def _apply_regex(csq_values, index_map, target: TargetSpec):
             continue
         rows.append(
             {
-                field_spec.field: _coerce(match.group(field_spec.field), field_spec.type)
+                field_spec.field: _coerce(
+                    match.group(field_spec.field), field_spec.type, field_spec
+                )
                 for field_spec in target.as_fields
             }
         )
@@ -178,7 +185,7 @@ def _build_object(tokens: list[str], field_specs, source_text: str) -> dict:
             built[field_spec.field] = source_text
             continue
         token = tokens[position] if position < len(tokens) else None
-        built[field_spec.field] = _coerce(token, field_spec.type)
+        built[field_spec.field] = _coerce(token, field_spec.type, field_spec)
         position += 1
     return built
 

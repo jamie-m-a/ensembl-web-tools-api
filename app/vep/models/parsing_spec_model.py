@@ -38,6 +38,11 @@ class FieldSpec(BaseModel):
 
     field: str
     type: ValueType = "string"
+    # String tidying, applied in order after coercion. VEP escapes spaces as
+    # underscores in free text (GO term names, phenotype labels), so undoing
+    # that is a general need rather than a GO quirk.
+    replace: dict[str, str] | None = None
+    strip: bool = False
 
 
 class DropWhen(BaseModel):
