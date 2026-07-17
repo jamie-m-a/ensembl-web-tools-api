@@ -6,15 +6,14 @@ import gzip
 import json
 import logging
 import re
-import struct
 import subprocess
-import zlib
 from pathlib import Path
-from typing import Iterator
 from pydantic import FilePath
 import vcfpy
 from vep.models import vcf_results_model as model
 from vep.utils import results_filters
+from vep.utils.bgzf import _BgzfReader
+from vep.utils.vcf_meta import _get_vcf_meta
 
 TARGET_COLUMNS = [
     "Allele",
@@ -54,8 +53,6 @@ TARGET_COLUMNS = [
     "MaveDB_nt",
     "MaveDB_pro",
 ]
-
-META_FILE = "results_meta.json"
 
 # Taken from https://github.com/Ensembl/ensembl-hypsipyle
 # main/common/file_model/variant.py#L142
@@ -916,166 +913,16 @@ def _get_alt_allele_details(
 
 
 # ---------------------------------------------------------------------------
-# DEV/LOCAL-ONLY: stale metadata-cache guard
-#
-# In the full pipeline, every run writes its output VCF (and this metadata
-# cache) into its own directory, so the cache can never go stale. This guard
-# only matters when a single local output file is parsed repeatedly and then
-# regenerated (e.g. re-running the pipeline against the fixed LOCAL_RESULTS_VCF
-# path during development): without it the old header/record counts would be
-# reused and mis-slice the new file. Safe to remove once outputs always land in
-# per-run directories.
-# ---------------------------------------------------------------------------
-def _is_meta_cache_stale(meta_path: FilePath, vcf_path: FilePath) -> bool:
-    """True if the metadata cache exists but predates its VCF."""
-    return (
-        meta_path.exists()
-        and meta_path.stat().st_mtime < vcf_path.stat().st_mtime
-    )
-
-
-def _get_vcf_meta(vcf_path: FilePath) -> model.VcfMetadata:
-    """Helper method to manage metainfo for a VCF file"""
-
-    meta_path = vcf_path.with_name(META_FILE)
-    if not meta_path.exists() or _is_meta_cache_stale(meta_path, vcf_path):
-        variant_count_str = subprocess.check_output(
-            f"bcftools stats {vcf_path} | grep 'number of records:'",
-            shell=True, text=True
-        )
-        header_count_str = subprocess.check_output(
-            f"bcftools view -h {vcf_path} | wc -l",
-            shell=True, text=True
-        )
-        try:
-            vcf_info = model.VcfMetadata(
-                variant_count=int(variant_count_str.split(":")[-1]),
-                header_count=int(header_count_str)
-            )
-        except ValueError as e:
-            e.args = (
-                f"_get_vcf_meta: unexpected bcftools output: variant_count: {variant_count_str} | header_count: {header_count_str}",
-                *e.args,
-            )
-            raise
-
-        with open(meta_path, "w") as meta_file:
-            meta_file.write(vcf_info.model_dump_json())
-    else:
-        with open(meta_path, "r") as meta_file:
-            vcf_info = model.VcfMetadata.model_validate_json(meta_file.read())
-    return vcf_info
-
-
-# ---------------------------------------------------------------------------
 # BGZF page-index seek path
 #
 # When the pipeline emits a `<vcf>.pageidx.json` sidecar (see
 # pagination-design.md / build_page_index.py), a page can be fetched by seeking
-# straight to it instead of scanning from the top with bcftools. The sidecar
-# stores, every `stride` records, the packed BGZF virtual offset
-# (compressed_block_offset << 16 | within_block_offset) of that record's line.
+# straight to it (via the _BgzfReader in bgzf.py) instead of scanning from the
+# top with bcftools. The sidecar stores, every `stride` records, the packed BGZF
+# virtual offset (compressed_block_offset << 16 | within_block_offset) of that
+# record's line.
 # ---------------------------------------------------------------------------
 PAGE_INDEX_SUFFIX = ".pageidx.json"
-
-
-def _bc_block_size(extra: bytes) -> int | None:
-    """BSIZE from a gzip member's FEXTRA field, or None if no 'BC' subfield."""
-    i = 0
-    while i + 4 <= len(extra):
-        si1, si2, slen = extra[i], extra[i + 1], struct.unpack("<H", extra[i + 2 : i + 4])[0]
-        if si1 == 0x42 and si2 == 0x43:  # 'B', 'C'
-            return struct.unpack("<H", extra[i + 4 : i + 6])[0]
-        i += 4 + slen
-    return None
-
-
-class _BgzfReader:
-    """Minimal, dependency-free BGZF reader supporting seek by virtual offset.
-
-    Only the operations the page-index seek needs are implemented: `seek` to a
-    packed virtual offset, line-oriented `readline` (stitching lines that cross
-    block boundaries), and `tell` (the virtual offset of the next byte).
-    """
-
-    def __init__(self, path: str):
-        self._file = open(path, "rb")
-        self._block_coffset = 0  # compressed offset of the current block
-        self._data = b""  # decompressed bytes of the current block
-        self._pos = 0  # position within the current block
-        self._load_block_at(0)
-
-    def _read_block(self):
-        """Read/decompress the block at the current file position -> (coffset,
-        data); data is None at EOF, b'' for the empty BGZF EOF-marker block."""
-        coffset = self._file.tell()
-        header = self._file.read(12)
-        if not header:
-            return coffset, None
-        if len(header) < 12 or header[:2] != b"\x1f\x8b":
-            raise ValueError("not a BGZF block")
-        xlen = struct.unpack("<H", header[10:12])[0]
-        extra = self._file.read(xlen)
-        bsize = _bc_block_size(extra)
-        if bsize is None:
-            raise ValueError("missing BGZF 'BC' subfield")
-        cdata = self._file.read((bsize + 1) - 12 - xlen - 8)
-        self._file.read(8)  # trailer (CRC32 + ISIZE)
-        return coffset, (zlib.decompress(cdata, -15) if cdata else b"")
-
-    def _load_block_at(self, coffset: int) -> None:
-        self._file.seek(coffset)
-        self._block_coffset, data = self._read_block()
-        self._data = data or b""
-        self._pos = 0
-
-    def seek(self, voffset: int) -> None:
-        self._load_block_at(voffset >> 16)
-        self._pos = voffset & 0xFFFF
-
-    def tell(self) -> int:
-        return (self._block_coffset << 16) | self._pos
-
-    def _advance_block(self) -> bool:
-        """Load the next non-empty block; False at EOF (empty EOF-marker blocks
-        are skipped)."""
-        while True:
-            coffset, data = self._read_block()
-            if data is None:
-                return False
-            self._block_coffset, self._data, self._pos = coffset, data, 0
-            if data:
-                return True
-
-    def readline(self) -> bytes:
-        chunks: list[bytes] = []
-        while True:
-            if self._pos >= len(self._data):
-                if not self._advance_block():
-                    break  # EOF
-            newline = self._data.find(b"\n", self._pos)
-            if newline == -1:
-                chunks.append(self._data[self._pos :])
-                self._pos = len(self._data)
-                continue  # line continues into the next block
-            chunks.append(self._data[self._pos : newline + 1])
-            self._pos = newline + 1
-            break
-        # Normalise an end-of-block position to the next block's start, so tell()
-        # reports the next line's virtual offset the way the generator recorded
-        # it (a line beginning a block has within-block offset 0).
-        if self._pos >= len(self._data):
-            self._advance_block()
-        return b"".join(chunks)
-
-    def close(self) -> None:
-        self._file.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_):
-        self.close()
 
 
 def _load_page_index(vcf_path: FilePath) -> dict | None:
@@ -1336,71 +1183,3 @@ def _get_results_from_vcfpy(
         ),
         variants=variants,
     )
-
-
-# ---------------------------------------------------------------------------
-# Flattened "expanded columnar" export (human-readable / spreadsheet-friendly).
-#
-# One tab-separated row per CSQ entry — every allele x feature, transcript AND
-# intergenic, i.e. fully expanded — with a column for the variant location plus
-# every CSQ field (all VEP + plugin annotations). Streamed line by line so the
-# whole file needn't be held in memory. Reads the VCF directly (bgzip is
-# gzip-readable), so it needs neither vcfpy nor bcftools.
-# ---------------------------------------------------------------------------
-def _parse_csq_format(info_line: str) -> list[str]:
-    """Pull the pipe-delimited CSQ field names out of the ##INFO CSQ header."""
-    fmt = info_line.split("Format:", 1)[1].split('">')[0].strip()
-    return fmt.split("|")
-
-
-def gzip_text_stream(chunks: Iterator[str], level: int = 6) -> Iterator[bytes]:
-    """Gzip-compress a stream of text chunks on the fly, yielding gzip-format
-    bytes. Used to serve the flattened TSV download compressed (plain gzip, for
-    broad compatibility) without buffering the whole table in memory."""
-    # wbits 16 + MAX_WBITS => a standalone gzip container (header + trailer).
-    compressor = zlib.compressobj(level, zlib.DEFLATED, 16 + zlib.MAX_WBITS)
-    for chunk in chunks:
-        compressed = compressor.compress(chunk.encode("utf-8"))
-        if compressed:
-            yield compressed
-    tail = compressor.flush()
-    if tail:
-        yield tail
-
-
-def stream_vep_tsv(vcf_path: FilePath) -> Iterator[str]:
-    """Yield the VEP output VCF flattened to tab-separated rows (with header)."""
-    csq_fields: list[str] | None = None
-    header_emitted = False
-    with gzip.open(vcf_path, "rt") as vcf:
-        for line in vcf:
-            if line.startswith("##INFO=<ID=CSQ"):
-                csq_fields = _parse_csq_format(line)
-                continue
-            if line.startswith("#") or csq_fields is None:
-                continue
-            if not header_emitted:
-                yield (
-                    "\t".join(["Uploaded_variation", "Location", "Ref"] + csq_fields)
-                    + "\n"
-                )
-                header_emitted = True
-            columns = line.rstrip("\n").split("\t")
-            if len(columns) < 8:
-                continue
-            chrom, pos, variant_id, ref = columns[:4]
-            if chrom.startswith("chr"):
-                chrom = chrom[3:]
-            location = f"{chrom}:{pos}"
-            csq = next(
-                (c[4:] for c in columns[7].split(";") if c.startswith("CSQ=")),
-                None,
-            )
-            if not csq:
-                continue
-            for entry in csq.split(","):
-                values = entry.split("|")
-                if len(values) < len(csq_fields):
-                    values += [""] * (len(csq_fields) - len(values))
-                row = [variant_id, location, ref] + values[: len(csq_fields)]
-                yield "\t".join(row) + "\n"

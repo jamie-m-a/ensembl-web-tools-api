@@ -17,8 +17,8 @@ import zlib
 import pytest
 from pydantic import FilePath
 
+from app.vep.utils.bgzf import _BgzfReader
 from app.vep.utils.vcf_results import (
-    _BgzfReader,
     _load_page_index,
     _read_indexed_page,
     get_results_from_path,

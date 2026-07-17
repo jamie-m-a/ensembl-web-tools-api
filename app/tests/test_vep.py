@@ -9,11 +9,10 @@ from app.vep.models import vcf_results_model as model
 from app.vep.utils.vcf_results import (
     get_results_from_path,
     get_results_from_stream,
-    stream_vep_tsv,
-    gzip_text_stream,
     _get_prediction_index_map,
     TARGET_COLUMNS,
 )
+from app.vep.utils.tsv_export import stream_vep_tsv, gzip_text_stream
 from app.vep.utils.vcf_results import (
     _set_allele_type,
     _get_alt_allele_details,

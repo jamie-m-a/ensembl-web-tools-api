@@ -40,11 +40,8 @@ from vep.models.submission_form import Dropdown, FormConfig
 from vep.models.upload_vcf_files import Streamer, MaxBodySizeException
 from vep.utils.nextflow import launch_workflow, get_workflow_status
 from vep.utils.dump_ini import dump_config_ini
-from vep.utils.vcf_results import (
-    get_results_from_path,
-    stream_vep_tsv,
-    gzip_text_stream,
-)
+from vep.utils.vcf_results import get_results_from_path
+from vep.utils.tsv_export import stream_vep_tsv, gzip_text_stream
 from vep.utils.results_filters import parse_filters, FilterError
 from vep.utils.web_metadata import get_genome_metadata
 from vep.form_panels import get_visible_panels
