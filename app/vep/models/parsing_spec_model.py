@@ -22,7 +22,8 @@ ValueType = Literal["string", "float", "int", "raw"]
 # Transforms understood by the interpreter. Kept deliberately small; this set was
 # derived by enumerating the existing `_parse_*` functions rather than invented.
 Transform = Literal[
-    "scalar", "list", "first", "zip", "regex", "pattern_map", "chunk", "positional"
+    "scalar", "list", "first", "zip", "regex", "pattern_map", "chunk", "positional",
+    "key_value",
 ]
 
 
@@ -131,6 +132,14 @@ class TargetSpec(BaseModel):
                    by index. Items beyond `as` are ignored; missing ones are
                    null. Use `wrap: "list"` where the output is a
                    single-element list.
+      key_value    one column -> dict, splitting on `pair_delimiter` then
+                   `kv_delimiter`. Order-independent by construction — for a
+                   value whose pair order is not meaningful (or, as observed in
+                   UTRAnnotator's 5UTR_annotation, not stable), this is the
+                   correct read; a plain scalar copies whatever order the
+                   plugin happened to emit. A piece without `kv_delimiter` is
+                   dropped rather than raising, since malformed/legacy pieces
+                   should not break parsing of an otherwise-good value.
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -162,6 +171,9 @@ class TargetSpec(BaseModel):
     size: int | None = None
     # `positional` only: emit the single object inside a list.
     wrap: Literal["list"] | None = None
+    # `key_value` only.
+    pair_delimiter: str | None = None
+    kv_delimiter: str | None = None
     # Build this target only when the condition holds; otherwise it comes out
     # empty (ClinVar's breakdown is only read for conflicting classifications).
     when: WhenSpec | None = None
@@ -201,6 +213,11 @@ class TargetSpec(BaseModel):
                 raise ValueError("positional requires `from` to be a single column")
             if not self.as_fields:
                 raise ValueError("positional requires `as`")
+        elif self.transform == "key_value":
+            if not isinstance(self.source, str):
+                raise ValueError("key_value requires `from` to be a single column")
+            if not self.pair_delimiter or not self.kv_delimiter:
+                raise ValueError("key_value requires `pair_delimiter` and `kv_delimiter`")
         else:
             if not isinstance(self.source, str):
                 raise ValueError(f"{self.transform} requires `from` to be a single column")

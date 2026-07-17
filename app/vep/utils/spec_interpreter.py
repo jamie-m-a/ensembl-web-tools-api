@@ -214,6 +214,25 @@ def _apply_positional(csq_values, index_map, target: TargetSpec):
     return [built] if target.wrap == "list" else built
 
 
+def _apply_key_value(csq_values, index_map, target: TargetSpec) -> dict:
+    """A ':'-delimited 'k=v' string -> {k: v}.
+
+    Order-independent by construction, unlike a plain scalar copy of the same
+    string. A piece without `kv_delimiter` is dropped rather than raising: a
+    malformed piece should not break parsing of an otherwise-good value.
+    """
+    raw = _column(csq_values, target.source, index_map)
+    if not raw:
+        return {}
+    values: dict = {}
+    for piece in raw.split(target.pair_delimiter):
+        if target.kv_delimiter not in piece:
+            continue
+        key, value = piece.split(target.kv_delimiter, 1)
+        values[key] = value
+    return values
+
+
 def _when_holds(csq_values, index_map, when: WhenSpec | None) -> bool:
     if when is None:
         return True
@@ -226,7 +245,7 @@ def _empty_value(target: TargetSpec):
         return []
     if target.transform == "regex":
         return [] if target.each else None
-    if target.transform == "pattern_map":
+    if target.transform in ("pattern_map", "key_value"):
         return {}
     if target.transform == "positional":
         return [] if target.wrap == "list" else None
@@ -247,6 +266,8 @@ def _apply_target(csq_values, index_map, target: TargetSpec):
         return _apply_chunk(csq_values, index_map, target)
     if target.transform == "positional":
         return _apply_positional(csq_values, index_map, target)
+    if target.transform == "key_value":
+        return _apply_key_value(csq_values, index_map, target)
 
     raw = _column(csq_values, target.source, index_map)
     if target.transform == "scalar":

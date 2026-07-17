@@ -119,6 +119,13 @@ def test_zip_requires_matching_as_entries():
         )
 
 
+def test_key_value_requires_both_delimiters():
+    with pytest.raises(Exception):
+        TargetSpec.model_validate(
+            {"field": "x", "from": "col", "transform": "key_value", "pair_delimiter": ":"}
+        )
+
+
 # --- mutfunc: four scalars ---------------------------------------------------
 
 MUTFUNC_SCORES = dict(
@@ -745,21 +752,57 @@ UTR_ANNOTATION = (
 UTR_VALUES = ["5_prime_UTR_uORF_frameshift_variant", UTR_ANNOTATION, "5", "0", "0"]
 
 
-def test_utr_annotation_matches_hand_written_parser():
+def test_utr_annotation_matches_hand_written_parser_except_the_annotation_field():
+    """DIVERGENCE (deliberate, and the point of this transform).
+
+    Every other field matches the parser exactly. `annotation` does not: the
+    parser copies the raw ':'-delimited string verbatim, while the spec parses
+    it into a dict via `key_value`. Compare everything else field for field,
+    and the two annotation representations separately below.
+    """
     result = run("utr_annotation", UTR_VALUES, UTR_INDEX)
-    assert result == dump(_parse_utr_annotation(UTR_VALUES, UTR_INDEX))
+    parser = dump(_parse_utr_annotation(UTR_VALUES, UTR_INDEX))
+
+    other_fields = {"consequence", "existing_uorfs", "existing_inframe_oorfs",
+                     "existing_outofframe_oorfs"}
+    assert {k: result[k] for k in other_fields} == {k: parser[k] for k in other_fields}
     assert result["consequence"] == "5_prime_UTR_uORF_frameshift_variant"
     assert result["existing_uorfs"] == "5"
 
+    assert parser["annotation"] == UTR_ANNOTATION  # raw string, verbatim
+    assert result["annotation"] == {
+        "alt_type": "uORF",
+        "ref_StartDistanceToCDS": "324",
+        "ref_type": "uORF",
+        "KozakStrength": "Moderate",
+        "KozakContext": "GCGATGC",
+        "ref_type_length": "15",
+        "Evidence": "False",
+        "alt_type_length": "189",
+    }
 
-def test_utr_annotation_detail_is_passed_through_verbatim():
-    """5UTR_annotation is a ':'-delimited key=value string, but both paths treat
-    it as opaque text. Note the plugin emits the pairs in a different order for
-    every record -- in has_utr.vcf.gz all 9 annotations are the same 8 pairs
-    shuffled 9 ways -- so this string is not safe to compare or de-duplicate.
-    """
-    result = run("utr_annotation", UTR_VALUES, UTR_INDEX)
-    assert result["annotation"] == UTR_ANNOTATION
+
+def test_utr_annotation_key_value_is_order_independent():
+    """The actual bug this fixes: UTRAnnotator emits the same pairs in a
+    different order every record (all 9 in has_utr.vcf.gz are one identical
+    annotation shuffled 9 ways). The raw string is 9 different values; parsed
+    as key_value, all 9 must be the same dict."""
+    shuffled = "ref_type=uORF:alt_type=uORF:Evidence=False:KozakStrength=Moderate"
+    original = "alt_type=uORF:KozakStrength=Moderate:ref_type=uORF:Evidence=False"
+    assert shuffled != original  # different raw strings
+
+    def annotation_of(value):
+        row = ["", value, "", "", ""]
+        return run("utr_annotation", row, UTR_INDEX)["annotation"]
+
+    assert annotation_of(shuffled) == annotation_of(original)  # same parsed value
+
+
+def test_utr_annotation_malformed_piece_is_dropped_not_raised():
+    """A piece without '=' does not break parsing of the rest of the value."""
+    row = ["", "alt_type=uORF:garbage:Evidence=False", "", "", ""]
+    result = run("utr_annotation", row, UTR_INDEX)
+    assert result["annotation"] == {"alt_type": "uORF", "Evidence": "False"}
 
 
 def test_utr_annotation_empty_is_none():

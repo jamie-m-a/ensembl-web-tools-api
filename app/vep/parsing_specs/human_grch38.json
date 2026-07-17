@@ -929,8 +929,9 @@
         {
           "field": "annotation",
           "from": "5UTR_annotation",
-          "transform": "scalar",
-          "type": "string"
+          "transform": "key_value",
+          "pair_delimiter": ":",
+          "kv_delimiter": "="
         },
         {
           "field": "existing_uorfs",
