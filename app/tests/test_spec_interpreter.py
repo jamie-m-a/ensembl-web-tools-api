@@ -17,6 +17,7 @@ from app.vep.utils.spec_interpreter import apply_plugin_spec
 from app.vep.utils.spec_loader import SPEC_DIR, load_spec_file
 from app.vep.utils.vcf_results import (
     _parse_clinvar,
+    _parse_open_targets,
     _parse_protvar,
     _parse_protvar_pocket,
     _parse_frequencies,
@@ -69,6 +70,7 @@ def test_bundled_spec_validates():
         "mavedb",
         "clinvar",
         "protvar",
+        "opentargets",
         "gnomad_exomes",
         "gnomad_genomes",
         "all_of_us",
@@ -403,3 +405,85 @@ def test_protvar_interaction_na_partner_is_nulled():
 
     parser = _parse_protvar(row_list(ProtVar_int="NA&0.9"), INDEX_MAP)
     assert parser.interaction_interfaces[0].partner == "NA"
+
+
+# --- OpenTargets: align:min + dedup + sort -----------------------------------
+
+OT_COLS = [
+    "OpenTargets_gwasDiseases", "OpenTargets_gwasGeneId",
+    "OpenTargets_gwasLocusToGeneScore", "OpenTargets_qtlGeneId",
+    "OpenTargets_qtlBiosampleName",
+]
+OT_INDEX = index_map_for(*OT_COLS)
+
+
+def ot_row(diseases="", genes="", l2g="", qtl_genes="", qtl_biosamples=""):
+    return [diseases, genes, l2g, qtl_genes, qtl_biosamples]
+
+
+def run_ot(**kwargs):
+    return run("opentargets", ot_row(**kwargs), OT_INDEX)
+
+
+def parse_ot(**kwargs):
+    return dump(_parse_open_targets(ot_row(**kwargs), OT_INDEX))
+
+
+def test_opentargets_sorts_strongest_first_and_matches_parser():
+    args = dict(
+        diseases="EFO_1&EFO_2&EFO_3",
+        genes="ENSG1&ENSG2&ENSG3",
+        l2g="0.1&0.9&NA",
+    )
+    result = run_ot(**args)
+    assert result == parse_ot(**args)
+    # descending by score; the unscored association goes last
+    assert [(a["disease"], a["l2g_score"]) for a in result["gwas_associations"]] == [
+        ("EFO_2", 0.9),
+        ("EFO_1", 0.1),
+        ("EFO_3", None),
+    ]
+
+
+def test_opentargets_dedups_repeated_rows():
+    """The plugin emits duplicate rows -- dedup fires on 93% of real records."""
+    args = dict(diseases="EFO_1&EFO_1", genes="ENSG1&ENSG1", l2g="0.5&0.5")
+    result = run_ot(**args)
+    assert result == parse_ot(**args)
+    assert len(result["gwas_associations"]) == 1
+
+
+def test_opentargets_drops_row_without_disease():
+    args = dict(diseases="NA&EFO_2", genes="ENSG1&ENSG2", l2g="0.1&0.9")
+    result = run_ot(**args)
+    assert result == parse_ot(**args)
+    assert [a["disease"] for a in result["gwas_associations"]] == ["EFO_2"]
+
+
+def test_opentargets_misaligned_columns_truncate():
+    """align:min. Real data contains ragged columns (3 diseases, 2 genes), so
+    the plugin's positional alignment is not guaranteed; zip drops the excess.
+    Faithful to the parser -- with ragged input the true pairing is unknowable.
+    """
+    args = dict(diseases="EFO_1&EFO_2&EFO_3", genes="ENSG1&ENSG2", l2g="0.1&0.9")
+    result = run_ot(**args)
+    assert result == parse_ot(**args)
+    assert len(result["gwas_associations"]) == 2  # EFO_3 dropped
+
+
+def test_opentargets_qtl_dedups_and_nulls_na_biosample():
+    args = dict(qtl_genes="ENSG1&ENSG1&ENSG2", qtl_biosamples="liver&liver&NA")
+    result = run_ot(**args)
+    assert result == parse_ot(**args)
+    assert result["qtl_associations"] == [
+        {"gene_id": "ENSG1", "biosample": "liver"},
+        {"gene_id": "ENSG2", "biosample": None},
+    ]
+
+
+def test_opentargets_empty_matches():
+    assert run_ot() == parse_ot() == None
+
+
+def test_opentargets_absent_columns_is_none():
+    assert run("opentargets", ["A"], index_map_for("Allele")) is None

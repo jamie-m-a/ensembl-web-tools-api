@@ -58,6 +58,42 @@ def _column(csq_values: list[str], name: str, index_map: dict[str, int]) -> str 
     return get_csq_value(csq_values, name, None, index_map)
 
 
+def _should_drop(row: dict, drop_when) -> bool:
+    if drop_when is None:
+        return False
+    if drop_when.all_null:
+        return all(value is None for value in row.values())
+    return row.get(drop_when.null) is None
+
+
+def _apply_post(rows: list[dict], post) -> list[dict]:
+    """Whole-list operations, in the order the spec lists them."""
+    for operation in post or []:
+        if operation.op == "dedup":
+            seen = set()
+            unique = []
+            for row in rows:
+                key = tuple(row.values())
+                if key in seen:
+                    continue
+                seen.add(key)
+                unique.append(row)
+            rows = unique
+        elif operation.op == "sort":
+            nulls_last = operation.nulls == "last"
+            # A null key sorts to whichever end `nulls` asks for, whatever `desc`
+            # does to the rest.
+            sentinel = float("-inf") if nulls_last == operation.desc else float("inf")
+            rows = sorted(
+                rows,
+                key=lambda row: (
+                    row[operation.by] if row[operation.by] is not None else sentinel
+                ),
+                reverse=operation.desc,
+            )
+    return rows
+
+
 def _apply_zip(csq_values, index_map, target: TargetSpec) -> list[dict]:
     """N positionally-aligned '&'-lists -> a list of objects.
 
@@ -76,10 +112,10 @@ def _apply_zip(csq_values, index_map, target: TargetSpec) -> list[dict]:
             )
             for column, field_spec in zip(columns, target.as_fields)
         }
-        if target.drop_when == "all_null" and all(v is None for v in row.values()):
+        if _should_drop(row, target.drop_when):
             continue
         rows.append(row)
-    return rows
+    return _apply_post(rows, target.post)
 
 
 def _apply_regex(csq_values, index_map, target: TargetSpec):
@@ -155,8 +191,11 @@ def _apply_chunk(csq_values, index_map, target: TargetSpec) -> list[dict]:
     rows = []
     for start in range(0, len(tokens), target.size):
         group = tokens[start : start + target.size]
-        rows.append(_build_object(group, target.as_fields, "&".join(t for t in group if t)))
-    return rows
+        row = _build_object(group, target.as_fields, "&".join(t for t in group if t))
+        if _should_drop(row, target.drop_when):
+            continue
+        rows.append(row)
+    return _apply_post(rows, target.post)
 
 
 def _apply_positional(csq_values, index_map, target: TargetSpec):

@@ -9,34 +9,92 @@
       "plugin": "mutfunc",
       "scope": "transcript",
       "output": "mutfunc",
-      "csq_fields": ["mutfunc_motif", "mutfunc_int", "mutfunc_mod", "mutfunc_exp"],
-      "require_any_input": ["mutfunc_motif", "mutfunc_int", "mutfunc_mod", "mutfunc_exp"],
+      "csq_fields": [
+        "mutfunc_motif",
+        "mutfunc_int",
+        "mutfunc_mod",
+        "mutfunc_exp"
+      ],
+      "require_any_input": [
+        "mutfunc_motif",
+        "mutfunc_int",
+        "mutfunc_mod",
+        "mutfunc_exp"
+      ],
       "targets": [
-        { "field": "linear_motifs", "from": "mutfunc_motif", "transform": "scalar", "type": "float" },
-        { "field": "protein_interactions", "from": "mutfunc_int", "transform": "scalar", "type": "float" },
-        { "field": "protein_structure", "from": "mutfunc_mod", "transform": "scalar", "type": "float" },
-        { "field": "protein_structure_experimental", "from": "mutfunc_exp", "transform": "scalar", "type": "float" }
+        {
+          "field": "linear_motifs",
+          "from": "mutfunc_motif",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "protein_interactions",
+          "from": "mutfunc_int",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "protein_structure",
+          "from": "mutfunc_mod",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "protein_structure_experimental",
+          "from": "mutfunc_exp",
+          "transform": "scalar",
+          "type": "float"
+        }
       ]
     },
     {
       "plugin": "mavedb",
       "scope": "transcript",
       "output": "mavedb",
-      "csq_fields": ["MaveDB_score", "MaveDB_urn", "MaveDB_doi", "MaveDB_nt", "MaveDB_pro"],
-      "require_any_input": ["MaveDB_score", "MaveDB_urn", "MaveDB_pro"],
-      "require_any_output": ["assays"],
+      "csq_fields": [
+        "MaveDB_score",
+        "MaveDB_urn",
+        "MaveDB_doi",
+        "MaveDB_nt",
+        "MaveDB_pro"
+      ],
+      "require_any_input": [
+        "MaveDB_score",
+        "MaveDB_urn",
+        "MaveDB_pro"
+      ],
+      "require_any_output": [
+        "assays"
+      ],
       "targets": [
-        { "field": "protein_variant", "from": "MaveDB_pro", "transform": "first", "type": "string" },
+        {
+          "field": "protein_variant",
+          "from": "MaveDB_pro",
+          "transform": "first",
+          "type": "string"
+        },
         {
           "field": "assays",
-          "from": ["MaveDB_score", "MaveDB_urn"],
+          "from": [
+            "MaveDB_score",
+            "MaveDB_urn"
+          ],
           "transform": "zip",
           "align": "max",
           "as": [
-            { "field": "score", "type": "float" },
-            { "field": "urn", "type": "string" }
+            {
+              "field": "score",
+              "type": "float"
+            },
+            {
+              "field": "urn",
+              "type": "string"
+            }
           ],
-          "drop_when": "all_null"
+          "drop_when": {
+            "all_null": true
+          }
         }
       ]
     },
@@ -67,13 +125,34 @@
           "transform": "positional",
           "wrap": "list",
           "as": [
-            { "field": "pocket_id", "type": "string" },
-            { "field": "energy", "type": "float" },
-            { "field": "energy_per_volume", "type": "float" },
-            { "field": "score", "type": "float" },
-            { "field": "buriedness", "type": "float" },
-            { "field": "radius_of_gyration", "type": "float" },
-            { "field": "raw", "type": "raw" }
+            {
+              "field": "pocket_id",
+              "type": "string"
+            },
+            {
+              "field": "energy",
+              "type": "float"
+            },
+            {
+              "field": "energy_per_volume",
+              "type": "float"
+            },
+            {
+              "field": "score",
+              "type": "float"
+            },
+            {
+              "field": "buriedness",
+              "type": "float"
+            },
+            {
+              "field": "radius_of_gyration",
+              "type": "float"
+            },
+            {
+              "field": "raw",
+              "type": "raw"
+            }
           ]
         },
         {
@@ -82,9 +161,18 @@
           "transform": "chunk",
           "size": 2,
           "as": [
-            { "field": "partner", "type": "string" },
-            { "field": "score", "type": "float" },
-            { "field": "raw", "type": "raw" }
+            {
+              "field": "partner",
+              "type": "string"
+            },
+            {
+              "field": "score",
+              "type": "float"
+            },
+            {
+              "field": "raw",
+              "type": "raw"
+            }
           ]
         }
       ]
@@ -93,10 +181,19 @@
       "plugin": "clinvar",
       "scope": "allele",
       "output": "clinvar",
-      "csq_fields": ["ClinVar_CLNSIG", "ClinVar_CLNSIGCONF"],
-      "require_any_input": ["ClinVar_CLNSIG"],
+      "csq_fields": [
+        "ClinVar_CLNSIG",
+        "ClinVar_CLNSIGCONF"
+      ],
+      "require_any_input": [
+        "ClinVar_CLNSIG"
+      ],
       "targets": [
-        { "field": "significance", "from": "ClinVar_CLNSIG", "transform": "list" },
+        {
+          "field": "significance",
+          "from": "ClinVar_CLNSIG",
+          "transform": "list"
+        },
         {
           "field": "conflicting_breakdown",
           "from": "ClinVar_CLNSIGCONF",
@@ -104,8 +201,14 @@
           "each": true,
           "pattern": "^(?P<significance>.+)_\\((?P<count>\\d+)\\)$",
           "as": [
-            { "field": "significance", "type": "string" },
-            { "field": "count", "type": "int" }
+            {
+              "field": "significance",
+              "type": "string"
+            },
+            {
+              "field": "count",
+              "type": "int"
+            }
           ],
           "when": {
             "field": "ClinVar_CLNSIG",
@@ -118,16 +221,28 @@
       "plugin": "gnomad_exomes",
       "scope": "allele",
       "output": "frequencies.gnomad_exomes",
-      "csq_fields": ["gnomAD_exomes_AF"],
-      "require_any_output": ["overall", "populations"],
+      "csq_fields": [
+        "gnomAD_exomes_AF"
+      ],
+      "require_any_output": [
+        "overall",
+        "populations"
+      ],
       "targets": [
-        { "field": "overall", "from": "gnomAD_exomes_AF", "transform": "scalar", "type": "float" },
+        {
+          "field": "overall",
+          "from": "gnomAD_exomes_AF",
+          "transform": "scalar",
+          "type": "float"
+        },
         {
           "field": "populations",
           "from_pattern": "gnomAD_exomes_AF_{pop}",
           "transform": "pattern_map",
           "type": "float",
-          "exclude": ["gnomAD_exomes_AF"]
+          "exclude": [
+            "gnomAD_exomes_AF"
+          ]
         }
       ]
     },
@@ -135,16 +250,28 @@
       "plugin": "gnomad_genomes",
       "scope": "allele",
       "output": "frequencies.gnomad_genomes",
-      "csq_fields": ["gnomAD_genomes_AF"],
-      "require_any_output": ["overall", "populations"],
+      "csq_fields": [
+        "gnomAD_genomes_AF"
+      ],
+      "require_any_output": [
+        "overall",
+        "populations"
+      ],
       "targets": [
-        { "field": "overall", "from": "gnomAD_genomes_AF", "transform": "scalar", "type": "float" },
+        {
+          "field": "overall",
+          "from": "gnomAD_genomes_AF",
+          "transform": "scalar",
+          "type": "float"
+        },
         {
           "field": "populations",
           "from_pattern": "gnomAD_genomes_AF_{pop}",
           "transform": "pattern_map",
           "type": "float",
-          "exclude": ["gnomAD_genomes_AF"]
+          "exclude": [
+            "gnomAD_genomes_AF"
+          ]
         }
       ]
     },
@@ -152,22 +279,117 @@
       "plugin": "all_of_us",
       "scope": "allele",
       "output": "frequencies.all_of_us",
-      "csq_fields": ["AoU_gvs_all_af"],
-      "require_any_output": ["overall", "populations"],
+      "csq_fields": [
+        "AoU_gvs_all_af"
+      ],
+      "require_any_output": [
+        "overall",
+        "populations"
+      ],
       "targets": [
-        { "field": "overall", "from": "AoU_gvs_all_af", "transform": "scalar", "type": "float" },
+        {
+          "field": "overall",
+          "from": "AoU_gvs_all_af",
+          "transform": "scalar",
+          "type": "float"
+        },
         {
           "field": "populations",
           "from_pattern": "AoU_gvs_{pop}_af",
           "transform": "pattern_map",
           "type": "float",
-          "exclude": ["AoU_gvs_all_af"]
+          "exclude": [
+            "AoU_gvs_all_af"
+          ]
         },
         {
           "field": "max_subpopulation",
           "from": "AoU_gvs_max_subpop",
           "transform": "scalar",
           "type": "string"
+        }
+      ]
+    },
+    {
+      "plugin": "opentargets",
+      "scope": "allele",
+      "output": "open_targets",
+      "csq_fields": [
+        "OpenTargets_gwasDiseases",
+        "OpenTargets_gwasGeneId",
+        "OpenTargets_gwasLocusToGeneScore",
+        "OpenTargets_qtlGeneId",
+        "OpenTargets_qtlBiosampleName"
+      ],
+      "require_any_output": [
+        "gwas_associations",
+        "qtl_associations"
+      ],
+      "targets": [
+        {
+          "field": "gwas_associations",
+          "from": [
+            "OpenTargets_gwasDiseases",
+            "OpenTargets_gwasGeneId",
+            "OpenTargets_gwasLocusToGeneScore"
+          ],
+          "transform": "zip",
+          "align": "min",
+          "as": [
+            {
+              "field": "disease",
+              "type": "string"
+            },
+            {
+              "field": "gene_id",
+              "type": "string"
+            },
+            {
+              "field": "l2g_score",
+              "type": "float"
+            }
+          ],
+          "drop_when": {
+            "null": "disease"
+          },
+          "post": [
+            {
+              "op": "dedup"
+            },
+            {
+              "op": "sort",
+              "by": "l2g_score",
+              "desc": true,
+              "nulls": "last"
+            }
+          ]
+        },
+        {
+          "field": "qtl_associations",
+          "from": [
+            "OpenTargets_qtlGeneId",
+            "OpenTargets_qtlBiosampleName"
+          ],
+          "transform": "zip",
+          "align": "min",
+          "as": [
+            {
+              "field": "gene_id",
+              "type": "string"
+            },
+            {
+              "field": "biosample",
+              "type": "string"
+            }
+          ],
+          "drop_when": {
+            "null": "gene_id"
+          },
+          "post": [
+            {
+              "op": "dedup"
+            }
+          ]
         }
       ]
     }

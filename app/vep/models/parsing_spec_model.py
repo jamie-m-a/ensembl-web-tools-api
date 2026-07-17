@@ -40,6 +40,53 @@ class FieldSpec(BaseModel):
     type: ValueType = "string"
 
 
+class DropWhen(BaseModel):
+    """When to discard a produced element. Exactly one mode.
+
+    all_null  every field of the element came out null (MaveDB: a position where
+              neither score nor urn is real).
+    null      the named field came out null (OpenTargets: a row with no disease
+              is not an association, whatever else it carries).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    all_null: bool = False
+    null: str | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_mode(self) -> "DropWhen":
+        if bool(self.all_null) == bool(self.null):
+            raise ValueError("drop_when needs exactly one of `all_null` or `null`")
+        return self
+
+
+class PostOp(BaseModel):
+    """An operation over the whole produced list, applied in order.
+
+    dedup  drop elements identical to an earlier one (the OpenTargets plugin
+           currently emits duplicate rows).
+    sort   order by `by`. `nulls` places elements whose key is null, and is
+           independent of `desc` — "strongest first, unscored last" needs
+           desc + nulls: last.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    op: Literal["dedup", "sort"]
+    by: str | None = None
+    desc: bool = False
+    nulls: Literal["first", "last"] = "last"
+
+    @model_validator(mode="after")
+    def _check_op_shape(self) -> "PostOp":
+        if self.op == "sort" and not self.by:
+            raise ValueError("sort requires `by`")
+        if self.op == "dedup" and self.by:
+            raise ValueError("dedup takes no `by`")
+        return self
+
+
 class WhenSpec(BaseModel):
     """A condition on another CSQ column, gating whether a target is built.
 
@@ -95,8 +142,9 @@ class TargetSpec(BaseModel):
     # The existing parsers disagree — MaveDB pads to the longest, OpenTargets
     # truncates to the shortest — so it has to be explicit.
     align: Literal["max", "min"] = "max"
-    # `zip` only: drop a produced element when all of its fields are null.
-    drop_when: Literal["all_null"] | None = None
+    # `zip` / `chunk`: discard produced elements, then reshape the list.
+    drop_when: DropWhen | None = None
+    post: list[PostOp] | None = None
     # `regex` only.
     pattern: str | None = None
     each: bool = False
