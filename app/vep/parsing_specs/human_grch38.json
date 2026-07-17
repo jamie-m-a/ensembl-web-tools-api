@@ -1,0 +1,44 @@
+{
+  "spec_version": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "genome": {
+    "species_taxonomy_id": "9606",
+    "assembly": "GRCh38"
+  },
+  "plugins": [
+    {
+      "plugin": "mutfunc",
+      "scope": "transcript",
+      "output": "mutfunc",
+      "csq_fields": ["mutfunc_motif", "mutfunc_int", "mutfunc_mod", "mutfunc_exp"],
+      "require_any_input": ["mutfunc_motif", "mutfunc_int", "mutfunc_mod", "mutfunc_exp"],
+      "targets": [
+        { "field": "linear_motifs", "from": "mutfunc_motif", "transform": "scalar", "type": "float" },
+        { "field": "protein_interactions", "from": "mutfunc_int", "transform": "scalar", "type": "float" },
+        { "field": "protein_structure", "from": "mutfunc_mod", "transform": "scalar", "type": "float" },
+        { "field": "protein_structure_experimental", "from": "mutfunc_exp", "transform": "scalar", "type": "float" }
+      ]
+    },
+    {
+      "plugin": "mavedb",
+      "scope": "transcript",
+      "output": "mavedb",
+      "csq_fields": ["MaveDB_score", "MaveDB_urn", "MaveDB_doi", "MaveDB_nt", "MaveDB_pro"],
+      "require_any_input": ["MaveDB_score", "MaveDB_urn", "MaveDB_pro"],
+      "require_any_output": ["assays"],
+      "targets": [
+        { "field": "protein_variant", "from": "MaveDB_pro", "transform": "first", "type": "string" },
+        {
+          "field": "assays",
+          "from": ["MaveDB_score", "MaveDB_urn"],
+          "transform": "zip",
+          "align": "max",
+          "as": [
+            { "field": "score", "type": "float" },
+            { "field": "urn", "type": "string" }
+          ],
+          "drop_when": "all_null"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,116 @@
+"""Static, strongly-typed model of the CSQ parsing spec.
+
+The spec describes how to turn one plugin's CSQ columns into structured output,
+replacing a hand-written `_parse_*` function. It is *data* — today a JSON file
+under `vep/parsing_specs/`, later served by the annotation API — so it is
+validated hard on arrival: this model is the contract with that data.
+
+Deliberately strict (`extra="forbid"`): a spec with an unknown key is a spec we
+do not understand, and failing loudly at load time is much cheaper than silently
+producing empty annotations at parse time.
+"""
+
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+ValueType = Literal["string", "float", "int"]
+
+# Transforms understood by the interpreter. Kept deliberately small; this set was
+# derived by enumerating the existing `_parse_*` functions rather than invented.
+Transform = Literal["scalar", "list", "first", "zip"]
+
+
+class FieldSpec(BaseModel):
+    """One output field of a composite value (e.g. one column of a `zip`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    field: str
+    type: ValueType = "string"
+
+
+class TargetSpec(BaseModel):
+    """How to build one output field from one or more CSQ columns.
+
+    `from` names the source column(s); `field` names the output. Transforms:
+      scalar  one column -> one value
+      list    one column -> '&'-split list, empties and 'NA' dropped
+      first   one column -> first real item of a '&'-split list
+      zip     N aligned '&'-lists -> list of objects (positions preserved, so
+              'NA' placeholders still occupy a slot and keep columns aligned)
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    field: str
+    # `from` and `as` are Python keywords, hence the aliases.
+    source: str | list[str] = Field(alias="from")
+    transform: Transform
+    type: ValueType = "string"
+    # `zip` only: the output fields, positionally matching `from`.
+    as_fields: list[FieldSpec] | None = Field(default=None, alias="as")
+    # `zip` only: whether to iterate to the longest or shortest input column.
+    # The existing parsers disagree — MaveDB pads to the longest, OpenTargets
+    # truncates to the shortest — so it has to be explicit.
+    align: Literal["max", "min"] = "max"
+    # `zip` only: drop a produced element when all of its fields are null.
+    drop_when: Literal["all_null"] | None = None
+
+    @model_validator(mode="after")
+    def _check_transform_shape(self) -> "TargetSpec":
+        if self.transform == "zip":
+            if not isinstance(self.source, list):
+                raise ValueError("zip requires `from` to be a list of columns")
+            if not self.as_fields:
+                raise ValueError("zip requires `as`")
+            if len(self.as_fields) != len(self.source):
+                raise ValueError("zip requires one `as` entry per `from` column")
+        else:
+            if not isinstance(self.source, str):
+                raise ValueError(f"{self.transform} requires `from` to be a single column")
+            if self.as_fields:
+                raise ValueError(f"`as` is only valid for zip, not {self.transform}")
+        return self
+
+
+class PluginSpec(BaseModel):
+    """How to parse one plugin's contribution to a CSQ entry.
+
+    Two independent "nothing here" rules, mirroring the hand-written parsers:
+      csq_fields        which columns this plugin owns. If none are in the CSQ
+                        header, the plugin did not run — skip it entirely.
+      require_any_input the columns are present, but this record has no value in
+                        any of them -> no annotation. Note this tests raw
+                        presence, so a literal 'NA' counts as present (matching
+                        the current parsers).
+      require_any_output built the output, but the fields that carry the payload
+                        came out empty -> no annotation.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    plugin: str
+    scope: Literal["allele", "transcript"]
+    # Where the result attaches on the response model, e.g. "mavedb".
+    output: str
+    csq_fields: list[str]
+    require_any_input: list[str] | None = None
+    require_any_output: list[str] | None = None
+    targets: list[TargetSpec]
+
+
+class ParsingSpec(BaseModel):
+    """A whole parsing-spec document: every plugin, for one genome."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Content digest of this document; pins a job to the ruleset that produced
+    # its options (see the sidecar written at submission).
+    spec_version: str
+    genome: dict | None = None
+    plugins: list[PluginSpec]
+
+    def plugin(self, name: str) -> PluginSpec | None:
+        """The spec for one plugin by name, or None."""
+        return next((p for p in self.plugins if p.plugin == name), None)
