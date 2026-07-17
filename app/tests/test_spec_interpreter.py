@@ -17,6 +17,7 @@ from app.vep.utils.spec_interpreter import apply_plugin_spec
 from app.vep.utils.spec_loader import SPEC_DIR, load_spec_file
 from app.vep.utils.vcf_results import (
     _parse_clinvar,
+    _parse_pathogenicity,
     _parse_dosage_sensitivity,
     _parse_hgvs,
     _parse_intact,
@@ -86,6 +87,10 @@ def test_bundled_spec_validates():
         "dosage_sensitivity",
         "intact",
         "popeve",
+        "revel",
+        "alphamissense",
+        "cadd",
+        "eve",
         "gnomad_exomes",
         "gnomad_genomes",
         "all_of_us",
@@ -670,3 +675,56 @@ def test_popeve_matches_hand_written_parser():
 def test_popeve_empty_is_none():
     index_map = index_map_for("popEVE_SCORE", "popEVE_EVE", "popEVE_mutant")
     assert run("popeve", ["", "", ""], index_map) is None
+
+
+# --- pathogenicity, dissolved ------------------------------------------------
+#
+# _parse_pathogenicity groups several unrelated predictors into one object and
+# nests spliceai/popeve (themselves standalone plugins) inside it. The grouping
+# is not what the flat annotation payload wants, so the spec models each member
+# as its own plugin. These tests prove the flat set reproduces the nested object
+# field for field -- verified on real data too (revel 11,290 / alphamissense
+# 62,384 / cadd 419,210 / eve 14,968 CSQ entries, zero mismatches).
+
+PATH_COLS = ["REVEL", "am_class", "am_pathogenicity", "CADD_PHRED", "CADD_RAW",
+             "EVE_CLASS", "EVE_SCORE"]
+PATH_INDEX = index_map_for(*PATH_COLS)
+PATH_VALUES = ["0.7", "likely_pathogenic", "0.9", "25.1", "3.2", "Pathogenic", "0.85"]
+
+
+def test_flat_plugins_reproduce_the_nested_pathogenicity_object():
+    nested = _parse_pathogenicity(PATH_VALUES, PATH_INDEX)
+
+    assert run("revel", PATH_VALUES, PATH_INDEX)["score"] == nested.revel
+    alphamissense = run("alphamissense", PATH_VALUES, PATH_INDEX)
+    assert alphamissense["classification"] == nested.alphamissense_class
+    assert alphamissense["score"] == nested.alphamissense_score
+    cadd = run("cadd", PATH_VALUES, PATH_INDEX)
+    assert (cadd["phred"], cadd["raw"]) == (nested.cadd_phred, nested.cadd_raw)
+    eve = run("eve", PATH_VALUES, PATH_INDEX)
+    assert (eve["classification"], eve["score"]) == (nested.eve_class, nested.eve_score)
+
+
+def test_flat_pathogenicity_members_are_independent():
+    """Only REVEL present: revel is an annotation, the others are absent.
+
+    The nested object cannot express this -- it returns one object carrying a
+    revel score and six nulls.
+    """
+    values = ["0.7", "", "", "", "", "", ""]
+    assert run("revel", values, PATH_INDEX) == {"score": 0.7}
+    assert run("alphamissense", values, PATH_INDEX) is None
+    assert run("cadd", values, PATH_INDEX) is None
+    assert run("eve", values, PATH_INDEX) is None
+
+
+def test_flat_pathogenicity_members_absent_are_none():
+    values = ["", "", "", "", "", "", ""]
+    for plugin in ("revel", "alphamissense", "cadd", "eve"):
+        assert run(plugin, values, PATH_INDEX) is None
+    assert _parse_pathogenicity(values, PATH_INDEX) is None
+
+
+def test_cadd_zero_is_kept():
+    values = ["", "", "", "0.0", "0.0", "", ""]
+    assert run("cadd", values, PATH_INDEX) == {"phred": 0.0, "raw": 0.0}

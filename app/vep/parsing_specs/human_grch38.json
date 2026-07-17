@@ -800,6 +800,106 @@
           "type": "float"
         }
       ]
+    },
+    {
+      "plugin": "revel",
+      "scope": "transcript",
+      "output": "revel",
+      "csq_fields": [
+        "REVEL"
+      ],
+      "require_any_output": [
+        "score"
+      ],
+      "targets": [
+        {
+          "field": "score",
+          "from": "REVEL",
+          "transform": "scalar",
+          "type": "float"
+        }
+      ]
+    },
+    {
+      "plugin": "alphamissense",
+      "scope": "transcript",
+      "output": "alphamissense",
+      "csq_fields": [
+        "am_class",
+        "am_pathogenicity"
+      ],
+      "require_any_output": [
+        "classification",
+        "score"
+      ],
+      "targets": [
+        {
+          "field": "classification",
+          "from": "am_class",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "score",
+          "from": "am_pathogenicity",
+          "transform": "scalar",
+          "type": "float"
+        }
+      ]
+    },
+    {
+      "plugin": "cadd",
+      "scope": "allele",
+      "output": "cadd",
+      "csq_fields": [
+        "CADD_PHRED",
+        "CADD_RAW"
+      ],
+      "require_any_output": [
+        "phred",
+        "raw"
+      ],
+      "targets": [
+        {
+          "field": "phred",
+          "from": "CADD_PHRED",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "raw",
+          "from": "CADD_RAW",
+          "transform": "scalar",
+          "type": "float"
+        }
+      ]
+    },
+    {
+      "plugin": "eve",
+      "scope": "transcript",
+      "output": "eve",
+      "csq_fields": [
+        "EVE_CLASS",
+        "EVE_SCORE"
+      ],
+      "require_any_output": [
+        "classification",
+        "score"
+      ],
+      "targets": [
+        {
+          "field": "classification",
+          "from": "EVE_CLASS",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "score",
+          "from": "EVE_SCORE",
+          "transform": "scalar",
+          "type": "float"
+        }
+      ]
     }
   ]
 }
