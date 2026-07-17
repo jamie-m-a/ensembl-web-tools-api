@@ -113,6 +113,12 @@
           "transform": "pattern_map",
           "type": "float",
           "exclude": ["AoU_gvs_all_af"]
+        },
+        {
+          "field": "max_subpopulation",
+          "from": "AoU_gvs_max_subpop",
+          "transform": "scalar",
+          "type": "string"
         }
       ]
     }

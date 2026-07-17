@@ -17,6 +17,7 @@ from app.vep.utils.spec_interpreter import apply_plugin_spec
 from app.vep.utils.spec_loader import SPEC_DIR, load_spec_file
 from app.vep.utils.vcf_results import (
     _parse_clinvar,
+    _parse_frequencies,
     _parse_mavedb,
     _parse_mutfunc,
     _parse_population_frequencies,
@@ -31,11 +32,12 @@ def dump(model):
 
 
 def dump_frequencies(model):
-    """A PopulationFrequencies as plain data.
+    """A gnomAD PopulationFrequencies as plain data.
 
-    `max_subpopulation` is dropped: _parse_population_frequencies never sets it
-    — it is attached afterwards by _parse_frequencies when it composes the three
-    sources — so it is not this parser's output to compare against.
+    `max_subpopulation` is dropped: it is an All of Us concept (the label column
+    AoU_gvs_max_subpop), so the gnomAD specs do not produce the key at all,
+    while the shared pydantic model always carries it as None. The AoU tests
+    compare against _parse_frequencies instead and do not use this helper.
     """
     if model is None:
         return None
@@ -288,17 +290,32 @@ def test_gnomad_genomes_pattern_map_matches():
 
 
 def test_all_of_us_pattern_map_with_suffix_matches():
-    """AoU's pattern has a suffix (AoU_gvs_{pop}_af), unlike gnomAD's."""
+    """AoU's pattern has a suffix (AoU_gvs_{pop}_af), unlike gnomAD's.
+
+    The oracle is _parse_frequencies (the composer), not
+    _parse_population_frequencies, because max_subpopulation is attached during
+    composition — reproducing that attach is exactly what the spec's
+    max_subpopulation target has to do.
+    """
     columns = ["AoU_gvs_all_af", "AoU_gvs_afr_af", "AoU_gvs_max_af", "AoU_gvs_max_subpop"]
     index_map = index_map_for(*columns)
     values = ["0.10", "0.20", "0.30", "eur"]
 
     result = run("all_of_us", values, index_map)
-    oracle = _parse_population_frequencies(
-        values, index_map, "AoU_gvs_all_af", "AoU_gvs_{}_af"
-    )
-    assert result == dump_frequencies(oracle)
+    oracle = _parse_frequencies(values, index_map).all_of_us
+    assert result == oracle.model_dump()
     assert result["overall"] == 0.10
     assert result["populations"] == {"afr": 0.20, "max": 0.30}
-    # the non-numeric label column is not a frequency and must not appear
+    assert result["max_subpopulation"] == "eur"
+    # the label column is not a frequency and must not appear among populations
     assert "max_subpop" not in result["populations"]
+
+
+def test_all_of_us_label_without_frequencies_is_none():
+    """A max_subpop label with no frequencies is not an annotation — which is
+    why max_subpopulation is deliberately absent from require_any_output."""
+    index_map = index_map_for("AoU_gvs_all_af", "AoU_gvs_max_subpop")
+    values = ["", "eur"]
+
+    assert run("all_of_us", values, index_map) is None
+    assert _parse_frequencies(values, index_map) is None
