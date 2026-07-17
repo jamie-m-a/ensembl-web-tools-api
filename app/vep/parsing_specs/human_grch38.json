@@ -1,5 +1,4 @@
 {
-  "spec_version": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
   "genome": {
     "species_taxonomy_id": "9606",
     "assembly": "GRCh38"
