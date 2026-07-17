@@ -9,7 +9,9 @@ wired into the response. This runs alongside them so the two can be compared
 over the same CSQ fixtures (see tests/test_spec_interpreter.py).
 """
 
-from vep.models.parsing_spec_model import PluginSpec, TargetSpec
+import re
+
+from vep.models.parsing_spec_model import PluginSpec, TargetSpec, WhenSpec
 from vep.utils.csq import (
     first_amp,
     get_csq_value,
@@ -21,6 +23,21 @@ from vep.utils.csq import (
 
 # Some plugins write a literal 'NA' for "no value here".
 _NULLISH = ("", "NA")
+
+_PLACEHOLDER_RE = re.compile(r"\{[^}]*\}")
+
+
+def _is_present(value) -> bool:
+    """Whether a built output actually carries something.
+
+    Deliberately not plain truthiness: an allele frequency of 0.0 is a real
+    value, and `not 0.0` would throw it away.
+    """
+    if value is None:
+        return False
+    if isinstance(value, (str, list, dict, tuple)):
+        return len(value) > 0
+    return True
 
 
 def _coerce(raw: str | None, value_type: str):
@@ -65,9 +82,79 @@ def _apply_zip(csq_values, index_map, target: TargetSpec) -> list[dict]:
     return rows
 
 
+def _apply_regex(csq_values, index_map, target: TargetSpec):
+    """Named regex groups -> object(s). Non-matching items are skipped."""
+    raw = _column(csq_values, target.source, index_map)
+    compiled = re.compile(target.pattern)
+    items = split_amp(raw) if target.each else ([raw] if raw else [])
+
+    rows = []
+    for item in items:
+        match = compiled.match(item)
+        if not match:
+            continue
+        rows.append(
+            {
+                field_spec.field: _coerce(match.group(field_spec.field), field_spec.type)
+                for field_spec in target.as_fields
+            }
+        )
+    if target.each:
+        return rows
+    return rows[0] if rows else None
+
+
+def _apply_pattern_map(csq_values, index_map, target: TargetSpec) -> dict:
+    """Columns matching `from_pattern` -> {wildcard: value}.
+
+    The columns are discovered from the CSQ header, so whichever ancestries a
+    run actually emitted come through without being named in the spec.
+    """
+    placeholder = _PLACEHOLDER_RE.search(target.from_pattern)
+    prefix = target.from_pattern[: placeholder.start()]
+    suffix = target.from_pattern[placeholder.end() :]
+    excluded = set(target.exclude or [])
+
+    values: dict = {}
+    for column in index_map:
+        if column in excluded:
+            continue
+        if not (column.startswith(prefix) and column.endswith(suffix)):
+            continue
+        key = column[len(prefix) : len(column) - len(suffix)]
+        value = _coerce(_column(csq_values, column, index_map), target.type)
+        if value is not None:
+            values[key] = value
+    return values
+
+
+def _when_holds(csq_values, index_map, when: WhenSpec | None) -> bool:
+    if when is None:
+        return True
+    return when.includes in split_amp(_column(csq_values, when.field, index_map))
+
+
+def _empty_value(target: TargetSpec):
+    """What a target yields when its `when` condition does not hold."""
+    if target.transform in ("list", "zip"):
+        return []
+    if target.transform == "regex":
+        return [] if target.each else None
+    if target.transform == "pattern_map":
+        return {}
+    return None
+
+
 def _apply_target(csq_values, index_map, target: TargetSpec):
+    if not _when_holds(csq_values, index_map, target.when):
+        return _empty_value(target)
+
     if target.transform == "zip":
         return _apply_zip(csq_values, index_map, target)
+    if target.transform == "regex":
+        return _apply_regex(csq_values, index_map, target)
+    if target.transform == "pattern_map":
+        return _apply_pattern_map(csq_values, index_map, target)
 
     raw = _column(csq_values, target.source, index_map)
     if target.transform == "scalar":
@@ -104,7 +191,7 @@ def apply_plugin_spec(
     }
 
     if spec.require_any_output and not any(
-        output.get(field) for field in spec.require_any_output
+        _is_present(output.get(field)) for field in spec.require_any_output
     ):
         return None
 

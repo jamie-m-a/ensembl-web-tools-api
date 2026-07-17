@@ -39,6 +39,82 @@
           "drop_when": "all_null"
         }
       ]
+    },
+    {
+      "plugin": "clinvar",
+      "scope": "allele",
+      "output": "clinvar",
+      "csq_fields": ["ClinVar_CLNSIG", "ClinVar_CLNSIGCONF"],
+      "require_any_input": ["ClinVar_CLNSIG"],
+      "targets": [
+        { "field": "significance", "from": "ClinVar_CLNSIG", "transform": "list" },
+        {
+          "field": "conflicting_breakdown",
+          "from": "ClinVar_CLNSIGCONF",
+          "transform": "regex",
+          "each": true,
+          "pattern": "^(?P<significance>.+)_\\((?P<count>\\d+)\\)$",
+          "as": [
+            { "field": "significance", "type": "string" },
+            { "field": "count", "type": "int" }
+          ],
+          "when": {
+            "field": "ClinVar_CLNSIG",
+            "includes": "Conflicting_classifications_of_pathogenicity"
+          }
+        }
+      ]
+    },
+    {
+      "plugin": "gnomad_exomes",
+      "scope": "allele",
+      "output": "frequencies.gnomad_exomes",
+      "csq_fields": ["gnomAD_exomes_AF"],
+      "require_any_output": ["overall", "populations"],
+      "targets": [
+        { "field": "overall", "from": "gnomAD_exomes_AF", "transform": "scalar", "type": "float" },
+        {
+          "field": "populations",
+          "from_pattern": "gnomAD_exomes_AF_{pop}",
+          "transform": "pattern_map",
+          "type": "float",
+          "exclude": ["gnomAD_exomes_AF"]
+        }
+      ]
+    },
+    {
+      "plugin": "gnomad_genomes",
+      "scope": "allele",
+      "output": "frequencies.gnomad_genomes",
+      "csq_fields": ["gnomAD_genomes_AF"],
+      "require_any_output": ["overall", "populations"],
+      "targets": [
+        { "field": "overall", "from": "gnomAD_genomes_AF", "transform": "scalar", "type": "float" },
+        {
+          "field": "populations",
+          "from_pattern": "gnomAD_genomes_AF_{pop}",
+          "transform": "pattern_map",
+          "type": "float",
+          "exclude": ["gnomAD_genomes_AF"]
+        }
+      ]
+    },
+    {
+      "plugin": "all_of_us",
+      "scope": "allele",
+      "output": "frequencies.all_of_us",
+      "csq_fields": ["AoU_gvs_all_af"],
+      "require_any_output": ["overall", "populations"],
+      "targets": [
+        { "field": "overall", "from": "AoU_gvs_all_af", "transform": "scalar", "type": "float" },
+        {
+          "field": "populations",
+          "from_pattern": "AoU_gvs_{pop}_af",
+          "transform": "pattern_map",
+          "type": "float",
+          "exclude": ["AoU_gvs_all_af"]
+        }
+      ]
     }
   ]
 }

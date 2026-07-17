@@ -12,9 +12,15 @@ import pytest
 
 from app.tests.test_csq_parsers import EMPTY, INDEX_MAP, row_list
 from app.vep.models.parsing_spec_model import ParsingSpec, TargetSpec
+from app.vep.utils.csq import get_prediction_index_map
 from app.vep.utils.spec_interpreter import apply_plugin_spec
 from app.vep.utils.spec_loader import SPEC_DIR, load_spec_file
-from app.vep.utils.vcf_results import _parse_mavedb, _parse_mutfunc
+from app.vep.utils.vcf_results import (
+    _parse_clinvar,
+    _parse_mavedb,
+    _parse_mutfunc,
+    _parse_population_frequencies,
+)
 
 SPEC: ParsingSpec = load_spec_file(SPEC_DIR / "human_grch38.json")
 
@@ -24,10 +30,28 @@ def dump(model):
     return model.model_dump() if model is not None else None
 
 
-def run(plugin: str, csq_values):
+def dump_frequencies(model):
+    """A PopulationFrequencies as plain data.
+
+    `max_subpopulation` is dropped: _parse_population_frequencies never sets it
+    — it is attached afterwards by _parse_frequencies when it composes the three
+    sources — so it is not this parser's output to compare against.
+    """
+    if model is None:
+        return None
+    data = model.model_dump()
+    data.pop("max_subpopulation", None)
+    return data
+
+
+def index_map_for(*columns: str) -> dict[str, int]:
+    return get_prediction_index_map("Format: " + "|".join(columns))
+
+
+def run(plugin: str, csq_values, index_map=INDEX_MAP):
     spec = SPEC.plugin(plugin)
     assert spec is not None, f"no spec for {plugin}"
-    return apply_plugin_spec(csq_values, INDEX_MAP, spec)
+    return apply_plugin_spec(csq_values, index_map, spec)
 
 
 # --- the spec document itself ------------------------------------------------
@@ -36,7 +60,14 @@ def run(plugin: str, csq_values):
 def test_bundled_spec_validates():
     """The shipped JSON round-trips through the strict model."""
     assert SPEC.spec_version
-    assert {p.plugin for p in SPEC.plugins} == {"mutfunc", "mavedb"}
+    assert {p.plugin for p in SPEC.plugins} == {
+        "mutfunc",
+        "mavedb",
+        "clinvar",
+        "gnomad_exomes",
+        "gnomad_genomes",
+        "all_of_us",
+    }
 
 
 def test_unknown_key_is_rejected():
@@ -129,3 +160,145 @@ def test_mavedb_all_na_assay_dropped():
     """A position where both score and urn are NA is dropped entirely."""
     csq = row_list(MaveDB_score="1.5&NA", MaveDB_urn="urn:1&NA")
     assert run("mavedb", csq) == dump(_parse_mavedb(csq, INDEX_MAP))
+
+
+# --- ClinVar: the `when` conditional -----------------------------------------
+
+CONFLICTING = "Conflicting_classifications_of_pathogenicity"
+
+
+def test_clinvar_conflicting_reads_breakdown():
+    csq = row_list(
+        ClinVar_CLNSIG=CONFLICTING,
+        ClinVar_CLNSIGCONF="Likely_pathogenic_(6)&Benign_(2)",
+    )
+    assert run("clinvar", csq) == dump(_parse_clinvar(csq, INDEX_MAP))
+
+
+def test_clinvar_conflicting_breakdown_shape():
+    result = run(
+        "clinvar",
+        row_list(
+            ClinVar_CLNSIG=CONFLICTING,
+            ClinVar_CLNSIGCONF="Likely_pathogenic_(6)&Benign_(2)",
+        ),
+    )
+    assert result["significance"] == [CONFLICTING]
+    assert result["conflicting_breakdown"] == [
+        {"significance": "Likely_pathogenic", "count": 6},
+        {"significance": "Benign", "count": 2},
+    ]
+
+
+def test_clinvar_non_conflicting_ignores_breakdown():
+    """The `when` gate: CLNSIGCONF is present but must not be read, because the
+    classification is not conflicting."""
+    csq = row_list(
+        ClinVar_CLNSIG="Pathogenic",
+        ClinVar_CLNSIGCONF="Likely_pathogenic_(6)",
+    )
+    result = run("clinvar", csq)
+    assert result == dump(_parse_clinvar(csq, INDEX_MAP))
+    assert result["conflicting_breakdown"] == []
+
+
+def test_clinvar_when_matches_list_membership_not_substring():
+    """A value that merely embeds the conflicting term must not trigger the
+    breakdown — the condition is membership of the '&'-split list."""
+    csq = row_list(
+        ClinVar_CLNSIG="Not_" + CONFLICTING,
+        ClinVar_CLNSIGCONF="Benign_(2)",
+    )
+    result = run("clinvar", csq)
+    assert result == dump(_parse_clinvar(csq, INDEX_MAP))
+    assert result["conflicting_breakdown"] == []
+
+
+def test_clinvar_unparseable_breakdown_token_skipped():
+    csq = row_list(
+        ClinVar_CLNSIG=CONFLICTING,
+        ClinVar_CLNSIGCONF="Benign_(2)&garbage_no_count",
+    )
+    result = run("clinvar", csq)
+    assert result == dump(_parse_clinvar(csq, INDEX_MAP))
+    assert [b["significance"] for b in result["conflicting_breakdown"]] == ["Benign"]
+
+
+def test_clinvar_empty_matches():
+    assert run("clinvar", EMPTY) == dump(_parse_clinvar(EMPTY, INDEX_MAP)) == None
+
+
+# --- gnomAD / All of Us: pattern_map -----------------------------------------
+
+
+def test_gnomad_exomes_pattern_map_matches():
+    columns = ["gnomAD_exomes_AF", "gnomAD_exomes_AF_afr", "gnomAD_exomes_AF_nfe_XX"]
+    index_map = index_map_for(*columns)
+    values = ["0.01", "0.02", "0.03"]
+
+    result = run("gnomad_exomes", values, index_map)
+    oracle = _parse_population_frequencies(
+        values, index_map, "gnomAD_exomes_AF", "gnomAD_exomes_AF_{}"
+    )
+    assert result == dump_frequencies(oracle)
+    # ancestry columns discovered from the header, not named in the spec
+    assert result["populations"] == {"afr": 0.02, "nfe_XX": 0.03}
+    assert result["overall"] == 0.01
+
+
+def test_gnomad_exomes_zero_overall_is_kept():
+    """A 0.0 frequency is a real value. require_any_output must not treat it as
+    absent (plain truthiness would drop the whole annotation)."""
+    columns = ["gnomAD_exomes_AF"]
+    index_map = index_map_for(*columns)
+    values = ["0.0"]
+
+    result = run("gnomad_exomes", values, index_map)
+    oracle = _parse_population_frequencies(
+        values, index_map, "gnomAD_exomes_AF", "gnomAD_exomes_AF_{}"
+    )
+    assert result == dump_frequencies(oracle)
+    assert result is not None
+    assert result["overall"] == 0.0
+
+
+def test_gnomad_exomes_absent_matches():
+    index_map = index_map_for("Allele")
+    assert run("gnomad_exomes", ["A"], index_map) is None
+
+
+def test_gnomad_exomes_legacy_prefix_ignored():
+    """The old gnomADe_ prefix must not match the pattern."""
+    columns = ["gnomADe_AF", "gnomADe_afr_AF"]
+    index_map = index_map_for(*columns)
+    assert run("gnomad_exomes", ["0.1", "0.2"], index_map) is None
+
+
+def test_gnomad_genomes_pattern_map_matches():
+    columns = ["gnomAD_genomes_AF", "gnomAD_genomes_AF_ami", "gnomAD_genomes_AF_grpmax"]
+    index_map = index_map_for(*columns)
+    values = ["0.10", "0.20", "0.30"]
+
+    result = run("gnomad_genomes", values, index_map)
+    oracle = _parse_population_frequencies(
+        values, index_map, "gnomAD_genomes_AF", "gnomAD_genomes_AF_{}"
+    )
+    assert result == dump_frequencies(oracle)
+    assert result["populations"] == {"ami": 0.20, "grpmax": 0.30}
+
+
+def test_all_of_us_pattern_map_with_suffix_matches():
+    """AoU's pattern has a suffix (AoU_gvs_{pop}_af), unlike gnomAD's."""
+    columns = ["AoU_gvs_all_af", "AoU_gvs_afr_af", "AoU_gvs_max_af", "AoU_gvs_max_subpop"]
+    index_map = index_map_for(*columns)
+    values = ["0.10", "0.20", "0.30", "eur"]
+
+    result = run("all_of_us", values, index_map)
+    oracle = _parse_population_frequencies(
+        values, index_map, "AoU_gvs_all_af", "AoU_gvs_{}_af"
+    )
+    assert result == dump_frequencies(oracle)
+    assert result["overall"] == 0.10
+    assert result["populations"] == {"afr": 0.20, "max": 0.30}
+    # the non-numeric label column is not a frequency and must not appear
+    assert "max_subpop" not in result["populations"]

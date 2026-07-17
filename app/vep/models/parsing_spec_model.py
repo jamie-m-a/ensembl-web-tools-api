@@ -18,11 +18,12 @@ ValueType = Literal["string", "float", "int"]
 
 # Transforms understood by the interpreter. Kept deliberately small; this set was
 # derived by enumerating the existing `_parse_*` functions rather than invented.
-Transform = Literal["scalar", "list", "first", "zip"]
+Transform = Literal["scalar", "list", "first", "zip", "regex", "pattern_map"]
 
 
 class FieldSpec(BaseModel):
-    """One output field of a composite value (e.g. one column of a `zip`)."""
+    """One output field of a composite value (e.g. one column of a `zip`, or a
+    named group of a `regex`)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -30,25 +31,49 @@ class FieldSpec(BaseModel):
     type: ValueType = "string"
 
 
+class WhenSpec(BaseModel):
+    """A condition on another CSQ column, gating whether a target is built.
+
+    `includes` tests membership of the '&'-split list, not a substring of the raw
+    value — ClinVar surfaces its breakdown only when the classification list
+    contains exactly "Conflicting_classifications_of_pathogenicity", and a
+    substring test would also fire on a value that merely embedded that text.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    field: str
+    includes: str
+
+
 class TargetSpec(BaseModel):
     """How to build one output field from one or more CSQ columns.
 
     `from` names the source column(s); `field` names the output. Transforms:
-      scalar  one column -> one value
-      list    one column -> '&'-split list, empties and 'NA' dropped
-      first   one column -> first real item of a '&'-split list
-      zip     N aligned '&'-lists -> list of objects (positions preserved, so
-              'NA' placeholders still occupy a slot and keep columns aligned)
+      scalar       one column -> one value
+      list         one column -> '&'-split list, empties and 'NA' dropped
+      first        one column -> first real item of a '&'-split list
+      zip          N aligned '&'-lists -> list of objects (positions preserved,
+                   so 'NA' placeholders still occupy a slot and keep the columns
+                   aligned with each other)
+      regex        one column -> object(s) from named groups; `each` applies the
+                   pattern per '&'-item, otherwise to the whole value. Items
+                   that do not match are skipped.
+      pattern_map  columns matching `from_pattern` -> dict keyed by the
+                   wildcard. The columns are discovered from the CSQ header at
+                   runtime, so the field set need not be known up front (this is
+                   how gnomAD's per-ancestry AF columns work).
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     field: str
     # `from` and `as` are Python keywords, hence the aliases.
-    source: str | list[str] = Field(alias="from")
+    source: str | list[str] | None = Field(default=None, alias="from")
     transform: Transform
     type: ValueType = "string"
-    # `zip` only: the output fields, positionally matching `from`.
+    # `zip` / `regex`: the output fields. For zip they match `from` positionally;
+    # for regex each `field` names the regex group to read.
     as_fields: list[FieldSpec] | None = Field(default=None, alias="as")
     # `zip` only: whether to iterate to the longest or shortest input column.
     # The existing parsers disagree — MaveDB pads to the longest, OpenTargets
@@ -56,6 +81,17 @@ class TargetSpec(BaseModel):
     align: Literal["max", "min"] = "max"
     # `zip` only: drop a produced element when all of its fields are null.
     drop_when: Literal["all_null"] | None = None
+    # `regex` only.
+    pattern: str | None = None
+    each: bool = False
+    # `pattern_map` only: a column-name pattern with one `{placeholder}`, e.g.
+    # "gnomAD_exomes_AF_{pop}", plus any matching columns to leave out (the
+    # overall-AF column can itself match the pattern).
+    from_pattern: str | None = None
+    exclude: list[str] | None = None
+    # Build this target only when the condition holds; otherwise it comes out
+    # empty (ClinVar's breakdown is only read for conflicting classifications).
+    when: WhenSpec | None = None
 
     @model_validator(mode="after")
     def _check_transform_shape(self) -> "TargetSpec":
@@ -66,11 +102,25 @@ class TargetSpec(BaseModel):
                 raise ValueError("zip requires `as`")
             if len(self.as_fields) != len(self.source):
                 raise ValueError("zip requires one `as` entry per `from` column")
+        elif self.transform == "regex":
+            if not isinstance(self.source, str):
+                raise ValueError("regex requires `from` to be a single column")
+            if not self.pattern:
+                raise ValueError("regex requires `pattern`")
+            if not self.as_fields:
+                raise ValueError("regex requires `as` naming the groups to read")
+        elif self.transform == "pattern_map":
+            if not self.from_pattern:
+                raise ValueError("pattern_map requires `from_pattern`")
+            if "{" not in self.from_pattern or "}" not in self.from_pattern:
+                raise ValueError("pattern_map `from_pattern` needs a {placeholder}")
+            if self.source is not None:
+                raise ValueError("pattern_map uses `from_pattern`, not `from`")
         else:
             if not isinstance(self.source, str):
                 raise ValueError(f"{self.transform} requires `from` to be a single column")
             if self.as_fields:
-                raise ValueError(f"`as` is only valid for zip, not {self.transform}")
+                raise ValueError(f"`as` is only valid for zip/regex, not {self.transform}")
         return self
 
 
