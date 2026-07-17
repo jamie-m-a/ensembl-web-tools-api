@@ -900,6 +900,57 @@
           "type": "float"
         }
       ]
+    },
+    {
+      "plugin": "utr_annotation",
+      "scope": "transcript",
+      "output": "utr_annotation",
+      "csq_fields": [
+        "5UTR_consequence",
+        "5UTR_annotation",
+        "Existing_uORFs",
+        "Existing_InFrame_oORFs",
+        "Existing_OutOfFrame_oORFs"
+      ],
+      "require_any_input": [
+        "5UTR_consequence",
+        "5UTR_annotation",
+        "Existing_uORFs",
+        "Existing_InFrame_oORFs",
+        "Existing_OutOfFrame_oORFs"
+      ],
+      "targets": [
+        {
+          "field": "consequence",
+          "from": "5UTR_consequence",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "annotation",
+          "from": "5UTR_annotation",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "existing_uorfs",
+          "from": "Existing_uORFs",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "existing_inframe_oorfs",
+          "from": "Existing_InFrame_oORFs",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "existing_outofframe_oorfs",
+          "from": "Existing_OutOfFrame_oORFs",
+          "transform": "scalar",
+          "type": "string"
+        }
+      ]
     }
   ]
 }

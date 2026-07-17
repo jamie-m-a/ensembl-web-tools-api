@@ -17,6 +17,7 @@ from app.vep.utils.spec_interpreter import apply_plugin_spec
 from app.vep.utils.spec_loader import SPEC_DIR, load_spec_file
 from app.vep.utils.vcf_results import (
     _parse_clinvar,
+    _parse_utr_annotation,
     _parse_pathogenicity,
     _parse_dosage_sensitivity,
     _parse_hgvs,
@@ -91,6 +92,7 @@ def test_bundled_spec_validates():
         "alphamissense",
         "cadd",
         "eve",
+        "utr_annotation",
         "gnomad_exomes",
         "gnomad_genomes",
         "all_of_us",
@@ -728,3 +730,37 @@ def test_flat_pathogenicity_members_absent_are_none():
 def test_cadd_zero_is_kept():
     values = ["", "", "", "0.0", "0.0", "", ""]
     assert run("cadd", values, PATH_INDEX) == {"phred": 0.0, "raw": 0.0}
+
+
+# --- UTRAnnotator ------------------------------------------------------------
+
+UTR_COLS = ["5UTR_consequence", "5UTR_annotation", "Existing_uORFs",
+            "Existing_InFrame_oORFs", "Existing_OutOfFrame_oORFs"]
+UTR_INDEX = index_map_for(*UTR_COLS)
+# A real value from dev-data/has_utr.vcf.gz.
+UTR_ANNOTATION = (
+    "alt_type=uORF:ref_StartDistanceToCDS=324:ref_type=uORF:KozakStrength=Moderate"
+    ":KozakContext=GCGATGC:ref_type_length=15:Evidence=False:alt_type_length=189"
+)
+UTR_VALUES = ["5_prime_UTR_uORF_frameshift_variant", UTR_ANNOTATION, "5", "0", "0"]
+
+
+def test_utr_annotation_matches_hand_written_parser():
+    result = run("utr_annotation", UTR_VALUES, UTR_INDEX)
+    assert result == dump(_parse_utr_annotation(UTR_VALUES, UTR_INDEX))
+    assert result["consequence"] == "5_prime_UTR_uORF_frameshift_variant"
+    assert result["existing_uorfs"] == "5"
+
+
+def test_utr_annotation_detail_is_passed_through_verbatim():
+    """5UTR_annotation is a ':'-delimited key=value string, but both paths treat
+    it as opaque text. Note the plugin emits the pairs in a different order for
+    every record -- in has_utr.vcf.gz all 9 annotations are the same 8 pairs
+    shuffled 9 ways -- so this string is not safe to compare or de-duplicate.
+    """
+    result = run("utr_annotation", UTR_VALUES, UTR_INDEX)
+    assert result["annotation"] == UTR_ANNOTATION
+
+
+def test_utr_annotation_empty_is_none():
+    assert run("utr_annotation", ["", "", "", "", ""], UTR_INDEX) is None
