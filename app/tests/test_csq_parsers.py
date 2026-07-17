@@ -9,8 +9,8 @@ transcript row and an intergenic row.
 """
 
 from app.vep.models import vcf_results_model as model
+from app.vep.utils.csq import get_prediction_index_map
 from app.vep.utils.vcf_results import (
-    _get_prediction_index_map,
     _get_alt_allele_details,
     _parse_frequencies,
     _parse_protvar,
@@ -68,7 +68,7 @@ ALL_COLS = [
 ]
 
 HEADER = "Consequence annotations from Ensembl VEP. Format: " + "|".join(ALL_COLS)
-INDEX_MAP = _get_prediction_index_map(HEADER)
+INDEX_MAP = get_prediction_index_map(HEADER)
 
 
 def row_list(**values):
@@ -415,7 +415,7 @@ def test_parse_frequencies_allofus_uses_aou_prefix():
         "AoU_gvs_max_af",
         "AoU_gvs_max_subpop",
     ]
-    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
+    index_map = get_prediction_index_map("Format: " + "|".join(cols))
     values = ["0.10", "0.20", "0.30", "eur"]
 
     result = _parse_frequencies(values, index_map)
@@ -431,7 +431,7 @@ def test_parse_frequencies_allofus_uses_aou_prefix():
 def test_parse_frequencies_ignores_legacy_allofus_prefix():
     # the old AllOfUs_ prefix must no longer be picked up
     cols = ["AllOfUs_gvs_all_af", "AllOfUs_gvs_afr_af"]
-    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
+    index_map = get_prediction_index_map("Format: " + "|".join(cols))
     assert _parse_frequencies(["0.4", "0.5"], index_map) is None
 
 
@@ -442,7 +442,7 @@ def test_parse_frequencies_gnomad_exomes_uses_custom_prefix():
         "gnomAD_exomes_AF_afr",
         "gnomAD_exomes_AF_nfe_XX",
     ]
-    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
+    index_map = get_prediction_index_map("Format: " + "|".join(cols))
     result = _parse_frequencies(["0.01", "0.02", "0.03"], index_map)
     assert result is not None
     exomes = result.gnomad_exomes
@@ -457,7 +457,7 @@ def test_parse_frequencies_gnomad_genomes_uses_custom_prefix():
         "gnomAD_genomes_AF_ami",
         "gnomAD_genomes_AF_grpmax",
     ]
-    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
+    index_map = get_prediction_index_map("Format: " + "|".join(cols))
     result = _parse_frequencies(["0.10", "0.20", "0.30"], index_map)
     assert result is not None
     genomes = result.gnomad_genomes
@@ -469,7 +469,7 @@ def test_parse_frequencies_gnomad_genomes_uses_custom_prefix():
 def test_parse_frequencies_ignores_legacy_gnomad_prefixes():
     # the old gnomADe_/gnomADg_ prefixes must no longer match
     cols = ["gnomADe_AF", "gnomADg_AF", "gnomADe_afr_AF"]
-    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
+    index_map = get_prediction_index_map("Format: " + "|".join(cols))
     assert _parse_frequencies(["0.1", "0.2", "0.3"], index_map) is None
 
 

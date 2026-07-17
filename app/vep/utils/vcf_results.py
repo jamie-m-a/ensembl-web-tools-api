@@ -13,6 +13,16 @@ import vcfpy
 from vep.models import vcf_results_model as model
 from vep.utils import results_filters
 from vep.utils.bgzf import _BgzfReader
+from vep.utils.csq import (
+    csq_index_map_from_header,
+    first_amp,
+    get_csq_value,
+    get_prediction_index_map,
+    has_any_column,
+    raw_amp,
+    split_amp,
+    to_float,
+)
 from vep.utils.vcf_meta import _get_vcf_meta
 
 # Taken from https://github.com/Ensembl/ensembl-hypsipyle
@@ -64,52 +74,21 @@ def _alt_value(alt) -> str:
     return serialize() if callable(serialize) else str(alt)
 
 
-def _get_prediction_index_map(csq_header: str) -> dict[str, int]:
-    """Creates a dictionary of column indexes from the CSQ info description.
-
-    Every CSQ column is indexed, so any annotation field can be read."""
-    csq_header = csq_header.split(":")[-1].strip()
-    csq_headers = csq_header.split("|")
-
-    return {header: index for index, header in enumerate(csq_headers)}
 
 
-def _get_csq_value(
-    csq_values: list[str], csq_key: str, default_value: str | None, index_map: dict[str, int]
-):
-    """Helper method to return CSQ values or a default value
-    if either the key or the value is missing"""
-    if csq_key in index_map and csq_values[index_map[csq_key]]:
-        return csq_values[index_map[csq_key]]
-    return default_value
-
-
-def _has_any_column(index_map: dict[str, int], *columns: str) -> bool:
-    """Whether any of `columns` is present in the CSQ header at all. Lets a parser
-    skip its work when the plugin that produces its columns wasn't run — the
-    header is fixed for the whole file, so a column that is absent here is absent
-    for every record (and the parser could only ever return None/empty)."""
-    return any(column in index_map for column in columns)
-
-
-def _to_float(value: str | None) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _parse_uniprot(csq_values, index_map) -> model.UniprotIds | None:
     """Build Uniprot cross-references from the SWISSPROT/TREMBL/UNIPARC/isoform
     CSQ columns; returns None if none are present."""
-    if not _has_any_column(
+    if not has_any_column(
         index_map, "SWISSPROT", "TREMBL", "UNIPARC", "UNIPROT_ISOFORM"
     ):
         return None
-    swissprot = _get_csq_value(csq_values, "SWISSPROT", None, index_map)
-    trembl = _get_csq_value(csq_values, "TREMBL", None, index_map)
-    uniparc = _get_csq_value(csq_values, "UNIPARC", None, index_map)
-    isoform = _get_csq_value(csq_values, "UNIPROT_ISOFORM", None, index_map)
+    swissprot = get_csq_value(csq_values, "SWISSPROT", None, index_map)
+    trembl = get_csq_value(csq_values, "TREMBL", None, index_map)
+    uniparc = get_csq_value(csq_values, "UNIPARC", None, index_map)
+    isoform = get_csq_value(csq_values, "UNIPROT_ISOFORM", None, index_map)
     if not any([swissprot, trembl, uniparc, isoform]):
         return None
     return model.UniprotIds(
@@ -120,7 +99,7 @@ def _parse_uniprot(csq_values, index_map) -> model.UniprotIds | None:
 def _parse_protein_matches(csq_values, index_map) -> list[model.ProteinMatch]:
     """Parse the DOMAINS CSQ column (e.g. AlphaFold-DB / PDB mappings).
     Multiple matches are '&'-joined; each is 'source:id'."""
-    domains = _get_csq_value(csq_values, "DOMAINS", None, index_map)
+    domains = get_csq_value(csq_values, "DOMAINS", None, index_map)
     if not domains:
         return []
     matches = []
@@ -146,7 +125,7 @@ def _parse_protvar_pocket(raw: str) -> model.ProtVarPocket:
     pocket_id = parts[0] if parts else ""
     numeric: list[float | None] = []
     for part in parts[1:]:
-        number = _to_float(part)
+        number = to_float(part)
         if number is not None:
             numeric.append(number)
     numeric += [None] * (5 - len(numeric))
@@ -164,11 +143,11 @@ def _parse_protvar_pocket(raw: str) -> model.ProtVarPocket:
 def _parse_protvar(csq_values, index_map) -> model.ProtVarAnnotation | None:
     """Build a ProtVar annotation from the stability/pocket/interaction CSQ
     columns; returns None if none are present."""
-    if not _has_any_column(index_map, "ProtVar_stability", "ProtVar_pocket", "ProtVar_int"):
+    if not has_any_column(index_map, "ProtVar_stability", "ProtVar_pocket", "ProtVar_int"):
         return None
-    stability = _get_csq_value(csq_values, "ProtVar_stability", None, index_map)
-    pocket = _get_csq_value(csq_values, "ProtVar_pocket", None, index_map)
-    interaction = _get_csq_value(csq_values, "ProtVar_int", None, index_map)
+    stability = get_csq_value(csq_values, "ProtVar_stability", None, index_map)
+    pocket = get_csq_value(csq_values, "ProtVar_pocket", None, index_map)
+    interaction = get_csq_value(csq_values, "ProtVar_int", None, index_map)
     if not any([stability, pocket, interaction]):
         return None
 
@@ -184,13 +163,13 @@ def _parse_protvar(csq_values, index_map) -> model.ProtVarAnnotation | None:
             interfaces.append(
                 model.ProtVarInteractionInterface(
                     partner=partner,
-                    score=_to_float(score),
+                    score=to_float(score),
                     raw="&".join(t for t in [partner, score] if t),
                 )
             )
 
     return model.ProtVarAnnotation(
-        structure_stability_score=_to_float(stability),
+        structure_stability_score=to_float(stability),
         pockets=pockets,
         interaction_interfaces=interfaces,
     )
@@ -201,13 +180,13 @@ def _parse_intact(csq_values, index_map) -> model.IntActAnnotation | None:
 
     Besides the base feature_type / interaction_ac, the plugin emits one column
     per selected sub-option (IntAct_<flag>), so read those too."""
-    if not _has_any_column(
+    if not has_any_column(
         index_map, "IntAct_feature_type", "IntAct_interaction_ac", "IntAct_feature_ac"
     ):
         return None
 
     def col(name):
-        return _get_csq_value(csq_values, name, None, index_map)
+        return get_csq_value(csq_values, name, None, index_map)
 
     feature_type = col("IntAct_feature_type")
     interaction_ac = col("IntAct_interaction_ac")
@@ -246,29 +225,23 @@ def _parse_intact(csq_values, index_map) -> model.IntActAnnotation | None:
 def _parse_mutfunc(csq_values, index_map) -> model.MutfuncAnnotation | None:
     """Build a mutfunc annotation from its per-data-type score columns; returns
     None if none are present."""
-    if not _has_any_column(
+    if not has_any_column(
         index_map, "mutfunc_motif", "mutfunc_int", "mutfunc_mod", "mutfunc_exp"
     ):
         return None
-    motif = _get_csq_value(csq_values, "mutfunc_motif", None, index_map)
-    interactions = _get_csq_value(csq_values, "mutfunc_int", None, index_map)
-    structure = _get_csq_value(csq_values, "mutfunc_mod", None, index_map)
-    structure_exp = _get_csq_value(csq_values, "mutfunc_exp", None, index_map)
+    motif = get_csq_value(csq_values, "mutfunc_motif", None, index_map)
+    interactions = get_csq_value(csq_values, "mutfunc_int", None, index_map)
+    structure = get_csq_value(csq_values, "mutfunc_mod", None, index_map)
+    structure_exp = get_csq_value(csq_values, "mutfunc_exp", None, index_map)
     if not any([motif, interactions, structure, structure_exp]):
         return None
     return model.MutfuncAnnotation(
-        linear_motifs=_to_float(motif),
-        protein_interactions=_to_float(interactions),
-        protein_structure=_to_float(structure),
-        protein_structure_experimental=_to_float(structure_exp),
+        linear_motifs=to_float(motif),
+        protein_interactions=to_float(interactions),
+        protein_structure=to_float(structure),
+        protein_structure_experimental=to_float(structure_exp),
     )
 
-
-def _first_amp(value: str | None) -> str | None:
-    """First real (non-empty, non-'NA') item of a '&'-joined CSQ list."""
-    for item in _split_amp(value):
-        return item
-    return None
 
 
 def _parse_mavedb(csq_values, index_map) -> model.MaveDBAnnotation | None:
@@ -277,62 +250,56 @@ def _parse_mavedb(csq_values, index_map) -> model.MaveDBAnnotation | None:
     The MaveDB plugin reports several assays for one variant as parallel
     '&'-joined lists (score/urn/pro). Zip score and urn positionally into one
     assay each, so every score pairs with its score-set URN."""
-    if not _has_any_column(
+    if not has_any_column(
         index_map, "MaveDB_score", "MaveDB_urn", "MaveDB_doi", "MaveDB_nt", "MaveDB_pro"
     ):
         return None
-    score = _get_csq_value(csq_values, "MaveDB_score", None, index_map)
-    urn = _get_csq_value(csq_values, "MaveDB_urn", None, index_map)
-    pro = _get_csq_value(csq_values, "MaveDB_pro", None, index_map)
+    score = get_csq_value(csq_values, "MaveDB_score", None, index_map)
+    urn = get_csq_value(csq_values, "MaveDB_urn", None, index_map)
+    pro = get_csq_value(csq_values, "MaveDB_pro", None, index_map)
     if not any([score, urn, pro]):
         return None
-    scores = _raw_amp(score)
-    urns = _raw_amp(urn)
+    scores = raw_amp(score)
+    urns = raw_amp(urn)
     assays: list[model.MaveDBAssay] = []
     for i in range(max(len(scores), len(urns))):
         raw_urn = urns[i] if i < len(urns) else ""
         assay_urn = raw_urn if raw_urn and raw_urn != "NA" else None
-        assay_score = _to_float(scores[i]) if i < len(scores) else None
+        assay_score = to_float(scores[i]) if i < len(scores) else None
         if assay_urn is None and assay_score is None:
             continue
         assays.append(model.MaveDBAssay(urn=assay_urn, score=assay_score))
     if not assays:
         return None
     return model.MaveDBAnnotation(
-        protein_variant=_first_amp(pro),
+        protein_variant=first_amp(pro),
         assays=assays,
     )
 
 
 def _parse_popeve(csq_values, index_map) -> model.PopEve | None:
     """Build popEVE scores; returns None if no popEVE columns present."""
-    if not _has_any_column(index_map, "popEVE_SCORE", "popEVE_EVE", "popEVE_mutant"):
+    if not has_any_column(index_map, "popEVE_SCORE", "popEVE_EVE", "popEVE_mutant"):
         return None
 
     def v(name):
-        return _get_csq_value(csq_values, name, None, index_map)
+        return get_csq_value(csq_values, name, None, index_map)
 
     score = v("popEVE_SCORE")
     if not any([score, v("popEVE_EVE"), v("popEVE_mutant")]):
         return None
     return model.PopEve(
-        score=_to_float(score),
-        eve=_to_float(v("popEVE_EVE")),
-        esm1v=_to_float(v("popEVE_ESM1v")),
-        pop_adjusted_eve=_to_float(v("popEVE_pop_adjusted_EVE")),
-        pop_adjusted_esm1v=_to_float(v("popEVE_pop_adjusted_ESM1v")),
+        score=to_float(score),
+        eve=to_float(v("popEVE_EVE")),
+        esm1v=to_float(v("popEVE_ESM1v")),
+        pop_adjusted_eve=to_float(v("popEVE_pop_adjusted_EVE")),
+        pop_adjusted_esm1v=to_float(v("popEVE_pop_adjusted_ESM1v")),
         gene=v("popEVE_gene"),
         protein=v("popEVE_protein"),
         mutant=v("popEVE_mutant"),
-        gap_frequency=_to_float(v("popEVE_gap_frequency")),
+        gap_frequency=to_float(v("popEVE_gap_frequency")),
     )
 
-
-def _split_amp(value: str | None) -> list[str]:
-    """Split a '&'-delimited CSQ list, dropping empties and 'NA' placeholders."""
-    if not value:
-        return []
-    return [v for v in value.split("&") if v and v != "NA"]
 
 
 def _parse_dosage_sensitivity(
@@ -340,14 +307,14 @@ def _parse_dosage_sensitivity(
 ) -> model.DosageSensitivity | None:
     """Build gnomAD dosage-sensitivity probabilities (pHaplo/pTriplo);
     returns None if neither column is present."""
-    if not _has_any_column(index_map, "pHaplo", "pTriplo"):
+    if not has_any_column(index_map, "pHaplo", "pTriplo"):
         return None
-    phaplo = _get_csq_value(csq_values, "pHaplo", None, index_map)
-    ptriplo = _get_csq_value(csq_values, "pTriplo", None, index_map)
+    phaplo = get_csq_value(csq_values, "pHaplo", None, index_map)
+    ptriplo = get_csq_value(csq_values, "pTriplo", None, index_map)
     if not any([phaplo, ptriplo]):
         return None
     return model.DosageSensitivity(
-        phaplo=_to_float(phaplo), ptriplo=_to_float(ptriplo)
+        phaplo=to_float(phaplo), ptriplo=to_float(ptriplo)
     )
 
 
@@ -356,18 +323,18 @@ def _parse_utr_annotation(
 ) -> model.FivePrimeUtrAnnotation | None:
     """Build a UTRAnnotator 5' UTR annotation; returns None if no 5'UTR /
     uORF columns are present."""
-    if not _has_any_column(
+    if not has_any_column(
         index_map, "5UTR_consequence", "5UTR_annotation", "Existing_uORFs",
         "Existing_InFrame_oORFs", "Existing_OutOfFrame_oORFs",
     ):
         return None
-    consequence = _get_csq_value(csq_values, "5UTR_consequence", None, index_map)
-    annotation = _get_csq_value(csq_values, "5UTR_annotation", None, index_map)
-    uorfs = _get_csq_value(csq_values, "Existing_uORFs", None, index_map)
-    inframe = _get_csq_value(
+    consequence = get_csq_value(csq_values, "5UTR_consequence", None, index_map)
+    annotation = get_csq_value(csq_values, "5UTR_annotation", None, index_map)
+    uorfs = get_csq_value(csq_values, "Existing_uORFs", None, index_map)
+    inframe = get_csq_value(
         csq_values, "Existing_InFrame_oORFs", None, index_map
     )
-    outofframe = _get_csq_value(
+    outofframe = get_csq_value(
         csq_values, "Existing_OutOfFrame_oORFs", None, index_map
     )
     if not any([consequence, annotation, uorfs, inframe, outofframe]):
@@ -386,26 +353,26 @@ def _parse_riboseq_orfs(
 ) -> model.RiboseqOrfsAnnotation | None:
     """Build a Ribo-seq ORFs annotation; returns None if no RiboseqORFs
     columns are present."""
-    if not _has_any_column(
+    if not has_any_column(
         index_map, "RiboseqORFs_id", "RiboseqORFs_consequences", "RiboseqORFs_impact",
         "RiboseqORFs_protein_position", "RiboseqORFs_codons",
         "RiboseqORFs_amino_acids", "RiboseqORFs_publications",
     ):
         return None
-    orf_id = _get_csq_value(csq_values, "RiboseqORFs_id", None, index_map)
-    consequences = _split_amp(
-        _get_csq_value(csq_values, "RiboseqORFs_consequences", None, index_map)
+    orf_id = get_csq_value(csq_values, "RiboseqORFs_id", None, index_map)
+    consequences = split_amp(
+        get_csq_value(csq_values, "RiboseqORFs_consequences", None, index_map)
     )
-    impact = _get_csq_value(csq_values, "RiboseqORFs_impact", None, index_map)
-    protein_position = _get_csq_value(
+    impact = get_csq_value(csq_values, "RiboseqORFs_impact", None, index_map)
+    protein_position = get_csq_value(
         csq_values, "RiboseqORFs_protein_position", None, index_map
     )
-    codons = _get_csq_value(csq_values, "RiboseqORFs_codons", None, index_map)
-    amino_acids = _get_csq_value(
+    codons = get_csq_value(csq_values, "RiboseqORFs_codons", None, index_map)
+    amino_acids = get_csq_value(
         csq_values, "RiboseqORFs_amino_acids", None, index_map
     )
-    publications = _split_amp(
-        _get_csq_value(csq_values, "RiboseqORFs_publications", None, index_map)
+    publications = split_amp(
+        get_csq_value(csq_values, "RiboseqORFs_publications", None, index_map)
     )
     if not any(
         [orf_id, consequences, impact, protein_position, codons, amino_acids, publications]
@@ -433,17 +400,17 @@ def _parse_prediction(value: str | None) -> model.PredictionWithScore | None:
     if match:
         return model.PredictionWithScore(
             prediction=match.group("prediction"),
-            score=_to_float(match.group("score")),
+            score=to_float(match.group("score")),
         )
     return model.PredictionWithScore(prediction=value, score=None)
 
 
 def _parse_hgvs(csq_values, index_map) -> model.HgvsNotations | None:
-    if not _has_any_column(index_map, "HGVSg", "HGVSc", "HGVSp"):
+    if not has_any_column(index_map, "HGVSg", "HGVSc", "HGVSp"):
         return None
-    genomic = _get_csq_value(csq_values, "HGVSg", None, index_map)
-    transcript = _get_csq_value(csq_values, "HGVSc", None, index_map)
-    protein = _get_csq_value(csq_values, "HGVSp", None, index_map)
+    genomic = get_csq_value(csq_values, "HGVSg", None, index_map)
+    transcript = get_csq_value(csq_values, "HGVSc", None, index_map)
+    protein = get_csq_value(csq_values, "HGVSp", None, index_map)
     if not any([genomic, transcript, protein]):
         return None
     return model.HgvsNotations(
@@ -452,14 +419,14 @@ def _parse_hgvs(csq_values, index_map) -> model.HgvsNotations | None:
 
 
 def _parse_spliceai(csq_values, index_map) -> model.SpliceAiScores | None:
-    if not _has_any_column(index_map, "SpliceAI_pred_DS_AG"):
+    if not has_any_column(index_map, "SpliceAI_pred_DS_AG"):
         return None
 
     def f(name):
-        return _to_float(_get_csq_value(csq_values, name, None, index_map))
+        return to_float(get_csq_value(csq_values, name, None, index_map))
 
     def i(name):
-        value = _get_csq_value(csq_values, name, None, index_map)
+        value = get_csq_value(csq_values, name, None, index_map)
         try:
             return int(value)
         except (TypeError, ValueError):
@@ -480,12 +447,12 @@ def _parse_spliceai(csq_values, index_map) -> model.SpliceAiScores | None:
     )
     if not any(value is not None for value in values.values()):
         return None
-    symbol = _get_csq_value(csq_values, "SpliceAI_pred_SYMBOL", None, index_map)
+    symbol = get_csq_value(csq_values, "SpliceAI_pred_SYMBOL", None, index_map)
     return model.SpliceAiScores(symbol=symbol, **values)
 
 
 def _parse_pathogenicity(csq_values, index_map) -> model.PathogenicityPredictions | None:
-    if not _has_any_column(
+    if not has_any_column(
         index_map,
         "SIFT", "PolyPhen", "REVEL", "am_class", "am_pathogenicity",
         "CADD_PHRED", "CADD_RAW", "EVE_CLASS", "EVE_SCORE",
@@ -494,7 +461,7 @@ def _parse_pathogenicity(csq_values, index_map) -> model.PathogenicityPrediction
         return None
 
     def v(name):
-        return _get_csq_value(csq_values, name, None, index_map)
+        return get_csq_value(csq_values, name, None, index_map)
 
     sift = _parse_prediction(v("SIFT"))
     polyphen = _parse_prediction(v("PolyPhen"))
@@ -502,14 +469,14 @@ def _parse_pathogenicity(csq_values, index_map) -> model.PathogenicityPrediction
     fields = dict(
         sift=sift,
         polyphen=polyphen,
-        revel=_to_float(v("REVEL")),
+        revel=to_float(v("REVEL")),
         alphamissense_class=v("am_class"),
-        alphamissense_score=_to_float(v("am_pathogenicity")),
-        cadd_phred=_to_float(v("CADD_PHRED")),
-        cadd_raw=_to_float(v("CADD_RAW")),
+        alphamissense_score=to_float(v("am_pathogenicity")),
+        cadd_phred=to_float(v("CADD_PHRED")),
+        cadd_raw=to_float(v("CADD_RAW")),
         spliceai=spliceai,
         eve_class=v("EVE_CLASS"),
-        eve_score=_to_float(v("EVE_SCORE")),
+        eve_score=to_float(v("EVE_SCORE")),
         popeve=_parse_popeve(csq_values, index_map),
     )
     if not any(value is not None for value in fields.values()):
@@ -522,7 +489,7 @@ def _parse_population_frequencies(
 ) -> model.PopulationFrequencies | None:
     """Build overall + per-population frequencies. pop_pattern has a single
     '{}' where the population code sits, e.g. 'gnomADe_{}_AF'."""
-    overall = _to_float(_get_csq_value(csq_values, overall_key, None, index_map))
+    overall = to_float(get_csq_value(csq_values, overall_key, None, index_map))
     prefix, suffix = pop_pattern.split("{}")
     populations: dict[str, float] = {}
     for column in index_map:
@@ -532,7 +499,7 @@ def _parse_population_frequencies(
             and column != overall_key
         ):
             pop = column[len(prefix): len(column) - len(suffix)]
-            value = _to_float(_get_csq_value(csq_values, column, None, index_map))
+            value = to_float(get_csq_value(csq_values, column, None, index_map))
             if value is not None:
                 populations[pop] = value
     if overall is None and not populations:
@@ -541,7 +508,7 @@ def _parse_population_frequencies(
 
 
 def _parse_frequencies(csq_values, index_map) -> model.AlleleFrequencies | None:
-    if not _has_any_column(
+    if not has_any_column(
         index_map, "gnomAD_exomes_AF", "gnomAD_genomes_AF", "AoU_gvs_all_af"
     ):
         return None
@@ -565,7 +532,7 @@ def _parse_frequencies(csq_values, index_map) -> model.AlleleFrequencies | None:
         csq_values, index_map, "AoU_gvs_all_af", "AoU_gvs_{}_af"
     )
     if all_of_us is not None:
-        max_subpop = _get_csq_value(csq_values, "AoU_gvs_max_subpop", None, index_map)
+        max_subpop = get_csq_value(csq_values, "AoU_gvs_max_subpop", None, index_map)
         if max_subpop:
             all_of_us.max_subpopulation = max_subpop
     if not any([gnomad_exomes, gnomad_genomes, all_of_us]):
@@ -582,10 +549,10 @@ def _parse_go(csq_values, index_map) -> list[model.GoTerm]:
     entry is `GO:<id>:<term>` (term underscore-delimited), e.g.
     `GO:0001558:regulation_of_cell_growth` -> id 'GO:0001558', name
     'regulation of cell growth'."""
-    if not _has_any_column(index_map, "GO"):
+    if not has_any_column(index_map, "GO"):
         return []
     terms: list[model.GoTerm] = []
-    for entry in _split_amp(_get_csq_value(csq_values, "GO", None, index_map)):
+    for entry in split_amp(get_csq_value(csq_values, "GO", None, index_map)):
         parts = entry.split(":")
         if len(parts) < 3:
             continue
@@ -596,11 +563,11 @@ def _parse_go(csq_values, index_map) -> list[model.GoTerm]:
 
 
 def _parse_phenotype_data(csq_values, index_map) -> model.VariantPhenotypeData | None:
-    if not _has_any_column(index_map, "PHENOTYPES", "CLIN_SIG", "PUBMED"):
+    if not has_any_column(index_map, "PHENOTYPES", "CLIN_SIG", "PUBMED"):
         return None
-    phenotypes = _split_amp(_get_csq_value(csq_values, "PHENOTYPES", None, index_map))
-    clin_sig = _split_amp(_get_csq_value(csq_values, "CLIN_SIG", None, index_map))
-    pubmed = _split_amp(_get_csq_value(csq_values, "PUBMED", None, index_map))
+    phenotypes = split_amp(get_csq_value(csq_values, "PHENOTYPES", None, index_map))
+    clin_sig = split_amp(get_csq_value(csq_values, "CLIN_SIG", None, index_map))
+    pubmed = split_amp(get_csq_value(csq_values, "PUBMED", None, index_map))
     if not any([phenotypes, clin_sig, pubmed]):
         return None
     return model.VariantPhenotypeData(
@@ -620,17 +587,17 @@ def _parse_clinvar(csq_values, index_map) -> model.ClinVarAnnotation | None:
     overall classification; CLNSIGCONF (the per-classification submission
     breakdown) is surfaced only when the classification is conflicting, and
     ignored otherwise. Returns None if there is no CLNSIG value."""
-    if not _has_any_column(index_map, "ClinVar_CLNSIG"):
+    if not has_any_column(index_map, "ClinVar_CLNSIG"):
         return None
-    clnsig = _get_csq_value(csq_values, "ClinVar_CLNSIG", None, index_map)
+    clnsig = get_csq_value(csq_values, "ClinVar_CLNSIG", None, index_map)
     if not clnsig:
         return None
-    significance = _split_amp(clnsig)
+    significance = split_amp(clnsig)
 
     breakdown: list[model.ClinVarSignificance] = []
     if _CLNSIG_CONFLICTING in significance:
-        conf = _get_csq_value(csq_values, "ClinVar_CLNSIGCONF", None, index_map)
-        for token in _split_amp(conf):
+        conf = get_csq_value(csq_values, "ClinVar_CLNSIGCONF", None, index_map)
+        for token in split_amp(conf):
             match = _CLNSIGCONF_RE.match(token)
             if match:
                 breakdown.append(
@@ -644,20 +611,15 @@ def _parse_clinvar(csq_values, index_map) -> model.ClinVarAnnotation | None:
     )
 
 
-def _raw_amp(value: str | None) -> list[str]:
-    """Split a '&'-delimited CSQ list keeping every position (incl. 'NA'), so
-    positionally-aligned subfields can be zipped together."""
-    return value.split("&") if value else []
-
 
 def _parse_open_targets(csq_values, index_map) -> model.OpenTargetsAssociation | None:
-    if not _has_any_column(
+    if not has_any_column(
         index_map, "OpenTargets_gwasDiseases", "OpenTargets_qtlGeneId"
     ):
         return None
 
     def raw(name):
-        return _raw_amp(_get_csq_value(csq_values, name, None, index_map))
+        return raw_amp(get_csq_value(csq_values, name, None, index_map))
 
     diseases = raw("OpenTargets_gwasDiseases")
     gene_ids = raw("OpenTargets_gwasGeneId")
@@ -678,7 +640,7 @@ def _parse_open_targets(csq_values, index_map) -> model.OpenTargetsAssociation |
         seen_gwas.add(key)
         gwas_associations.append(
             model.OpenTargetsGwasAssociation(
-                disease=disease, gene_id=gene_id, l2g_score=_to_float(score)
+                disease=disease, gene_id=gene_id, l2g_score=to_float(score)
             )
         )
 
@@ -740,54 +702,54 @@ def _get_alt_allele_details(
         if csq_values[index_map["Allele"]] != alt:
             continue
 
-        frequency = _get_csq_value(csq_values, "AF", frequency, index_map)
+        frequency = get_csq_value(csq_values, "AF", frequency, index_map)
 
         if not allele_level_captured:
             frequencies = _parse_frequencies(csq_values, index_map)
-            colocated_variants = _split_amp(
-                _get_csq_value(csq_values, "Existing_variation", None, index_map)
+            colocated_variants = split_amp(
+                get_csq_value(csq_values, "Existing_variation", None, index_map)
             )
             phenotype_data = _parse_phenotype_data(csq_values, index_map)
             open_targets = _parse_open_targets(csq_values, index_map)
             # Variant-level representations / genome-wide scores. These are the
             # same across an allele's transcripts and are the only annotations
             # available for intergenic variants (which have no transcript rows).
-            spdi = _get_csq_value(csq_values, "SPDI", None, index_map)
-            hgvsg = _get_csq_value(csq_values, "HGVSg", None, index_map)
-            cadd_phred = _to_float(
-                _get_csq_value(csq_values, "CADD_PHRED", None, index_map)
+            spdi = get_csq_value(csq_values, "SPDI", None, index_map)
+            hgvsg = get_csq_value(csq_values, "HGVSg", None, index_map)
+            cadd_phred = to_float(
+                get_csq_value(csq_values, "CADD_PHRED", None, index_map)
             )
-            cadd_raw = _to_float(
-                _get_csq_value(csq_values, "CADD_RAW", None, index_map)
+            cadd_raw = to_float(
+                get_csq_value(csq_values, "CADD_RAW", None, index_map)
             )
             clinvar = _parse_clinvar(csq_values, index_map)
             allele_level_captured = True
 
-        cons = _get_csq_value(csq_values, "Consequence", "", index_map)
+        cons = get_csq_value(csq_values, "Consequence", "", index_map)
         if len(cons) == 0:
             cons = []
         else:
             cons = cons.split("&")
         if csq_values[index_map["Feature_type"]] == "Transcript":
             is_canonical = (
-                _get_csq_value(csq_values, "CANONICAL", "NO", index_map) == "YES"
+                get_csq_value(csq_values, "CANONICAL", "NO", index_map) == "YES"
             )
 
             # It looks like for Feature_type = Transcript that we always have a STRAND value
             strand = (
                 model.Strand.reverse
-                if _get_csq_value(csq_values, "STRAND", "1", index_map) == "-1"
+                if get_csq_value(csq_values, "STRAND", "1", index_map) == "-1"
                 else model.Strand.forward
             )
 
             # MANE: depending on the VEP run, either the MANE column carries the
             # label (MANE_Select / MANE_Plus_Clinical) or the MANE_SELECT /
             # MANE_PLUS_CLINICAL columns carry the matched RefSeq id. Handle both.
-            mane_label = _get_csq_value(csq_values, "MANE", None, index_map)
-            mane_select_refseq = _get_csq_value(
+            mane_label = get_csq_value(csq_values, "MANE", None, index_map)
+            mane_select_refseq = get_csq_value(
                 csq_values, "MANE_SELECT", None, index_map
             )
-            mane_plus_clinical = _get_csq_value(
+            mane_plus_clinical = get_csq_value(
                 csq_values, "MANE_PLUS_CLINICAL", None, index_map
             )
             is_mane_select = bool(mane_select_refseq) or mane_label == "MANE_Select"
@@ -798,11 +760,11 @@ def _get_alt_allele_details(
             consequences.append(
                 model.PredictedTranscriptConsequence(
                     feature_type=model.FeatureType.transcript,
-                    stable_id=_get_csq_value(csq_values, "Feature", "", index_map),
-                    gene_stable_id=_get_csq_value(csq_values, "Gene", "", index_map),
-                    biotype=_get_csq_value(csq_values, "BIOTYPE", "", index_map),
+                    stable_id=get_csq_value(csq_values, "Feature", "", index_map),
+                    gene_stable_id=get_csq_value(csq_values, "Gene", "", index_map),
+                    biotype=get_csq_value(csq_values, "BIOTYPE", "", index_map),
                     is_canonical=is_canonical,
-                    gene_symbol=_get_csq_value(csq_values, "SYMBOL", None, index_map),
+                    gene_symbol=get_csq_value(csq_values, "SYMBOL", None, index_map),
                     consequences=cons,
                     strand=strand,
                     # MANE
@@ -810,7 +772,7 @@ def _get_alt_allele_details(
                     is_mane_plus_clinical=is_mane_plus_clinical,
                     mane_select_refseq_id=mane_select_refseq,
                     # Protein & functional annotations
-                    ensembl_protein_id=_get_csq_value(
+                    ensembl_protein_id=get_csq_value(
                         csq_values, "ENSP", None, index_map
                     ),
                     uniprot=_parse_uniprot(csq_values, index_map),
@@ -820,12 +782,12 @@ def _get_alt_allele_details(
                     mutfunc=_parse_mutfunc(csq_values, index_map),
                     mavedb=_parse_mavedb(csq_values, index_map),
                     # Variant representations
-                    spdi=_get_csq_value(csq_values, "SPDI", None, index_map),
+                    spdi=get_csq_value(csq_values, "SPDI", None, index_map),
                     # HGVS, pathogenicity, gene constraint
                     hgvs=_parse_hgvs(csq_values, index_map),
                     pathogenicity=_parse_pathogenicity(csq_values, index_map),
-                    loeuf=_to_float(
-                        _get_csq_value(csq_values, "LOEUF", None, index_map)
+                    loeuf=to_float(
+                        get_csq_value(csq_values, "LOEUF", None, index_map)
                     ),
                     dosage_sensitivity=_parse_dosage_sensitivity(
                         csq_values, index_map
@@ -918,16 +880,6 @@ def _read_indexed_page(
     return b"".join(header_lines).decode(), b"".join(rows).decode()
 
 
-def _csq_index_map_from_header(header_lines: list[str]) -> dict[str, int]:
-    """CSQ column -> index, parsed from the raw ##INFO=<ID=CSQ ...> header line.
-    Used by the filter scan, which reads raw text rather than via vcfpy."""
-    for line in header_lines:
-        if line.startswith("##INFO=<ID=CSQ"):
-            match = re.search(r'Description="([^"]*)"', line)
-            if match:
-                return _get_prediction_index_map(match.group(1))
-    return {}
-
 
 def _get_filtered_results(
     page_size: int,
@@ -949,7 +901,7 @@ def _get_filtered_results(
         for line in handle:
             (header_lines if line.startswith("#") else data_lines).append(line)
 
-    index_map = _csq_index_map_from_header(header_lines)
+    index_map = csq_index_map_from_header(header_lines)
     compiled = results_filters.compile_filters(filters, index_map)
     kept, stats = results_filters.apply_filter_pipeline(data_lines, compiled)
 
@@ -1059,7 +1011,7 @@ def _get_results_from_vcfpy(
     if not csq_header:
         raise Exception("CSQ header missing")
 
-    prediction_index_map = _get_prediction_index_map(csq_header)
+    prediction_index_map = get_prediction_index_map(csq_header)
     # Required CSQ column (the rest use fallback values)
     if "Allele" not in prediction_index_map:
         raise Exception("Allele column missing from CSQ header")
