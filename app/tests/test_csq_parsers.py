@@ -99,6 +99,33 @@ def test_parse_protvar_pocket_positional_and_no_residues():
     assert not hasattr(pocket, "residues")
 
 
+def test_parse_protvar_pocket_unparseable_item_does_not_shift_later_values():
+    """An unparseable score must empty only its own field.
+
+    This previously collected the parts that parsed as a float and assigned them
+    in order, so a gap pulled every later value one field forward — the score
+    was reported as energy_per_volume, buriedness as score, and so on.
+    """
+    pocket = _parse_protvar_pocket("POCKET1&-5.2&NA&0.8&0.6&12.5&RES")
+    assert pocket.energy == -5.2
+    assert pocket.energy_per_volume is None  # the unparseable one, and only it
+    assert pocket.score == 0.8
+    assert pocket.buriedness == 0.6
+    assert pocket.radius_of_gyration == 12.5
+
+
+def test_parse_protvar_pocket_truncated_value():
+    """Fewer items than fields: the missing tail is empty, not misread."""
+    pocket = _parse_protvar_pocket("POCKET1&-5.2&0.3")
+    assert pocket.pocket_id == "POCKET1"
+    assert pocket.energy == -5.2
+    assert pocket.energy_per_volume == 0.3
+    assert pocket.score is None
+    assert pocket.buriedness is None
+    assert pocket.radius_of_gyration is None
+    assert pocket.raw == "POCKET1&-5.2&0.3"
+
+
 def test_parse_protvar_populated():
     result = _parse_protvar(
         row_list(

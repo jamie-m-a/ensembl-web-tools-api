@@ -120,22 +120,23 @@ def _parse_protvar_pocket(raw: str) -> model.ProtVarPocket:
     """Parse a ProtVar_pocket value, positionally:
     id & energy & energy_per_volume & score & buriedness & radius_of_gyration &
     residues. The leading id (and trailing residue token) are non-numeric; the
-    middle parts are the numeric scores captured here. Residues are ignored."""
+    middle parts are the numeric scores captured here. Residues are ignored.
+
+    Each score is read from its own index. An item that is absent or does not
+    parse leaves only its own field empty; it must not pull the later values
+    forward, or they would be silently reported under the wrong names."""
     parts = raw.split("&")
-    pocket_id = parts[0] if parts else ""
-    numeric: list[float | None] = []
-    for part in parts[1:]:
-        number = to_float(part)
-        if number is not None:
-            numeric.append(number)
-    numeric += [None] * (5 - len(numeric))
+
+    def slot(index: int) -> float | None:
+        return to_float(parts[index]) if index < len(parts) else None
+
     return model.ProtVarPocket(
-        pocket_id=pocket_id,
-        energy=numeric[0],
-        energy_per_volume=numeric[1],
-        score=numeric[2],
-        buriedness=numeric[3],
-        radius_of_gyration=numeric[4],
+        pocket_id=parts[0] if parts else "",
+        energy=slot(1),
+        energy_per_volume=slot(2),
+        score=slot(3),
+        buriedness=slot(4),
+        radius_of_gyration=slot(5),
         raw=raw,
     )
 

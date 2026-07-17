@@ -374,30 +374,22 @@ def test_protvar_empty_matches():
 
 
 def test_protvar_pocket_missing_middle_value_does_not_shift():
-    """DIVERGENCE (spec is correct, parser is not).
+    """An unparseable score empties only its own field, in both paths.
 
-    With energy_per_volume unparseable, every later value must stay in its own
-    field. The hand-written parser compacts, mislabelling score as
-    energy_per_volume, buriedness as score, and so on.
+    This used to be a deliberate divergence: `positional` assigned by index
+    while the parser compacted, mislabelling score as energy_per_volume and so
+    on. The parser has since been fixed, so the two now agree.
     """
     raw = "POCKET1&-5.2&NA&0.8&0.6&12.5&RES"
     spec_pocket = run("protvar", row_list(ProtVar_pocket=raw))["pockets"][0]
-    parser_pocket = _parse_protvar_pocket(raw).model_dump()
 
-    # the spec keeps every value in the field it was written to
     assert spec_pocket["energy"] == -5.2
     assert spec_pocket["energy_per_volume"] is None
     assert spec_pocket["score"] == 0.8
     assert spec_pocket["buriedness"] == 0.6
     assert spec_pocket["radius_of_gyration"] == 12.5
 
-    # the parser shifts them left, silently misattributing three of them
-    assert parser_pocket["energy_per_volume"] == 0.8  # actually the score
-    assert parser_pocket["score"] == 0.6  # actually buriedness
-    assert parser_pocket["buriedness"] == 12.5  # actually radius_of_gyration
-    assert parser_pocket["radius_of_gyration"] is None
-
-    assert spec_pocket != parser_pocket
+    assert spec_pocket == _parse_protvar_pocket(raw).model_dump()
 
 
 def test_protvar_interaction_na_partner_is_nulled():
