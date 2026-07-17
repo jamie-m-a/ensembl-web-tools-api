@@ -17,6 +17,7 @@ from app.vep.utils.spec_loader import (
     resolve_spec,
     write_spec_sidecar,
 )
+from app.vep.utils.vcf_results import _load_pinned_spec
 
 SAMPLE = {"genome": {"assembly": "GRCh38"}, "plugins": []}
 
@@ -126,3 +127,28 @@ def test_write_spec_sidecar_overwrites_the_previous_one(tmp_path):
     assert (tmp_path / SPEC_SIDECAR_FILE).exists()
     # still exactly one sidecar file, not two
     assert len(list(tmp_path.glob("*spec*"))) == 1
+
+
+# --- _load_pinned_spec: the results-time seam (vcf_results) -----------------
+# The defensive wrapper get_results_from_path uses to load the pinned spec at
+# results time. It must never let a missing or corrupt pin break parsing.
+
+
+def test_load_pinned_spec_returns_the_sidecar_when_present(tmp_path):
+    write_spec_sidecar(tmp_path, load_spec("human_grch38"))
+    (tmp_path / "output.vcf.gz").write_bytes(b"")
+    spec = _load_pinned_spec(FilePath(tmp_path / "output.vcf.gz"))
+    assert spec is not None
+    assert spec.spec_version == load_spec("human_grch38").spec_version
+
+
+def test_load_pinned_spec_missing_sidecar_is_none(tmp_path):
+    (tmp_path / "output.vcf.gz").write_bytes(b"")
+    assert _load_pinned_spec(FilePath(tmp_path / "output.vcf.gz")) is None
+
+
+def test_load_pinned_spec_unreadable_sidecar_is_none_not_raised(tmp_path):
+    """A corrupt pin must fall back, not 500 the results endpoint."""
+    (tmp_path / SPEC_SIDECAR_FILE).write_text("{ not valid json")
+    (tmp_path / "output.vcf.gz").write_bytes(b"")
+    assert _load_pinned_spec(FilePath(tmp_path / "output.vcf.gz")) is None

@@ -24,6 +24,8 @@ from vep.utils.csq import (
     to_float,
 )
 from vep.utils.vcf_meta import _get_vcf_meta
+from vep.utils.spec_loader import load_spec_sidecar
+from vep.models.parsing_spec_model import ParsingSpec
 
 # Taken from https://github.com/Ensembl/ensembl-hypsipyle
 # main/common/file_model/variant.py#L142
@@ -934,6 +936,35 @@ def _get_filtered_results(
     return response
 
 
+def _load_pinned_spec(vcf_path: FilePath) -> ParsingSpec | None:
+    """The parsing spec pinned to this job at submission, loaded defensively.
+
+    Piece 2 of the annotation-spec cutover: the spec is loaded and logged at
+    results time so the seam is real and exercised end to end, but the response
+    is still built by the hand-written `_parse_*` bank. Their equivalence to the
+    interpreter over real pipeline output is held by test_spec_real_vcfs.py;
+    piece 3 replaces the hand-written parsers with spec_interpreter.apply_plugin_spec
+    driven by this spec.
+
+    Never raises: an output with no sidecar (pre-dating the pin) or an unreadable
+    one must still parse exactly as before, so both fall back to None.
+    """
+    try:
+        spec = load_spec_sidecar(vcf_path)
+    except Exception as exc:
+        logging.warning(
+            "Ignoring unreadable parsing-spec sidecar for %s: %s", vcf_path, exc
+        )
+        return None
+    if spec is None:
+        logging.debug(
+            "No parsing-spec sidecar for %s; using hand-written parsers", vcf_path
+        )
+    else:
+        logging.info("Loaded pinned parsing spec %s for %s", spec.spec_version, vcf_path)
+    return spec
+
+
 def get_results_from_path(
     page_size: int,
     page: int,
@@ -943,6 +974,12 @@ def get_results_from_path(
     """Returns a page of VCF data from the given filepath.
     Slices the input VCF file to a smaller one
     and converts it to stream for get_results_from_stream"""
+
+    # Load and log the spec pinned to this job at submission, exercising the
+    # results-time seam of the annotation-spec cutover. The page is still parsed
+    # by the hand-written parsers below (piece 3 parses from this spec instead);
+    # a missing or unreadable pin never fails results.
+    _load_pinned_spec(vcf_path)
 
     # Filtered requests can't use the page index (filtering shifts record
     # positions), so they take a dedicated scan-and-filter path.
