@@ -17,6 +17,11 @@ from app.vep.utils.spec_interpreter import apply_plugin_spec
 from app.vep.utils.spec_loader import SPEC_DIR, load_spec_file
 from app.vep.utils.vcf_results import (
     _parse_clinvar,
+    _parse_dosage_sensitivity,
+    _parse_hgvs,
+    _parse_intact,
+    _parse_phenotype_data,
+    _parse_popeve,
     _parse_go,
     _parse_spliceai,
     _parse_open_targets,
@@ -76,6 +81,11 @@ def test_bundled_spec_validates():
         "go",
         "spliceai",
         "riboseq_orfs",
+        "hgvs",
+        "phenotype_data",
+        "dosage_sensitivity",
+        "intact",
+        "popeve",
         "gnomad_exomes",
         "gnomad_genomes",
         "all_of_us",
@@ -570,3 +580,93 @@ def test_spliceai_symbol_alone_is_not_an_annotation():
     values = ["BRCA1", "", "", "", "", "", "", "", ""]
     assert run("spliceai", values, SPLICEAI_INDEX) is None
     assert _parse_spliceai(values, SPLICEAI_INDEX) is None
+
+
+# --- plain scalar/list plugins -----------------------------------------------
+#
+# No new vocabulary; all five verified against dev-data/output.vcf.gz with zero
+# mismatches (hgvs 210,658 / phenotype_data 382,715 / dosage 393,079 /
+# intact 25 / popeve 96,953 CSQ entries).
+
+
+def test_hgvs_matches_hand_written_parser():
+    index_map = index_map_for("HGVSg", "HGVSc", "HGVSp")
+    values = ["NC_1:g.100A>G", "ENST1:c.50A>G", "ENSP1:p.Lys1Arg"]
+    result = run("hgvs", values, index_map)
+    assert result == dump(_parse_hgvs(values, index_map))
+    assert result["transcript"] == "ENST1:c.50A>G"
+
+
+def test_hgvs_partial_matches():
+    """This run emits HGVSc/HGVSp but no HGVSg -- the absent one is null."""
+    index_map = index_map_for("HGVSc", "HGVSp")
+    values = ["ENST1:c.50A>G", ""]
+    result = run("hgvs", values, index_map)
+    assert result == dump(_parse_hgvs(values, index_map))
+    assert result["genomic"] is None
+
+
+def test_hgvs_empty_is_none():
+    index_map = index_map_for("HGVSg", "HGVSc", "HGVSp")
+    assert run("hgvs", ["", "", ""], index_map) is None
+
+
+def test_phenotype_data_matches_hand_written_parser():
+    index_map = index_map_for("PHENOTYPES", "CLIN_SIG", "PUBMED")
+    values = ["cancer&diabetes", "pathogenic&NA", "123&456"]
+    result = run("phenotype_data", values, index_map)
+    assert result == dump(_parse_phenotype_data(values, index_map))
+    assert result["phenotypes"] == ["cancer", "diabetes"]
+    assert result["clinical_significance"] == ["pathogenic"]  # NA dropped
+
+
+def test_phenotype_data_empty_is_none():
+    index_map = index_map_for("PHENOTYPES", "CLIN_SIG", "PUBMED")
+    assert run("phenotype_data", ["", "", ""], index_map) is None
+
+
+def test_dosage_sensitivity_matches_hand_written_parser():
+    index_map = index_map_for("pHaplo", "pTriplo")
+    values = ["0.98", "0.12"]
+    result = run("dosage_sensitivity", values, index_map)
+    assert result == dump(_parse_dosage_sensitivity(values, index_map))
+    assert result == {"phaplo": 0.98, "ptriplo": 0.12}
+
+
+def test_dosage_sensitivity_zero_is_kept():
+    """0.0 is a real probability, not absence."""
+    index_map = index_map_for("pHaplo", "pTriplo")
+    values = ["0.0", ""]
+    result = run("dosage_sensitivity", values, index_map)
+    assert result == dump(_parse_dosage_sensitivity(values, index_map))
+    assert result["phaplo"] == 0.0
+
+
+def test_intact_matches_hand_written_parser():
+    """This run emits only three of IntAct's columns; the unselected
+    sub-options are absent and come back null."""
+    index_map = index_map_for(
+        "IntAct_feature_type", "IntAct_interaction_ac", "IntAct_feature_ac"
+    )
+    values = ["mutation", "EBI-123", "EBI-ac"]
+    result = run("intact", values, index_map)
+    assert result == dump(_parse_intact(values, index_map))
+    assert result["feature_type"] == "mutation"
+    assert result["pmid"] is None
+
+
+def test_popeve_matches_hand_written_parser():
+    index_map = index_map_for(
+        "popEVE_SCORE", "popEVE_EVE", "popEVE_ESM1v", "popEVE_gene",
+        "popEVE_mutant", "popEVE_gap_frequency",
+    )
+    values = ["-0.5", "-1.2", "-3.4", "BRCA1", "K1R", "0.02"]
+    result = run("popeve", values, index_map)
+    assert result == dump(_parse_popeve(values, index_map))
+    assert result["score"] == -0.5
+    assert result["gene"] == "BRCA1"
+
+
+def test_popeve_empty_is_none():
+    index_map = index_map_for("popEVE_SCORE", "popEVE_EVE", "popEVE_mutant")
+    assert run("popeve", ["", "", ""], index_map) is None

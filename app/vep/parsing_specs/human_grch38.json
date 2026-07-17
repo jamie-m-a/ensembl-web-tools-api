@@ -565,6 +565,241 @@
           "transform": "list"
         }
       ]
+    },
+    {
+      "plugin": "hgvs",
+      "scope": "transcript",
+      "output": "hgvs",
+      "csq_fields": [
+        "HGVSg",
+        "HGVSc",
+        "HGVSp"
+      ],
+      "require_any_input": [
+        "HGVSg",
+        "HGVSc",
+        "HGVSp"
+      ],
+      "targets": [
+        {
+          "field": "genomic",
+          "from": "HGVSg",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "transcript",
+          "from": "HGVSc",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "protein",
+          "from": "HGVSp",
+          "transform": "scalar",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "plugin": "phenotype_data",
+      "scope": "allele",
+      "output": "phenotype_data",
+      "csq_fields": [
+        "PHENOTYPES",
+        "CLIN_SIG",
+        "PUBMED"
+      ],
+      "require_any_output": [
+        "phenotypes",
+        "clinical_significance",
+        "pubmed_ids"
+      ],
+      "targets": [
+        {
+          "field": "phenotypes",
+          "from": "PHENOTYPES",
+          "transform": "list"
+        },
+        {
+          "field": "clinical_significance",
+          "from": "CLIN_SIG",
+          "transform": "list"
+        },
+        {
+          "field": "pubmed_ids",
+          "from": "PUBMED",
+          "transform": "list"
+        }
+      ]
+    },
+    {
+      "plugin": "dosage_sensitivity",
+      "scope": "transcript",
+      "output": "dosage_sensitivity",
+      "csq_fields": [
+        "pHaplo",
+        "pTriplo"
+      ],
+      "require_any_input": [
+        "pHaplo",
+        "pTriplo"
+      ],
+      "targets": [
+        {
+          "field": "phaplo",
+          "from": "pHaplo",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "ptriplo",
+          "from": "pTriplo",
+          "transform": "scalar",
+          "type": "float"
+        }
+      ]
+    },
+    {
+      "plugin": "intact",
+      "scope": "transcript",
+      "output": "intact",
+      "csq_fields": [
+        "IntAct_feature_type",
+        "IntAct_interaction_ac",
+        "IntAct_feature_ac"
+      ],
+      "require_any_input": [
+        "IntAct_feature_type",
+        "IntAct_interaction_ac",
+        "IntAct_feature_ac",
+        "IntAct_feature_short_label",
+        "IntAct_feature_annotation",
+        "IntAct_ap_ac",
+        "IntAct_interaction_participants",
+        "IntAct_pmid"
+      ],
+      "targets": [
+        {
+          "field": "feature_type",
+          "from": "IntAct_feature_type",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "interaction_ac",
+          "from": "IntAct_interaction_ac",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "feature_ac",
+          "from": "IntAct_feature_ac",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "feature_short_label",
+          "from": "IntAct_feature_short_label",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "feature_annotation",
+          "from": "IntAct_feature_annotation",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "ap_ac",
+          "from": "IntAct_ap_ac",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "interaction_participants",
+          "from": "IntAct_interaction_participants",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "pmid",
+          "from": "IntAct_pmid",
+          "transform": "scalar",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "plugin": "popeve",
+      "scope": "transcript",
+      "output": "popeve",
+      "csq_fields": [
+        "popEVE_SCORE",
+        "popEVE_EVE",
+        "popEVE_mutant"
+      ],
+      "require_any_input": [
+        "popEVE_SCORE",
+        "popEVE_EVE",
+        "popEVE_mutant"
+      ],
+      "targets": [
+        {
+          "field": "score",
+          "from": "popEVE_SCORE",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "eve",
+          "from": "popEVE_EVE",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "esm1v",
+          "from": "popEVE_ESM1v",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "pop_adjusted_eve",
+          "from": "popEVE_pop_adjusted_EVE",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "pop_adjusted_esm1v",
+          "from": "popEVE_pop_adjusted_ESM1v",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "gene",
+          "from": "popEVE_gene",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "protein",
+          "from": "popEVE_protein",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "mutant",
+          "from": "popEVE_mutant",
+          "transform": "scalar",
+          "type": "string"
+        },
+        {
+          "field": "gap_frequency",
+          "from": "popEVE_gap_frequency",
+          "transform": "scalar",
+          "type": "float"
+        }
+      ]
     }
   ]
 }
