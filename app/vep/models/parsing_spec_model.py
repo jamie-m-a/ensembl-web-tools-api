@@ -14,16 +14,25 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-ValueType = Literal["string", "float", "int"]
+# "raw" is not a coercion: it captures the element's own source text, so a value
+# survives verbatim even where the named fields misread it. ProtVar uses this as
+# a hedge — its column layout is only known best-effort.
+ValueType = Literal["string", "float", "int", "raw"]
 
 # Transforms understood by the interpreter. Kept deliberately small; this set was
 # derived by enumerating the existing `_parse_*` functions rather than invented.
-Transform = Literal["scalar", "list", "first", "zip", "regex", "pattern_map"]
+Transform = Literal[
+    "scalar", "list", "first", "zip", "regex", "pattern_map", "chunk", "positional"
+]
 
 
 class FieldSpec(BaseModel):
-    """One output field of a composite value (e.g. one column of a `zip`, or a
-    named group of a `regex`)."""
+    """One output field of a composite value (e.g. one column of a `zip`, a named
+    group of a `regex`, or a slot of a `positional`/`chunk`).
+
+    A `raw`-typed field consumes no positional slot — it reports the source text
+    of the element it sits in.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -63,6 +72,13 @@ class TargetSpec(BaseModel):
                    wildcard. The columns are discovered from the CSQ header at
                    runtime, so the field set need not be known up front (this is
                    how gnomAD's per-ancestry AF columns work).
+      chunk        one column -> list of objects, taking `size` '&'-items per
+                   object (ProtVar's interaction interfaces are partner & score
+                   repeating).
+      positional   one column -> one object, `as` assigned to '&'-items strictly
+                   by index. Items beyond `as` are ignored; missing ones are
+                   null. Use `wrap: "list"` where the output is a
+                   single-element list.
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -89,6 +105,10 @@ class TargetSpec(BaseModel):
     # overall-AF column can itself match the pattern).
     from_pattern: str | None = None
     exclude: list[str] | None = None
+    # `chunk` only: how many '&'-items make up one object.
+    size: int | None = None
+    # `positional` only: emit the single object inside a list.
+    wrap: Literal["list"] | None = None
     # Build this target only when the condition holds; otherwise it comes out
     # empty (ClinVar's breakdown is only read for conflicting classifications).
     when: WhenSpec | None = None
@@ -116,11 +136,25 @@ class TargetSpec(BaseModel):
                 raise ValueError("pattern_map `from_pattern` needs a {placeholder}")
             if self.source is not None:
                 raise ValueError("pattern_map uses `from_pattern`, not `from`")
+        elif self.transform == "chunk":
+            if not isinstance(self.source, str):
+                raise ValueError("chunk requires `from` to be a single column")
+            if not self.as_fields:
+                raise ValueError("chunk requires `as`")
+            if not self.size or self.size < 1:
+                raise ValueError("chunk requires a positive `size`")
+        elif self.transform == "positional":
+            if not isinstance(self.source, str):
+                raise ValueError("positional requires `from` to be a single column")
+            if not self.as_fields:
+                raise ValueError("positional requires `as`")
         else:
             if not isinstance(self.source, str):
                 raise ValueError(f"{self.transform} requires `from` to be a single column")
             if self.as_fields:
-                raise ValueError(f"`as` is only valid for zip/regex, not {self.transform}")
+                raise ValueError(
+                    f"`as` is only valid for zip/regex/chunk/positional, not {self.transform}"
+                )
         return self
 
 

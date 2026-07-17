@@ -17,6 +17,8 @@ from app.vep.utils.spec_interpreter import apply_plugin_spec
 from app.vep.utils.spec_loader import SPEC_DIR, load_spec_file
 from app.vep.utils.vcf_results import (
     _parse_clinvar,
+    _parse_protvar,
+    _parse_protvar_pocket,
     _parse_frequencies,
     _parse_mavedb,
     _parse_mutfunc,
@@ -66,6 +68,7 @@ def test_bundled_spec_validates():
         "mutfunc",
         "mavedb",
         "clinvar",
+        "protvar",
         "gnomad_exomes",
         "gnomad_genomes",
         "all_of_us",
@@ -319,3 +322,92 @@ def test_all_of_us_label_without_frequencies_is_none():
 
     assert run("all_of_us", values, index_map) is None
     assert _parse_frequencies(values, index_map) is None
+
+
+# --- ProtVar: chunk + positional ---------------------------------------------
+#
+# The happy path matches the hand-written parser exactly. The edge cases below
+# do NOT, deliberately: _parse_protvar_pocket collects only the parts that parse
+# as a float and then assigns them in order, so one unparseable item silently
+# shifts every later value into the wrong field. `positional` assigns strictly by
+# index instead. Those tests document the divergence rather than enshrine it.
+
+PROTVAR_FULL = dict(
+    ProtVar_stability="0.42",
+    ProtVar_pocket="POCKET1&-5.2&0.3&0.8&0.6&12.5&RES",
+    ProtVar_int="PARTNER1&0.9&PARTNER2&0.8",
+)
+
+
+def test_protvar_well_formed_matches_hand_written_parser():
+    csq = row_list(**PROTVAR_FULL)
+    assert run("protvar", csq) == dump(_parse_protvar(csq, INDEX_MAP))
+
+
+def test_protvar_shape_is_as_expected():
+    result = run("protvar", row_list(**PROTVAR_FULL))
+    assert result["structure_stability_score"] == 0.42
+
+    pocket = result["pockets"][0]
+    assert pocket["pocket_id"] == "POCKET1"
+    assert pocket["energy"] == -5.2
+    assert pocket["radius_of_gyration"] == 12.5
+    # the trailing residues item is unnamed, so ignored -- but `raw` keeps it
+    assert pocket["raw"] == PROTVAR_FULL["ProtVar_pocket"]
+
+    assert [i["partner"] for i in result["interaction_interfaces"]] == [
+        "PARTNER1",
+        "PARTNER2",
+    ]
+    assert result["interaction_interfaces"][0]["score"] == 0.9
+    assert result["interaction_interfaces"][0]["raw"] == "PARTNER1&0.9"
+
+
+def test_protvar_odd_interaction_token_count_matches():
+    """A trailing partner with no score: still one interface, score null."""
+    csq = row_list(ProtVar_int="PARTNER1&0.9&PARTNER3")
+    assert run("protvar", csq) == dump(_parse_protvar(csq, INDEX_MAP))
+
+
+def test_protvar_empty_matches():
+    assert run("protvar", EMPTY) == dump(_parse_protvar(EMPTY, INDEX_MAP)) == None
+
+
+def test_protvar_pocket_missing_middle_value_does_not_shift():
+    """DIVERGENCE (spec is correct, parser is not).
+
+    With energy_per_volume unparseable, every later value must stay in its own
+    field. The hand-written parser compacts, mislabelling score as
+    energy_per_volume, buriedness as score, and so on.
+    """
+    raw = "POCKET1&-5.2&NA&0.8&0.6&12.5&RES"
+    spec_pocket = run("protvar", row_list(ProtVar_pocket=raw))["pockets"][0]
+    parser_pocket = _parse_protvar_pocket(raw).model_dump()
+
+    # the spec keeps every value in the field it was written to
+    assert spec_pocket["energy"] == -5.2
+    assert spec_pocket["energy_per_volume"] is None
+    assert spec_pocket["score"] == 0.8
+    assert spec_pocket["buriedness"] == 0.6
+    assert spec_pocket["radius_of_gyration"] == 12.5
+
+    # the parser shifts them left, silently misattributing three of them
+    assert parser_pocket["energy_per_volume"] == 0.8  # actually the score
+    assert parser_pocket["score"] == 0.6  # actually buriedness
+    assert parser_pocket["buriedness"] == 12.5  # actually radius_of_gyration
+    assert parser_pocket["radius_of_gyration"] is None
+
+    assert spec_pocket != parser_pocket
+
+
+def test_protvar_interaction_na_partner_is_nulled():
+    """DIVERGENCE (spec is more consistent).
+
+    The spec treats 'NA' as absent everywhere. The hand-written parser nulls
+    'NA' for MaveDB urns but passes it through verbatim as a ProtVar partner.
+    """
+    interfaces = run("protvar", row_list(ProtVar_int="NA&0.9"))["interaction_interfaces"]
+    assert interfaces[0]["partner"] is None
+
+    parser = _parse_protvar(row_list(ProtVar_int="NA&0.9"), INDEX_MAP)
+    assert parser.interaction_interfaces[0].partner == "NA"

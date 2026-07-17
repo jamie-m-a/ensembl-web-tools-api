@@ -41,6 +41,55 @@
       ]
     },
     {
+      "plugin": "protvar",
+      "scope": "transcript",
+      "output": "protvar",
+      "csq_fields": [
+        "ProtVar_stability",
+        "ProtVar_pocket",
+        "ProtVar_int"
+      ],
+      "require_any_input": [
+        "ProtVar_stability",
+        "ProtVar_pocket",
+        "ProtVar_int"
+      ],
+      "targets": [
+        {
+          "field": "structure_stability_score",
+          "from": "ProtVar_stability",
+          "transform": "scalar",
+          "type": "float"
+        },
+        {
+          "field": "pockets",
+          "from": "ProtVar_pocket",
+          "transform": "positional",
+          "wrap": "list",
+          "as": [
+            { "field": "pocket_id", "type": "string" },
+            { "field": "energy", "type": "float" },
+            { "field": "energy_per_volume", "type": "float" },
+            { "field": "score", "type": "float" },
+            { "field": "buriedness", "type": "float" },
+            { "field": "radius_of_gyration", "type": "float" },
+            { "field": "raw", "type": "raw" }
+          ]
+        },
+        {
+          "field": "interaction_interfaces",
+          "from": "ProtVar_int",
+          "transform": "chunk",
+          "size": 2,
+          "as": [
+            { "field": "partner", "type": "string" },
+            { "field": "score", "type": "float" },
+            { "field": "raw", "type": "raw" }
+          ]
+        }
+      ]
+    },
+    {
       "plugin": "clinvar",
       "scope": "allele",
       "output": "clinvar",

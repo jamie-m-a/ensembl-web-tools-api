@@ -128,6 +128,46 @@ def _apply_pattern_map(csq_values, index_map, target: TargetSpec) -> dict:
     return values
 
 
+def _build_object(tokens: list[str], field_specs, source_text: str) -> dict:
+    """Assign `tokens` to `field_specs` strictly by index.
+
+    A `raw`-typed field takes `source_text` and consumes no slot. Slots past the
+    end of `tokens` are null: a missing item leaves *its own* field empty and
+    does not shift its neighbours along.
+    """
+    built: dict = {}
+    position = 0
+    for field_spec in field_specs:
+        if field_spec.type == "raw":
+            built[field_spec.field] = source_text
+            continue
+        token = tokens[position] if position < len(tokens) else None
+        built[field_spec.field] = _coerce(token, field_spec.type)
+        position += 1
+    return built
+
+
+def _apply_chunk(csq_values, index_map, target: TargetSpec) -> list[dict]:
+    """Fixed-size groups of '&'-items -> a list of objects."""
+    raw = _column(csq_values, target.source, index_map)
+    tokens = raw.split("&") if raw else []
+
+    rows = []
+    for start in range(0, len(tokens), target.size):
+        group = tokens[start : start + target.size]
+        rows.append(_build_object(group, target.as_fields, "&".join(t for t in group if t)))
+    return rows
+
+
+def _apply_positional(csq_values, index_map, target: TargetSpec):
+    """'&'-items -> one object, assigned by index."""
+    raw = _column(csq_values, target.source, index_map)
+    if not raw:
+        return [] if target.wrap == "list" else None
+    built = _build_object(raw.split("&"), target.as_fields, raw)
+    return [built] if target.wrap == "list" else built
+
+
 def _when_holds(csq_values, index_map, when: WhenSpec | None) -> bool:
     if when is None:
         return True
@@ -136,12 +176,14 @@ def _when_holds(csq_values, index_map, when: WhenSpec | None) -> bool:
 
 def _empty_value(target: TargetSpec):
     """What a target yields when its `when` condition does not hold."""
-    if target.transform in ("list", "zip"):
+    if target.transform in ("list", "zip", "chunk"):
         return []
     if target.transform == "regex":
         return [] if target.each else None
     if target.transform == "pattern_map":
         return {}
+    if target.transform == "positional":
+        return [] if target.wrap == "list" else None
     return None
 
 
@@ -155,6 +197,10 @@ def _apply_target(csq_values, index_map, target: TargetSpec):
         return _apply_regex(csq_values, index_map, target)
     if target.transform == "pattern_map":
         return _apply_pattern_map(csq_values, index_map, target)
+    if target.transform == "chunk":
+        return _apply_chunk(csq_values, index_map, target)
+    if target.transform == "positional":
+        return _apply_positional(csq_values, index_map, target)
 
     raw = _column(csq_values, target.source, index_map)
     if target.transform == "scalar":
