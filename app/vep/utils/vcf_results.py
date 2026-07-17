@@ -15,45 +15,6 @@ from vep.utils import results_filters
 from vep.utils.bgzf import _BgzfReader
 from vep.utils.vcf_meta import _get_vcf_meta
 
-TARGET_COLUMNS = [
-    "Allele",
-    "AF",
-    "Consequence",
-    "Feature",
-    "Feature_type",
-    "BIOTYPE",
-    "CANONICAL",
-    "SYMBOL",
-    "Gene",
-    "STRAND",
-    "IMPACT",
-    # MANE (human GRCh38)
-    "MANE_SELECT",
-    "MANE_PLUS_CLINICAL",
-    # Protein & functional
-    "ENSP",
-    "SWISSPROT",
-    "TREMBL",
-    "UNIPARC",
-    "UNIPROT_ISOFORM",
-    "DOMAINS",
-    "ProtVar_stability",
-    "ProtVar_int",
-    "ProtVar_pocket",
-    "IntAct_feature_ac",
-    "IntAct_feature_type",
-    "IntAct_interaction_ac",
-    "mutfunc_motif",
-    "mutfunc_int",
-    "mutfunc_mod",
-    "mutfunc_exp",
-    "MaveDB_score",
-    "MaveDB_urn",
-    "MaveDB_doi",
-    "MaveDB_nt",
-    "MaveDB_pro",
-]
-
 # Taken from https://github.com/Ensembl/ensembl-hypsipyle
 # main/common/file_model/variant.py#L142
 # Needs to be moved into a shared module
@@ -103,21 +64,14 @@ def _alt_value(alt) -> str:
     return serialize() if callable(serialize) else str(alt)
 
 
-def _get_prediction_index_map(
-    csq_header: str, target_columns: list[str] | None = None
-) -> dict[str, int]:
+def _get_prediction_index_map(csq_header: str) -> dict[str, int]:
     """Creates a dictionary of column indexes from the CSQ info description.
 
-    By default every CSQ column is indexed (so any annotation field can be
-    read); pass target_columns to restrict to an allow-list."""
+    Every CSQ column is indexed, so any annotation field can be read."""
     csq_header = csq_header.split(":")[-1].strip()
     csq_headers = csq_header.split("|")
 
-    return {
-        header: index
-        for index, header in enumerate(csq_headers)
-        if target_columns is None or header in target_columns
-    }
+    return {header: index for index, header in enumerate(csq_headers)}
 
 
 def _get_csq_value(
@@ -308,11 +262,6 @@ def _parse_mutfunc(csq_values, index_map) -> model.MutfuncAnnotation | None:
         protein_structure=_to_float(structure),
         protein_structure_experimental=_to_float(structure_exp),
     )
-
-
-def _normalise_na(value: str | None) -> str | None:
-    """Treat the literal 'NA' (used by some plugins for missing values) as None."""
-    return None if value in (None, "NA") else value
 
 
 def _first_amp(value: str | None) -> str | None:

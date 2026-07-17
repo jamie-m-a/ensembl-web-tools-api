@@ -10,9 +10,22 @@ from app.vep.utils.vcf_results import (
     get_results_from_path,
     get_results_from_stream,
     _get_prediction_index_map,
-    TARGET_COLUMNS,
 )
 from app.vep.utils.tsv_export import stream_vep_tsv, gzip_text_stream
+
+# A representative CSQ column list, used to build a CSQ header fixture for the
+# index-map test. `_get_prediction_index_map` indexes whatever columns a header
+# declares, so any distinct list exercises it.
+TARGET_COLUMNS = [
+    "Allele", "AF", "Consequence", "Feature", "Feature_type", "BIOTYPE",
+    "CANONICAL", "SYMBOL", "Gene", "STRAND", "IMPACT",
+    "MANE_SELECT", "MANE_PLUS_CLINICAL",
+    "ENSP", "SWISSPROT", "TREMBL", "UNIPARC", "UNIPROT_ISOFORM", "DOMAINS",
+    "ProtVar_stability", "ProtVar_int", "ProtVar_pocket",
+    "IntAct_feature_ac", "IntAct_feature_type", "IntAct_interaction_ac",
+    "mutfunc_motif", "mutfunc_int", "mutfunc_mod", "mutfunc_exp",
+    "MaveDB_score", "MaveDB_urn", "MaveDB_doi", "MaveDB_nt", "MaveDB_pro",
+]
 from app.vep.utils.vcf_results import (
     _set_allele_type,
     _get_alt_allele_details,
@@ -244,8 +257,6 @@ def test_get_results_with_file_and_dump():
         "/Users/jon/Programming/ensembl-web-tools-api/test_VEP.vcf.gz"
     )
     results = get_results_from_path(100, 1, vcf_path)
-
-    expected_index = {TARGET_COLUMNS[x]: x for x in range(0, len(TARGET_COLUMNS))}
 
     with open("dump.json", "w") as test_dump:
         test_dump.write(results.json())
