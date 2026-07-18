@@ -59,15 +59,25 @@ def _golden_option_lines(params: ConfigIniParams, tmp_path) -> set[str]:
     return {ln for ln in lines if ln.split()[0] not in BASE_KEYWORDS}
 
 
-# (description, assembly_name, option overrides)
-CASES = [
-    ("defaults GRCh38", "GRCh38", {}),
-    ("defaults GRCh37", "GRCh37", {}),
+# Every plugin/custom entry in the spec (the flags are exercised via every case).
+PLUGIN_CUSTOM_IDS = [
+    e.id for e in CONFIG_SPEC.entries if e.config.emit in ("plugin", "custom")
+]
+
+# Each option alone, on both assemblies — hits every line and every by_assembly
+# branch (incl. SpliceAI's GRCh38-only snv_ensembl).
+SINGLE_CASES = [
+    (f"{oid} {asm}", asm, {oid: True})
+    for oid in PLUGIN_CUSTOM_IDS
+    for asm in ("GRCh38", "GRCh37")
+]
+
+# Sub-options / value params, which a plain "option on" leaves at their defaults.
+SUBOPTION_CASES = [
     ("all flags on", "GRCh38", {"hgvsg": True, "spdi": True, "protein": True}),
-    ("mavedb", "GRCh38", {"mavedb": True}),
-    ("protvar all sub-flags", "GRCh38", {"protvar": True}),
     ("protvar pocket off", "GRCh38", {"protvar": True, "protvar_pocket": False}),
-    ("intact base only", "GRCh38", {"intact": True}),
+    ("mutfunc some subs", "GRCh38", {"mutfunc": True, "mutfunc_motif": True, "mutfunc_exp": True}),
+    ("dosage cover on", "GRCh38", {"dosage_sensitivity": True, "dosage_sensitivity_cover": True}),
     ("intact all -> all=1", "GRCh38", {
         "intact": True, "intact_feature_ac": True, "intact_feature_short_label": True,
         "intact_feature_annotation": True, "intact_ap_ac": True,
@@ -76,20 +86,28 @@ CASES = [
     ("intact two sub-flags", "GRCh38", {
         "intact": True, "intact_feature_ac": True, "intact_pmid": True,
     }),
-    ("alphamissense GRCh38", "GRCh38", {"alphamissense": True}),
-    ("alphamissense GRCh37", "GRCh37", {"alphamissense": True}),
-    ("nearest_exon_jb defaults", "GRCh38", {"nearest_exon_jb": True}),
+    ("tss downstream", "GRCh38", {"tss_distance": True, "tss_distance_direction": "downstream"}),
+    ("tss both", "GRCh38", {"tss_distance": True, "tss_distance_direction": "both"}),
+    ("nearest_gene both dirs", "GRCh38", {"nearest_gene": True, "nearest_gene_both_directions": True}),
     ("nearest_exon_jb custom", "GRCh38", {
         "nearest_exon_jb": True, "nearest_exon_jb_max_range": 5000,
         "nearest_exon_jb_intronic": True,
     }),
-    ("clinvar GRCh38", "GRCh38", {"clinvar": True}),
-    ("clinvar GRCh37", "GRCh37", {"clinvar": True}),
-    ("several together", "GRCh38", {
-        "mavedb": True, "protvar": True, "protvar_int": False, "clinvar": True,
-        "alphamissense": True,
-    }),
 ]
+
+
+def _all_on(assembly: str) -> tuple:
+    overrides = {oid: True for oid in PLUGIN_CUSTOM_IDS}
+    overrides.update({"hgvsg": True, "spdi": True, "protein": True})
+    return (f"kitchen sink {assembly}", assembly, overrides)
+
+
+CASES = (
+    [("defaults GRCh38", "GRCh38", {}), ("defaults GRCh37", "GRCh37", {})]
+    + SINGLE_CASES
+    + SUBOPTION_CASES
+    + [_all_on("GRCh38"), _all_on("GRCh37")]
+)
 
 
 @pytest.mark.parametrize("desc, assembly_name, overrides", CASES, ids=[c[0] for c in CASES])

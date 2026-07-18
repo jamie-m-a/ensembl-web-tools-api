@@ -11,7 +11,35 @@
       "params": { "file": "{path}/MaveDB_variants.tsv.gz" }
     } },
 
-    { "id": "protvar", "order": 21, "config": {
+    { "id": "riboseqorfs", "order": 21, "config": {
+      "emit": "plugin", "name": "RiboseqORFs",
+      "params": { "file": "{path}/Ribo-seq_ORFs.phase2.comprehensive.v1like.final.bed.gz" }
+    } },
+
+    { "id": "opentargets", "order": 22, "config": {
+      "emit": "plugin", "name": "OpenTargets",
+      "params": { "file": "{path}/open_targets_vep.tsv.gz" }
+    } },
+
+    { "id": "eve", "order": 23, "config": {
+      "emit": "plugin", "name": "EVE",
+      "params": {
+        "file": "{path}/eve_merged.vcf.gz",
+        "popeve_file": "{path}/grch38_popEVE_ukbb.vcf.gz"
+      }
+    } },
+
+    { "id": "maxentscan", "order": 24, "config": {
+      "emit": "plugin", "name": "MaxEntScan",
+      "params": { "file": "{path}/" }
+    } },
+
+    { "id": "gnomad_mt", "order": 25, "config": {
+      "emit": "plugin", "name": "gnomADMt",
+      "params": { "file": "{path}/gnomad.genomes.v3.1.sites.chrM.vcf.bgz" }
+    } },
+
+    { "id": "protvar", "order": 26, "config": {
       "emit": "plugin", "name": "ProtVar",
       "params": {
         "db": "{path}/ProtVar_data.db",
@@ -21,7 +49,7 @@
       }
     } },
 
-    { "id": "intact", "order": 22, "config": {
+    { "id": "intact", "order": 27, "config": {
       "emit": "plugin", "name": "IntAct",
       "params": {
         "mutation_file": "{path}/mutations.tsv",
@@ -40,7 +68,37 @@
       }
     } },
 
-    { "id": "alphamissense", "order": 30, "config": {
+    { "id": "mutfunc", "order": 28, "config": {
+      "emit": "plugin", "name": "mutfunc",
+      "params": {
+        "motif":    { "from_option": "mutfunc_motif", "as": "int" },
+        "int":      { "from_option": "mutfunc_int",   "as": "int" },
+        "mod":      { "from_option": "mutfunc_mod",   "as": "int" },
+        "exp":      { "from_option": "mutfunc_exp",   "as": "int" },
+        "extended": "1",
+        "db":       "{path}/mutfunc_data.db"
+      }
+    } },
+
+    { "id": "dosage_sensitivity", "order": 29, "config": {
+      "emit": "plugin", "name": "DosageSensitivity",
+      "params": {
+        "file":  "{path}/Collins_rCNV_2022.dosage_sensitivity_scores.tsv.gz",
+        "cover": { "from_option": "dosage_sensitivity_cover", "as": "int" }
+      }
+    } },
+
+    { "id": "phenotypes", "order": 30, "config": {
+      "emit": "plugin", "name": "Phenotypes",
+      "params": { "file": "{path}/Phenotypes.pm_homo_sapiens_116_GRCh38.gvf.gz" }
+    } },
+
+    { "id": "go", "order": 31, "config": {
+      "emit": "plugin", "name": "GO",
+      "params": { "file": "{path}/GO.pm_homo_sapiens_116_GRCh38.gff.gz" }
+    } },
+
+    { "id": "alphamissense", "order": 40, "config": {
       "emit": "plugin", "name": "AlphaMissense",
       "params": { "file": { "by_assembly": {
         "GRCh38": "{path}/AlphaMissense_hg38.tsv.gz",
@@ -48,7 +106,99 @@
       } } }
     } },
 
-    { "id": "nearest_exon_jb", "order": 40, "config": {
+    { "id": "cadd", "order": 41, "config": {
+      "emit": "plugin", "name": "CADD",
+      "params": {
+        "snv": { "by_assembly": {
+          "GRCh38": "{path}/CADD_GRCh38_1.7_whole_genome_SNVs.tsv.gz",
+          "GRCh37": "{path}/CADD_GRCh37_1.7_whole_genome_SNVs.tsv.gz"
+        } },
+        "indels": { "by_assembly": {
+          "GRCh38": "{path}/CADD_GRCh38_1.7_InDels.tsv.gz",
+          "GRCh37": "{path}/CADD_GRCh37_1.7_InDels.tsv.gz"
+        } }
+      }
+    } },
+
+    { "id": "revel", "order": 42, "config": {
+      "emit": "plugin", "name": "REVEL",
+      "params": { "file": { "by_assembly": {
+        "GRCh38": "{path}/new_tabbed_revel_grch38.tsv.gz",
+        "GRCh37": "{path}/new_tabbed_revel_grch37.tsv.gz"
+      } } }
+    } },
+
+    { "id": "loeuf", "order": 43, "config": {
+      "emit": "plugin", "name": "LOEUF",
+      "params": {
+        "file": { "by_assembly": {
+          "GRCh38": "{path}/loeuf_dataset_grch38.tsv.gz",
+          "GRCh37": "{path}/loeuf_dataset_grch37.tsv.gz"
+        } },
+        "match_by": "gene"
+      }
+    } },
+
+    { "id": "geno2mp", "order": 44, "config": {
+      "emit": "plugin", "name": "Geno2MP",
+      "params": { "file": { "by_assembly": {
+        "GRCh38": "{path}/Geno2MP.variants_GRCh38.vcf.gz",
+        "GRCh37": "{path}/Geno2MP.variants_GRCh37.vcf.gz"
+      } } }
+    } },
+
+    { "id": "enformer", "order": 45, "config": {
+      "emit": "plugin", "name": "Enformer",
+      "params": { "file": { "by_assembly": {
+        "GRCh38": "{path}/enformer_grch38.vcf.gz",
+        "GRCh37": "{path}/enformer_grch37.vcf.gz"
+      } } }
+    } },
+
+    { "id": "spliceai", "order": 46, "config": {
+      "emit": "plugin", "name": "SpliceAI",
+      "params": {
+        "snv": { "by_assembly": {
+          "GRCh38": "{path}/spliceai_scores.masked.snv.hg38.vcf.gz",
+          "GRCh37": "{path}/spliceai_scores.masked.snv.hg19.vcf.gz"
+        } },
+        "indel": { "by_assembly": {
+          "GRCh38": "{path}/spliceai_scores.masked.indel.hg38.vcf.gz",
+          "GRCh37": "{path}/spliceai_scores.masked.indel.hg19.vcf.gz"
+        } },
+        "snv_ensembl": { "by_assembly": {
+          "GRCh38": "{path}/spliceai_scores.raw.snv.ensembl_mane.grch38.110.vcf.gz"
+        }, "omit_if_absent": true }
+      }
+    } },
+
+    { "id": "utrannotator", "order": 47, "config": {
+      "emit": "plugin", "name": "UTRAnnotator",
+      "params": { "file": { "by_assembly": {
+        "GRCh38": "{path}/uORF_5UTR_GRCh38_PUBLIC.txt",
+        "GRCh37": "{path}/uORF_5UTR_GRCh37_PUBLIC.txt"
+      } } }
+    } },
+
+    { "id": "tss_distance", "order": 50, "config": {
+      "emit": "plugin", "name": "TSSDistance",
+      "params": {
+        "upstream":   { "from_option": "tss_distance_direction", "equals": "upstream",   "as": "int" },
+        "downstream": { "from_option": "tss_distance_direction", "equals": "downstream", "as": "int" },
+        "both":       { "from_option": "tss_distance_direction", "equals": "both",       "as": "int" },
+        "gff3": "{gff}"
+      }
+    } },
+
+    { "id": "nearest_gene", "order": 51, "config": {
+      "emit": "plugin", "name": "NearestGene",
+      "params": {
+        "both_directions": { "from_option": "nearest_gene_both_directions", "as": "int" },
+        "gff3": "{gff}"
+      }
+    } },
+
+    { "id": "nearest_exon_jb", "order": 52, "config": {
       "emit": "plugin", "name": "NearestExonJB",
       "params": {
         "max_range": { "from_option": "nearest_exon_jb_max_range", "as": "value" },
@@ -57,7 +207,7 @@
       }
     } },
 
-    { "id": "clinvar", "order": 50, "config": {
+    { "id": "clinvar", "order": 60, "config": {
       "emit": "custom",
       "params": {
         "file": { "by_assembly": {

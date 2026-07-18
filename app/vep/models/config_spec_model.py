@@ -37,6 +37,11 @@ class ByAssembly(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     by_assembly: dict[str, str]
+    # When the submission's assembly isn't a key: fall back to `GRCh38` (mirrors
+    # the ini builder's `by_assembly.get(assembly, by_assembly["GRCh38"])`)
+    # unless this is set — then the whole param is dropped. For a param that
+    # exists on some assemblies only (SpliceAI's `snv_ensembl`, GRCh38 only).
+    omit_if_absent: bool = False
 
 
 class FromOption(BaseModel):

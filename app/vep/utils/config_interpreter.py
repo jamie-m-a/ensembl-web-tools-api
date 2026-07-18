@@ -26,6 +26,11 @@ from vep.models.config_spec_model import (
 )
 
 
+# Returned by _param_value for an assembly-conditional param that has no value
+# on this assembly (SpliceAI's snv_ensembl on GRCh37): the kwarg is dropped.
+_SKIP = object()
+
+
 def _interpolate(text: str, context: dict[str, str]) -> str:
     """Substitute the backend-provided `{path}` / `{gff}` tokens. Anything else
     (notably the pipeline's `###CHR###` per-chromosome placeholder) is left
@@ -39,8 +44,11 @@ def _param_value(param, options: dict, assembly: str, context: dict) -> str:
     if isinstance(param, str):
         return _interpolate(param, context)
     if isinstance(param, ByAssembly):
-        chosen = param.by_assembly.get(assembly, param.by_assembly["GRCh38"])
-        return _interpolate(chosen, context)
+        if assembly in param.by_assembly:
+            return _interpolate(param.by_assembly[assembly], context)
+        if param.omit_if_absent:
+            return _SKIP
+        return _interpolate(param.by_assembly["GRCh38"], context)
     if isinstance(param, FromOption):
         value = options.get(param.from_option)
         if param.equals is not None:
@@ -52,10 +60,12 @@ def _param_value(param, options: dict, assembly: str, context: dict) -> str:
 
 
 def _params_str(params: dict, options, assembly, context) -> list[str]:
-    return [
-        f"{key}={_param_value(value, options, assembly, context)}"
-        for key, value in params.items()
-    ]
+    parts = []
+    for key, value in params.items():
+        resolved = _param_value(value, options, assembly, context)
+        if resolved is not _SKIP:
+            parts.append(f"{key}={resolved}")
+    return parts
 
 
 def _variadic_suffix(flags, options: dict) -> str:
@@ -103,7 +113,9 @@ def _emit_entry(entry, options, assembly, context) -> str | None:
         join = getattr(emitter.fields, "join", "%")
         parts: list[str] = []
         for key, value in emitter.params.items():
-            parts.append(f"{key}={_param_value(value, options, assembly, context)}")
+            resolved = _param_value(value, options, assembly, context)
+            if resolved is not _SKIP:
+                parts.append(f"{key}={resolved}")
             if key == emitter.fields_after:
                 parts.append(f"fields={join.join(field_list)}")
         return "custom " + ",".join(parts)
