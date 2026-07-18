@@ -1,0 +1,163 @@
+<title>VEP end-to-end dataflow</title>
+<style>
+  :root{
+    --paper:#f4f6f8; --surface:#ffffff; --ink:#131820; --muted:#59636f; --faint:#808b97;
+    --line:#dde2e8; --accent:#1c6f8c; --accent-soft:#e3eef2; --ok:#2f7a52; --ok-soft:#e3f0e8;
+    --fs-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --fs-sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; --maxw:70rem;
+    --d-plate:#ffffff; --d-line:#c6cfd8; --d-arrow:#6a7583; --d-ink:#1b2430;
+    --d-phase:#eef2f6; --d-phase-text:#4a5763; --d-note:#fbecd9; --d-note-bd:#d8a765; --d-note-text:#6a4410;
+    --band-fe:#eceef1; --band-api:#e6f0f4; --band-be:#eaebf6; --band-pipe:#eeeede;
+    --hd-fe:#6b7684; --hd-api:#1c6f8c; --hd-be:#4a4f8c; --hd-pipe:#6a6a3a;
+    --ll-fe:#9aa6b2; --ll-api:#4f9db3; --ll-be:#8288cc; --ll-pipe:#a2a267;
+    --tag-prod:#3f6ea5; --tag-dev:#8a7a3a;
+  }
+  @media (prefers-color-scheme: dark){:root{
+    --paper:#0d1116; --surface:#161d25; --ink:#eaeff4; --muted:#9aa5b1; --faint:#6f7b87;
+    --line:#26303a; --accent:#5fb4c8; --accent-soft:#123039; --ok:#67bd8c; --ok-soft:#14271c;
+    --d-plate:#0f141b; --d-line:#31404f; --d-arrow:#8793a2; --d-ink:#e6edf4;
+    --d-phase:#1a2431; --d-phase-text:#9fabb8; --d-note:#26344a; --d-note-bd:#4a5f80; --d-note-text:#dbe6f2;
+    --band-fe:#161d27; --band-api:#122b34; --band-be:#1a1c35; --band-pipe:#22220f;
+    --hd-fe:#7c8794; --hd-api:#2b86a2; --hd-be:#5c62b0; --hd-pipe:#84843f;
+    --ll-fe:#5a6673; --ll-api:#3d7f94; --ll-be:#5a5fa0; --ll-pipe:#6f6f45;
+    --tag-prod:#5a86bd; --tag-dev:#b6a34a;
+  }}
+  :root[data-theme="light"]{
+    --paper:#f4f6f8; --surface:#ffffff; --ink:#131820; --muted:#59636f; --faint:#808b97;
+    --line:#dde2e8; --accent:#1c6f8c; --accent-soft:#e3eef2; --ok:#2f7a52; --ok-soft:#e3f0e8;
+    --d-plate:#ffffff; --d-line:#c6cfd8; --d-arrow:#6a7583; --d-ink:#1b2430;
+    --d-phase:#eef2f6; --d-phase-text:#4a5763; --d-note:#fbecd9; --d-note-bd:#d8a765; --d-note-text:#6a4410;
+    --band-fe:#eceef1; --band-api:#e6f0f4; --band-be:#eaebf6; --band-pipe:#eeeede;
+    --hd-fe:#6b7684; --hd-api:#1c6f8c; --hd-be:#4a4f8c; --hd-pipe:#6a6a3a;
+    --ll-fe:#9aa6b2; --ll-api:#4f9db3; --ll-be:#8288cc; --ll-pipe:#a2a267;
+    --tag-prod:#3f6ea5; --tag-dev:#8a7a3a;
+  }
+  :root[data-theme="dark"]{
+    --paper:#0d1116; --surface:#161d25; --ink:#eaeff4; --muted:#9aa5b1; --faint:#6f7b87;
+    --line:#26303a; --accent:#5fb4c8; --accent-soft:#123039; --ok:#67bd8c; --ok-soft:#14271c;
+    --d-plate:#0f141b; --d-line:#31404f; --d-arrow:#8793a2; --d-ink:#e6edf4;
+    --d-phase:#1a2431; --d-phase-text:#9fabb8; --d-note:#26344a; --d-note-bd:#4a5f80; --d-note-text:#dbe6f2;
+    --band-fe:#161d27; --band-api:#122b34; --band-be:#1a1c35; --band-pipe:#22220f;
+    --hd-fe:#7c8794; --hd-api:#2b86a2; --hd-be:#5c62b0; --hd-pipe:#84843f;
+    --ll-fe:#5a6673; --ll-api:#3d7f94; --ll-be:#5a5fa0; --ll-pipe:#6f6f45;
+    --tag-prod:#5a86bd; --tag-dev:#b6a34a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0}
+  .wrap{background:var(--paper);color:var(--ink);font-family:var(--fs-sans);line-height:1.55;
+    padding:clamp(1.25rem,4vw,3rem) clamp(1rem,4vw,2rem) 4rem;min-height:100%}
+  .col{max-width:var(--maxw);margin:0 auto}
+  .eyebrow{font-family:var(--fs-mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--accent);margin:0 0 .75rem}
+  h1{font-size:clamp(1.7rem,4.4vw,2.5rem);line-height:1.05;letter-spacing:-.02em;font-weight:680;
+    margin:0 0 .6rem;text-wrap:balance}
+  .lede{font-size:1.02rem;color:var(--muted);max-width:58ch;margin:0 0 .4rem}
+  .lede b{color:var(--ink);font-weight:620}
+  .legend{display:flex;flex-wrap:wrap;gap:.5rem 1.25rem;margin:1.6rem 0 0;padding:.9rem 1.1rem;
+    border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+  .chip{display:inline-flex;align-items:center;gap:.5rem;font-family:var(--fs-mono);font-size:.78rem;color:var(--ink)}
+  .dot{width:.7rem;height:.7rem;border-radius:2px;flex:none}
+  .dot.fe{background:var(--hd-fe)} .dot.api{background:var(--hd-api)}
+  .dot.be{background:var(--hd-be)} .dot.pipe{background:var(--hd-pipe)}
+  .chip small{color:var(--faint);font-family:var(--fs-sans)}
+  .plate-shell{margin:1.4rem 0 0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--d-plate)}
+  .plate-cap{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;padding:.6rem 1rem;
+    border-bottom:1px solid var(--line);font-family:var(--fs-mono);font-size:.72rem;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--faint);background:var(--surface)}
+  .plate{background:var(--d-plate);overflow-x:auto;padding:1rem}
+  .d-svg{display:block;height:auto;max-width:none}
+  .d-svg text{font-family:var(--fs-sans)}
+  .band-fe{fill:var(--band-fe)} .band-api{fill:var(--band-api)} .band-be{fill:var(--band-be)} .band-pipe{fill:var(--band-pipe)}
+  .ll{stroke-width:1.5;fill:none}
+  .ll-fe{stroke:var(--ll-fe)} .ll-api{stroke:var(--ll-api)} .ll-be{stroke:var(--ll-be)} .ll-pipe{stroke:var(--ll-pipe)}
+  .hd-fe{fill:var(--hd-fe)} .hd-api{fill:var(--hd-api)} .hd-be{fill:var(--hd-be)} .hd-pipe{fill:var(--hd-pipe)}
+  .hd-title{fill:#fff;font-weight:680;font-size:14px}
+  .hd-sub{fill:#ffffffcc;font-size:9.5px;font-family:var(--fs-mono)}
+  .msg-line{stroke:var(--d-arrow);stroke-width:1.5}
+  .msg-res{stroke-dasharray:5 4}
+  .ah{fill:var(--d-arrow)}
+  .msg-text{fill:var(--d-ink);font-size:12.5px}
+  .lbl-bg{fill:var(--d-plate)}
+  .self-box{fill:var(--d-plate);stroke-width:1.3}
+  .self-fe{stroke:var(--ll-fe)} .self-api{stroke:var(--ll-api)} .self-be{stroke:var(--ll-be)} .self-pipe{stroke:var(--ll-pipe)}
+  .self-text{fill:var(--d-ink);font-size:12px}
+  .phase-bg{fill:var(--d-phase)}
+  .phase-text{fill:var(--d-phase-text);font-size:11.5px;font-weight:650;letter-spacing:.05em;text-transform:uppercase}
+  .note-bg{fill:var(--d-note);stroke:var(--d-note-bd);stroke-width:1}
+  .note-text{fill:var(--d-note-text);font-size:11.5px}
+  .num-c{fill:var(--d-arrow)}
+  .num-t{fill:var(--d-plate);font-size:9px;font-weight:700}
+  .tag-prod{fill:var(--tag-prod)} .tag-dev{fill:var(--tag-dev)}
+  .tag-t{fill:#fff;font-size:8.5px;font-weight:700;letter-spacing:.03em}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:.9rem;margin:2.4rem 0 0}
+  .card{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:1rem 1.05rem}
+  .card h3{font-family:var(--fs-mono);font-size:.74rem;letter-spacing:.1em;text-transform:uppercase;
+    margin:0 0 .6rem;display:flex;align-items:center;gap:.5rem}
+  .card ul{margin:0;padding-left:1.05rem}
+  .card li{font-size:.9rem;color:var(--muted);margin:.25rem 0}
+  .card li b{color:var(--ink);font-weight:600}
+  code{font-family:var(--fs-mono);font-size:.85em;background:var(--accent-soft);color:var(--ink);
+    padding:.05em .35em;border-radius:4px}
+  .sectionlabel{font-family:var(--fs-mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--ok);margin:2.6rem 0 .9rem;display:flex;align-items:center;gap:.6rem}
+  .sectionlabel::after{content:"";flex:1;height:1px;background:var(--line)}
+  .rows{display:flex;flex-direction:column;gap:.75rem}
+  .row{border:1px solid var(--line);border-left:3px solid var(--ok);border-radius:8px;background:var(--surface);padding:.85rem 1rem}
+  .row .q{font-weight:620;color:var(--ink);margin:0 0 .3rem;font-size:.96rem}
+  .row .q .tag{font-family:var(--fs-mono);font-size:.64rem;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ok);background:var(--ok-soft);padding:.12em .5em;border-radius:999px;margin-right:.5rem;vertical-align:.08em}
+  .row p{margin:.35rem 0 0;font-size:.9rem;color:var(--muted)}
+  .row p b{color:var(--ink);font-weight:600}
+  .foot{margin:2.6rem 0 0;padding-top:1rem;border-top:1px solid var(--line);font-size:.8rem;color:var(--faint);
+    font-family:var(--fs-mono);line-height:1.7}
+  .foot b{color:var(--muted)}
+</style>
+<div class="wrap"><div class="col">
+  <p class="eyebrow">VEP · target-state architecture</p>
+  <h1>End-to-end dataflow after the spec-driven changes</h1>
+  <p class="lede">How the <b>frontend</b>, <b>backend</b>, and the <b>new API</b> exchange options, config, parsing and display across one submission. The new API is drawn as a distinct service but is <b>realised today as a local JSON file</b>. Order and endpoints verified against the current code; reflects the decisions locked in review.</p>
+  <div class="legend" aria-label="Participants">
+    <span class="chip"><span class="dot fe"></span>Frontend <small>standalone-web-vep</small></span>
+    <span class="chip"><span class="dot api"></span>New API <small>currently a JSON file</small></span>
+    <span class="chip"><span class="dot be"></span>Backend <small>ensembl-web-tools-api</small></span>
+    <span class="chip"><span class="dot pipe"></span>Pipeline <small>Nextflow/Seqera · dev-data</small></span>
+  </div>
+  <div class="plate-shell">
+    <div class="plate-cap"><span>Sequence — one submission, start to finish</span><span>dev / prod branches tagged inline</span></div>
+    <div class="plate"><svg class="d-svg" viewBox="0 0 1160 1824" width="1160" height="1824" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="VEP end-to-end dataflow sequence diagram"><defs><marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L7,3 L0,6 Z" class="ah"/></marker></defs><rect x="58.0" y="8" width="224" height="1808.0" rx="10" class="band-fe"/><rect x="328.0" y="8" width="224" height="1808.0" rx="10" class="band-api"/><rect x="598.0" y="8" width="224" height="1808.0" rx="10" class="band-be"/><rect x="868.0" y="8" width="224" height="1808.0" rx="10" class="band-pipe"/><line x1="170.0" y1="66.0" x2="170.0" y2="1810.0" class="ll ll-fe"/><line x1="440.0" y1="66.0" x2="440.0" y2="1810.0" class="ll ll-api"/><line x1="710.0" y1="66.0" x2="710.0" y2="1810.0" class="ll ll-be"/><line x1="980.0" y1="66.0" x2="980.0" y2="1810.0" class="ll ll-pipe"/><rect x="86.0" y="16" width="168" height="42" rx="8" class="hd-fe"/><text x="170.0" y="34" class="hd-title" text-anchor="middle" dominant-baseline="central">Frontend</text><text x="170.0" y="48" class="hd-sub" text-anchor="middle" dominant-baseline="central">standalone-web-vep</text><rect x="356.0" y="16" width="168" height="42" rx="8" class="hd-api"/><text x="440.0" y="34" class="hd-title" text-anchor="middle" dominant-baseline="central">New API</text><text x="440.0" y="48" class="hd-sub" text-anchor="middle" dominant-baseline="central">JSON today</text><rect x="626.0" y="16" width="168" height="42" rx="8" class="hd-be"/><text x="710.0" y="34" class="hd-title" text-anchor="middle" dominant-baseline="central">Backend</text><text x="710.0" y="48" class="hd-sub" text-anchor="middle" dominant-baseline="central">ensembl-web-tools-api</text><rect x="896.0" y="16" width="168" height="42" rx="8" class="hd-pipe"/><text x="980.0" y="34" class="hd-title" text-anchor="middle" dominant-baseline="central">Pipeline</text><text x="980.0" y="48" class="hd-sub" text-anchor="middle" dominant-baseline="central">Nextflow / dev-data</text><rect x="40" y="92.0" width="1080" height="26" rx="6" class="phase-bg"/><text x="54" y="105.0" class="phase-text" dominant-baseline="central">Phase 1  —  Build the input form</text><rect x="55.1" y="136.0" width="229.7" height="26" rx="6" class="self-box self-fe"/><text x="170.0" y="149.0" class="self-text" text-anchor="middle" dominant-baseline="central">User selects species + assembly</text><line x1="170.0" y1="204.0" x2="701.0" y2="204.0" class="msg-line" marker-end="url(#ah)"/><circle cx="170.0" cy="204.0" r="8" class="num-c"/><text x="170.0" y="204.0" class="num-t" text-anchor="middle" dominant-baseline="central">1</text><rect x="292.3" y="182.0" width="295.4" height="17" rx="4" class="lbl-bg"/><text x="440.0" y="191.0" class="msg-text" text-anchor="middle" dominant-baseline="central">GET form_config  (species select, relayed)</text><line x1="710.0" y1="254.0" x2="449.0" y2="254.0" class="msg-line" marker-end="url(#ah)"/><circle cx="710.0" cy="254.0" r="8" class="num-c"/><text x="710.0" y="254.0" class="num-t" text-anchor="middle" dominant-baseline="central">2</text><rect x="434.0" y="232.0" width="282.0" height="17" rx="4" class="lbl-bg"/><text x="575.0" y="241.0" class="msg-text" text-anchor="middle" dominant-baseline="central">Endpoint 1 — options + input-render spec</text><line x1="440.0" y1="304.0" x2="701.0" y2="304.0" class="msg-line msg-res" marker-end="url(#ah)"/><circle cx="440.0" cy="304.0" r="8" class="num-c"/><text x="440.0" y="304.0" class="num-t" text-anchor="middle" dominant-baseline="central">3</text><rect x="497.6" y="282.0" width="154.7" height="17" rx="4" class="lbl-bg"/><text x="575.0" y="291.0" class="msg-text" text-anchor="middle" dominant-baseline="central">options + render spec</text><rect x="575.0" y="326.0" width="269.9" height="26" rx="6" class="self-box self-be"/><text x="710.0" y="339.0" class="self-text" text-anchor="middle" dominant-baseline="central">Decide which panels show (activation)</text><line x1="710.0" y1="394.0" x2="179.0" y2="394.0" class="msg-line msg-res" marker-end="url(#ah)"/><circle cx="710.0" cy="394.0" r="8" class="num-c"/><text x="710.0" y="394.0" class="num-t" text-anchor="middle" dominant-baseline="central">4</text><rect x="339.2" y="372.0" width="201.6" height="17" rx="4" class="lbl-bg"/><text x="440.0" y="381.0" class="msg-text" text-anchor="middle" dominant-baseline="central">panels, options, render info</text><rect x="35.1" y="416.0" width="269.9" height="26" rx="6" class="self-box self-fe"/><text x="170.0" y="429.0" class="self-text" text-anchor="middle" dominant-baseline="central">Render input form (generic renderers)</text><rect x="40" y="456.0" width="1080" height="26" rx="6" class="phase-bg"/><text x="54" y="469.0" class="phase-text" dominant-baseline="central">Phase 2  —  Submit</text><rect x="38.4" y="500.0" width="263.2" height="26" rx="6" class="self-box self-fe"/><text x="170.0" y="513.0" class="self-text" text-anchor="middle" dominant-baseline="central">User picks options + VCF, clicks Run</text><line x1="170.0" y1="568.0" x2="701.0" y2="568.0" class="msg-line" marker-end="url(#ah)"/><circle cx="170.0" cy="568.0" r="8" class="num-c"/><text x="170.0" y="568.0" class="num-t" text-anchor="middle" dominant-baseline="central">5</text><rect x="325.8" y="546.0" width="228.4" height="17" rx="4" class="lbl-bg"/><text x="440.0" y="555.0" class="msg-text" text-anchor="middle" dominant-baseline="central">POST submissions — options + VCF</text><line x1="710.0" y1="618.0" x2="449.0" y2="618.0" class="msg-line" marker-end="url(#ah)"/><circle cx="710.0" cy="618.0" r="8" class="num-c"/><text x="710.0" y="618.0" class="num-t" text-anchor="middle" dominant-baseline="central">6</text><rect x="437.4" y="596.0" width="275.3" height="17" rx="4" class="lbl-bg"/><text x="575.0" y="605.0" class="msg-text" text-anchor="middle" dominant-baseline="central">Endpoint 2 — config + parsing + display</text><line x1="440.0" y1="668.0" x2="701.0" y2="668.0" class="msg-line msg-res" marker-end="url(#ah)"/><circle cx="440.0" cy="668.0" r="8" class="num-c"/><text x="440.0" y="668.0" class="num-t" text-anchor="middle" dominant-baseline="central">7</text><rect x="447.4" y="646.0" width="255.2" height="17" rx="4" class="lbl-bg"/><text x="575.0" y="655.0" class="msg-text" text-anchor="middle" dominant-baseline="central">config + parsing spec + display spec</text><rect x="532.8" y="690.0" width="354.4" height="44" rx="7" class="note-bg"/><text x="710.0" y="706.0" class="note-text" text-anchor="middle" dominant-baseline="central">Check config / parsing / display agree —</text><text x="710.0" y="722.0" class="note-text" text-anchor="middle" dominant-baseline="central">on failure retry the fetch (max 3), then fail + log</text><rect x="591.8" y="746.0" width="236.4" height="26" rx="6" class="self-box self-be"/><text x="710.0" y="759.0" class="self-text" text-anchor="middle" dominant-baseline="central">Merge with always-on base config</text><rect x="575.0" y="786.0" width="269.9" height="26" rx="6" class="self-box self-be"/><text x="710.0" y="799.0" class="self-text" text-anchor="middle" dominant-baseline="central">Pin parsing + display spec to the job</text><line x1="710.0" y1="854.0" x2="971.0" y2="854.0" class="msg-line" marker-end="url(#ah)"/><circle cx="710.0" cy="854.0" r="8" class="num-c"/><text x="710.0" y="854.0" class="num-t" text-anchor="middle" dominant-baseline="central">8</text><rect x="737.5" y="832.0" width="215.0" height="17" rx="4" class="lbl-bg"/><text x="845.0" y="841.0" class="msg-text" text-anchor="middle" dominant-baseline="central">Launch Nextflow run via Seqera</text><rect x="695.5" y="832.5" width="38" height="16" rx="8" class="tag-prod"/><text x="714.5" y="840.5" class="tag-t" text-anchor="middle" dominant-baseline="central">PROD</text><line x1="710.0" y1="904.0" x2="971.0" y2="904.0" class="msg-line" marker-end="url(#ah)"/><circle cx="710.0" cy="904.0" r="8" class="num-c"/><text x="710.0" y="904.0" class="num-t" text-anchor="middle" dominant-baseline="central">9</text><rect x="747.5" y="882.0" width="194.9" height="17" rx="4" class="lbl-bg"/><text x="845.0" y="891.0" class="msg-text" text-anchor="middle" dominant-baseline="central">Dump config.ini to dev-data</text><rect x="705.5" y="882.5" width="38" height="16" rx="8" class="tag-dev"/><text x="724.5" y="890.5" class="tag-t" text-anchor="middle" dominant-baseline="central">DEV</text><line x1="710.0" y1="954.0" x2="179.0" y2="954.0" class="msg-line msg-res" marker-end="url(#ah)"/><circle cx="710.0" cy="954.0" r="8" class="num-c"/><text x="710.0" y="954.0" class="num-t" text-anchor="middle" dominant-baseline="central">10</text><rect x="389.4" y="932.0" width="101.1" height="17" rx="4" class="lbl-bg"/><text x="440.0" y="941.0" class="msg-text" text-anchor="middle" dominant-baseline="central">submission_id</text><rect x="40" y="976.0" width="1080" height="26" rx="6" class="phase-bg"/><text x="54" y="989.0" class="phase-text" dominant-baseline="central">Phase 3  —  Run the pipeline</text><rect x="871.9" y="1020.0" width="216.3" height="26" rx="6" class="self-box self-pipe"/><text x="980.0" y="1033.0" class="self-text" text-anchor="middle" dominant-baseline="central">Nextflow runs, output mounted</text><rect x="833.9" y="1025.0" width="38" height="16" rx="8" class="tag-prod"/><text x="852.9" y="1033.0" class="tag-t" text-anchor="middle" dominant-baseline="central">PROD</text><rect x="855.1" y="1060.0" width="249.8" height="26" rx="6" class="self-box self-pipe"/><text x="980.0" y="1073.0" class="self-text" text-anchor="middle" dominant-baseline="central">Output VCF hand-placed in dev-data</text><rect x="817.1" y="1065.0" width="38" height="16" rx="8" class="tag-dev"/><text x="836.1" y="1073.0" class="tag-t" text-anchor="middle" dominant-baseline="central">DEV</text><rect x="40" y="1100.0" width="1080" height="26" rx="6" class="phase-bg"/><text x="54" y="1113.0" class="phase-text" dominant-baseline="central">Phase 4  —  Poll status  (every 15s, until settled)</text><line x1="170.0" y1="1172.0" x2="701.0" y2="1172.0" class="msg-line" marker-end="url(#ah)"/><circle cx="170.0" cy="1172.0" r="8" class="num-c"/><text x="170.0" y="1172.0" class="num-t" text-anchor="middle" dominant-baseline="central">11</text><rect x="399.5" y="1150.0" width="81.0" height="17" rx="4" class="lbl-bg"/><text x="440.0" y="1159.0" class="msg-text" text-anchor="middle" dominant-baseline="central">GET status</text><line x1="710.0" y1="1222.0" x2="971.0" y2="1222.0" class="msg-line" marker-end="url(#ah)"/><circle cx="710.0" cy="1222.0" r="8" class="num-c"/><text x="710.0" y="1222.0" class="num-t" text-anchor="middle" dominant-baseline="central">12</text><rect x="750.9" y="1200.0" width="188.2" height="17" rx="4" class="lbl-bg"/><text x="845.0" y="1209.0" class="msg-text" text-anchor="middle" dominant-baseline="central">Poll Seqera for run status</text><rect x="708.9" y="1200.5" width="38" height="16" rx="8" class="tag-prod"/><text x="727.9" y="1208.5" class="tag-t" text-anchor="middle" dominant-baseline="central">PROD</text><line x1="980.0" y1="1272.0" x2="719.0" y2="1272.0" class="msg-line msg-res" marker-end="url(#ah)"/><circle cx="980.0" cy="1272.0" r="8" class="num-c"/><text x="980.0" y="1272.0" class="num-t" text-anchor="middle" dominant-baseline="central">13</text><rect x="817.9" y="1250.0" width="54.2" height="17" rx="4" class="lbl-bg"/><text x="845.0" y="1259.0" class="msg-text" text-anchor="middle" dominant-baseline="central">status</text><rect x="775.9" y="1250.5" width="38" height="16" rx="8" class="tag-prod"/><text x="794.9" y="1258.5" class="tag-t" text-anchor="middle" dominant-baseline="central">PROD</text><rect x="618.6" y="1294.0" width="182.8" height="26" rx="6" class="self-box self-be"/><text x="710.0" y="1307.0" class="self-text" text-anchor="middle" dominant-baseline="central">Report SUCCEEDED at once</text><rect x="580.6" y="1299.0" width="38" height="16" rx="8" class="tag-dev"/><text x="599.6" y="1307.0" class="tag-t" text-anchor="middle" dominant-baseline="central">DEV</text><line x1="710.0" y1="1362.0" x2="179.0" y2="1362.0" class="msg-line msg-res" marker-end="url(#ah)"/><circle cx="710.0" cy="1362.0" r="8" class="num-c"/><text x="710.0" y="1362.0" class="num-t" text-anchor="middle" dominant-baseline="central">14</text><rect x="412.9" y="1340.0" width="54.2" height="17" rx="4" class="lbl-bg"/><text x="440.0" y="1349.0" class="msg-text" text-anchor="middle" dominant-baseline="central">status</text><rect x="40" y="1384.0" width="1080" height="26" rx="6" class="phase-bg"/><text x="54" y="1397.0" class="phase-text" dominant-baseline="central">Phase 5  —  Results</text><line x1="170.0" y1="1456.0" x2="701.0" y2="1456.0" class="msg-line" marker-end="url(#ah)"/><circle cx="170.0" cy="1456.0" r="8" class="num-c"/><text x="170.0" y="1456.0" class="num-t" text-anchor="middle" dominant-baseline="central">15</text><rect x="339.2" y="1434.0" width="201.6" height="17" rx="4" class="lbl-bg"/><text x="440.0" y="1443.0" class="msg-text" text-anchor="middle" dominant-baseline="central">GET results  (page, filters)</text><rect x="488.0" y="1478.0" width="444.0" height="44" rx="7" class="note-bg"/><text x="710.0" y="1494.0" class="note-text" text-anchor="middle" dominant-baseline="central">Check output headers cover the enabled options (extras ignored) —</text><text x="710.0" y="1510.0" class="note-text" text-anchor="middle" dominant-baseline="central">if missing, pipeline reruns to add them (max 3); dev warns</text><rect x="585.1" y="1534.0" width="249.8" height="26" rx="6" class="self-box self-be"/><text x="710.0" y="1547.0" class="self-text" text-anchor="middle" dominant-baseline="central">Parse output (pinned parsing spec)</text><line x1="710.0" y1="1602.0" x2="179.0" y2="1602.0" class="msg-line msg-res" marker-end="url(#ah)"/><circle cx="710.0" cy="1602.0" r="8" class="num-c"/><text x="710.0" y="1602.0" class="num-t" text-anchor="middle" dominant-baseline="central">16</text><rect x="322.4" y="1580.0" width="235.1" height="17" rx="4" class="lbl-bg"/><text x="440.0" y="1589.0" class="msg-text" text-anchor="middle" dominant-baseline="central">annotations + pinned display spec</text><rect x="35.1" y="1624.0" width="269.9" height="26" rx="6" class="self-box self-fe"/><text x="170.0" y="1637.0" class="self-text" text-anchor="middle" dominant-baseline="central">Render results (generic + custom kit)</text><rect x="40" y="1664.0" width="1080" height="26" rx="6" class="phase-bg"/><text x="54" y="1677.0" class="phase-text" dominant-baseline="central">Phase 6  —  Later: filter + download</text><line x1="170.0" y1="1736.0" x2="701.0" y2="1736.0" class="msg-line" marker-end="url(#ah)"/><circle cx="170.0" cy="1736.0" r="8" class="num-c"/><text x="170.0" y="1736.0" class="num-t" text-anchor="middle" dominant-baseline="central">17</text><rect x="299.0" y="1714.0" width="282.0" height="17" rx="4" class="lbl-bg"/><text x="440.0" y="1723.0" class="msg-text" text-anchor="middle" dominant-baseline="central">GET results?filters    /    GET download</text><line x1="710.0" y1="1786.0" x2="179.0" y2="1786.0" class="msg-line msg-res" marker-end="url(#ah)"/><circle cx="710.0" cy="1786.0" r="8" class="num-c"/><text x="710.0" y="1786.0" class="num-t" text-anchor="middle" dominant-baseline="central">18</text><rect x="288.9" y="1764.0" width="302.1" height="17" rx="4" class="lbl-bg"/><text x="440.0" y="1773.0" class="msg-text" text-anchor="middle" dominant-baseline="central">filtered page  /  VCF or TSV  (server-side)</text></svg></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3><span class="dot fe"></span>Frontend owns</h3><ul>
+      <li>Input form + results UI via <b>generic renderers</b> (+ small custom kit: view-in-app popup, show-more)</li>
+      <li>Requests the input form from the backend on species selection</li>
+      <li>Triggers submission; polls status every 15s</li>
+      <li>Requests filtered pages + downloads</li></ul></div>
+    <div class="card"><h3><span class="dot api"></span>New API owns</h3><ul>
+      <li><b>Endpoint 1</b> — options + input-render spec, keyed on species</li>
+      <li><b>Endpoint 2</b> — config + parsing spec + display spec, for the selected options</li>
+      <li>Pure data: no logic, backend-authoritative for parsing</li></ul></div>
+    <div class="card"><h3><span class="dot be"></span>Backend owns</h3><ul>
+      <li><b>Relays endpoint 1</b> and applies activation (<code>get_visible_panels</code>)</li>
+      <li>Always-on base config; merges + emits <code>config.ini</code></li>
+      <li><b>Pins</b> parsing + display spec per job</li>
+      <li>Both checks; launches/polls the pipeline; parses; filters + downloads</li></ul></div>
+    <div class="card"><h3><span class="dot pipe"></span>Pipeline</h3><ul>
+      <li><b>Prod</b> — Nextflow via Seqera; output mounted for the backend</li>
+      <li><b>Dev</b> — manual HPC run; output hand-placed in <code>dev-data</code></li>
+      <li>Adds required headers on rerun when they're missing</li></ul></div>
+  </div>
+  <p class="sectionlabel">Decisions locked in this review</p>
+  <div class="rows">
+    <div class="row"><p class="q"><span class="tag">Decided</span>Endpoint 1 stays relayed; activation stays on the backend</p>
+      <p>The frontend may not hold the genome metadata needed to resolve options for every species (GRCh38 is easy, others get more complex), so the <b>backend</b> fetches endpoint 1 and runs activation via <code>get_visible_panels</code>.</p></div>
+    <div class="row"><p class="q"><span class="tag">Confirmed</span>Endpoint 1 fires on species selection</p>
+      <p>Kept as the current trigger — no deferral to data entry.</p></div>
+    <div class="row"><p class="q"><span class="tag">Confirmed</span>Endpoint 2 is options-aware</p>
+      <p>It receives the selected options and returns config, parsing and display <b>for those options</b> — which is what makes the per-job header check meaningful.</p></div>
+    <div class="row"><p class="q"><span class="tag">Confirmed</span>Results display is pinned to the submitted options</p>
+      <p>The pinned display spec is used at results time rather than re-fetching live panels — cleaner, and it fixes a latent pinning gap.</p></div>
+    <div class="row"><p class="q"><span class="tag">Decided</span>Missing headers: pipeline adds them on rerun, capped at 3</p>
+      <p>The required headers are needed by the parser and shouldn't go missing often. On a miss, prod reruns the pipeline (which adds them), <b>max 3 retries</b>; dev only warns.</p></div>
+  </div>
+  <p class="foot"><b>Verified against:</b> frontend <b>vepApiSlice.ts</b> (endpoints + triggers), <b>vepSubmissionStatusPolling.ts</b> (15s poll), <b>VepFormOptionsSection.tsx</b> (species-keyed fetch) · backend <b>vep_resources.py</b> (submit / status / results / form_config order), <b>pipeline_model.py</b> (always-on base + emitters), <b>spec_loader.py</b> (resolve + pin), <b>nextflow.py</b> (Seqera launch/poll).<br/>Hand-built SVG (no mermaid); theme-aware — follows your light/dark theme.</p>
+</div></div>
