@@ -277,6 +277,15 @@ Adding a plugin is then one JSON entry. The backend changes only for a genuinely
 new *visibility rule* or a new *named builder/transform* — both rare, both
 deliberately reviewed.
 
+**Endpoint 1 is relayed, not called directly by the frontend** (decided in
+review). The frontend requests the input form from the backend
+(`GET /form_config`, keyed on the selected species/assembly, fired on species
+selection), and the backend fetches the option catalog from the new API's
+*endpoint 1* and runs activation. Reason: the frontend cannot be relied on to
+hold the genome metadata needed to resolve options for every species — GRCh38 is
+simple, others get more complex — so activation stays server-side. See §10 for
+the full request flow.
+
 ---
 
 ## 6. The two checks
@@ -304,6 +313,12 @@ one reason the builder is shared code, not per-side duplication.
 
 Sequencing: this depends on the config→JSON migration (it needs the enabled-plugin
 knowledge), so it ships as part of / after that work, not standalone.
+
+**On a miss (operational, decided in review):** in production the backend reruns
+the pipeline, which is responsible for adding the required headers; retries are
+**capped at 3**, after which it fails with a logged detail. In dev it only warns
+(the manual loop has no rerun). Missing headers should be rare — the headers are
+required by the parser — so the cap is a safety valve, not an expected path.
 
 ---
 
@@ -418,3 +433,47 @@ two checks, and the always-on base; frontend owns the renderer primitives +
 override registry + popup templates. Use the same branch name in both repos when
 implementation starts (this design branch is `feature/config-display-spec-design`
 in `ensembl-web-tools-api`).
+
+---
+
+## 10. End-to-end request flow (verified against current code)
+
+The new API exposes **two endpoints**:
+- **Endpoint 1** — the available options + how to render them on the input form,
+  keyed on the selected species/assembly.
+- **Endpoint 2** — the config lines, parsing spec, and results-display spec for a
+  specific set of *selected* options.
+
+One submission, start to finish (order confirmed in both repos):
+
+1. **Input form.** On species selection the frontend calls the backend
+   `GET /form_config` (`vepApiSlice.ts`; fired via `skip: !selectedSpecies` in
+   `VepFormOptionsSection.tsx`). The backend fetches endpoint 1, applies
+   activation (`get_visible_panels`), and returns panels + options + render info.
+   The call is **relayed, not direct** (§5). The frontend renders the form with
+   generic renderers.
+2. **Submit.** The user picks options, adds a VCF, and the frontend `POST`s
+   `/submissions` (`vep_resources.py::submit_vep`). The backend sends the selected
+   options to endpoint 2 and receives config + parsing + display.
+3. **Check + pin.** The backend runs the consistency check over the returned
+   document (config ⇄ parsing ⇄ display); on failure it retries the fetch, max 3,
+   then fails and logs. It merges the config with the always-on base (§4.5), emits
+   `config.ini`, and pins the parsing + display spec beside the job
+   (`spec_loader.write_spec_sidecar`).
+4. **Run.** Prod: launch a Nextflow run via Seqera (`nextflow.launch_workflow`),
+   output mounted for the backend. Dev: dump `config.ini` to `dev-data`; the
+   output VCF is hand-placed there (the manual loop).
+5. **Poll.** The frontend polls `GET /status` every 15s
+   (`vepSubmissionStatusPolling.ts`, `POLLING_INTERVAL`). Prod polls Seqera
+   (`get_workflow_status`); dev reports SUCCEEDED immediately.
+6. **Results.** The frontend calls `GET /results` (`get_results_from_path` +
+   `_load_pinned_spec`). The backend runs the missing-header check (§6.2), parses
+   with the **pinned** parsing spec, and returns the annotations plus the
+   **pinned** display spec. The frontend renders with generic renderers (+ the
+   small custom kit). NB today the results view re-fetches *live* form-config
+   panels for layout — pinning the display spec fixes that.
+7. **Later.** Filtering and download stay server-side (`parse_filters`,
+   `stream_vep_tsv`).
+
+A rendered version of this flow (dev/prod branches inline) was produced as a
+review diagram; keep this section and that diagram in step.
