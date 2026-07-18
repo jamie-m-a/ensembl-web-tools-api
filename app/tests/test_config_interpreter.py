@@ -93,6 +93,30 @@ SUBOPTION_CASES = [
         "nearest_exon_jb": True, "nearest_exon_jb_max_range": 5000,
         "nearest_exon_jb_intronic": True,
     }),
+    # gnomAD / All of Us custom `fields=` builders.
+    ("gnomad_exomes non_ukb", "GRCh38", {
+        "gnomad_exomes": True, "gnomad_exomes_include_ukb": False,
+    }),
+    ("gnomad_exomes multi anc+sex", "GRCh38", {
+        "gnomad_exomes": True, "gnomad_exomes_afr": True,
+        "gnomad_exomes_afr_female": True, "gnomad_exomes_nfe": True,
+    }),
+    ("gnomad_exomes no fields -> omitted", "GRCh38", {
+        "gnomad_exomes": True, "gnomad_exomes_all": False,
+    }),
+    ("gnomad_genomes grpmax", "GRCh38", {
+        "gnomad_genomes": True, "gnomad_genomes_grpmax": True,
+    }),
+    ("gnomad_genomes ami+remaining+sex", "GRCh38", {
+        "gnomad_genomes": True, "gnomad_genomes_ami": True,
+        "gnomad_genomes_remaining": True, "gnomad_genomes_all_male": True,
+    }),
+    ("allofus max + several", "GRCh38", {
+        "allofus": True, "allofus_max": True, "allofus_afr": True, "allofus_eur": True,
+    }),
+    ("allofus no fields -> omitted", "GRCh38", {
+        "allofus": True, "allofus_all": False,
+    }),
 ]
 
 

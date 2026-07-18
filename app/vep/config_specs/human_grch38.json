@@ -207,6 +207,87 @@
       }
     } },
 
+    { "id": "gnomad_exomes", "order": 55, "config": {
+      "emit": "custom", "omit_if_no_fields": true,
+      "params": {
+        "file": "{path}/gnomad.exomes.v4.1.sites.chr###CHR###.vcf.bgz",
+        "short_name": "gnomAD_exomes",
+        "format": "vcf"
+      },
+      "fields": {
+        "builder": "gnomad_ancestry_sex", "base": "AF",
+        "include_ukb_option": "gnomad_exomes_include_ukb",
+        "ancestries": [
+          { "option": "gnomad_exomes_all", "code": "" },
+          { "option": "gnomad_exomes_afr", "code": "afr" },
+          { "option": "gnomad_exomes_amr", "code": "amr" },
+          { "option": "gnomad_exomes_asj", "code": "asj" },
+          { "option": "gnomad_exomes_eas", "code": "eas" },
+          { "option": "gnomad_exomes_fin", "code": "fin" },
+          { "option": "gnomad_exomes_mid", "code": "mid" },
+          { "option": "gnomad_exomes_nfe", "code": "nfe" }
+        ],
+        "sexes": [
+          { "suffix": "both", "code": "" },
+          { "suffix": "female", "code": "XX" },
+          { "suffix": "male", "code": "XY" }
+        ]
+      }
+    } },
+
+    { "id": "gnomad_genomes", "order": 56, "config": {
+      "emit": "custom", "omit_if_no_fields": true,
+      "params": {
+        "file": "{path}/gnomad.genomes.v4.1.sites.chr###CHR###.vcf.bgz",
+        "short_name": "gnomAD_genomes",
+        "format": "vcf"
+      },
+      "fields": {
+        "builder": "gnomad_ancestry_sex", "base": "AF",
+        "ancestries": [
+          { "option": "gnomad_genomes_all", "code": "" },
+          { "option": "gnomad_genomes_afr", "code": "afr" },
+          { "option": "gnomad_genomes_amr", "code": "amr" },
+          { "option": "gnomad_genomes_asj", "code": "asj" },
+          { "option": "gnomad_genomes_eas", "code": "eas" },
+          { "option": "gnomad_genomes_fin", "code": "fin" },
+          { "option": "gnomad_genomes_mid", "code": "mid" },
+          { "option": "gnomad_genomes_nfe", "code": "nfe" },
+          { "option": "gnomad_genomes_ami", "code": "ami" },
+          { "option": "gnomad_genomes_remaining", "code": "remaining" },
+          { "option": "gnomad_genomes_grpmax", "code": "grpmax", "sex_split": false }
+        ],
+        "sexes": [
+          { "suffix": "both", "code": "" },
+          { "suffix": "female", "code": "XX" },
+          { "suffix": "male", "code": "XY" }
+        ]
+      }
+    } },
+
+    { "id": "allofus", "order": 57, "config": {
+      "emit": "custom", "omit_if_no_fields": true,
+      "params": {
+        "file": "{path}/AllOfUs_chr###CHR###.vcf.gz",
+        "short_name": "AoU",
+        "format": "vcf"
+      },
+      "fields": {
+        "builder": "allofus_populations",
+        "populations": [
+          { "option": "allofus_all", "codes": ["gvs_all_af"] },
+          { "option": "allofus_max", "codes": ["gvs_max_af", "gvs_max_subpop"] },
+          { "option": "allofus_afr", "codes": ["gvs_afr_af"] },
+          { "option": "allofus_amr", "codes": ["gvs_amr_af"] },
+          { "option": "allofus_eas", "codes": ["gvs_eas_af"] },
+          { "option": "allofus_eur", "codes": ["gvs_eur_af"] },
+          { "option": "allofus_mid", "codes": ["gvs_mid_af"] },
+          { "option": "allofus_sas", "codes": ["gvs_sas_af"] },
+          { "option": "allofus_oth", "codes": ["gvs_oth_af"] }
+        ]
+      }
+    } },
+
     { "id": "clinvar", "order": 60, "config": {
       "emit": "custom",
       "params": {

@@ -111,11 +111,46 @@ class LiteralFields(BaseModel):
     literal: list[str]
 
 
+class AncestryCode(BaseModel):
+    """One gnomAD ancestry option and its field-code component. `code` is empty
+    for "all". `sex_split=False` marks a code that takes no XX/XY suffix and is a
+    plain toggle (genomes' `grpmax`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    option: str
+    code: str
+    sex_split: bool = True
+
+
+class SexCode(BaseModel):
+    """A sex sub-option suffix and its field-code component (both="", female=XX,
+    male=XY). The sub-option id is `<ancestry.option>_<suffix>`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    suffix: str
+    code: str
+
+
+class PopulationCode(BaseModel):
+    """One All of Us population option and the field code(s) it contributes
+    ("max" contributes two)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    option: str
+    codes: list[str]
+
+
 class GnomadAncestrySexFields(BaseModel):
     """The gnomAD exomes/genomes grammar: for each selected ancestry, for each
     selected sex-of-that-ancestry, emit `<base>[_non_ukb][_<anc>][_<XX|XY>]`.
-    The ancestry/sex codes are *open data* on the option sub-options
-    (`field_code`); this only names the combinatorial algorithm.
+
+    The builder is only the combinatorial algorithm; the ancestry/sex codes are
+    open data. TODO (at merge): move `ancestries`/`sexes` onto the option
+    definitions (`field_code` per Q1) and reference them here rather than
+    inlining — carried here for now so the config interpreter is self-contained.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -126,16 +161,20 @@ class GnomadAncestrySexFields(BaseModel):
     # (exomes only; genomes has no UK Biobank subset so it omits this).
     include_ukb_option: str | None = None
     join: str = "%"
+    ancestries: list[AncestryCode]
+    sexes: list[SexCode]
 
 
 class AllofusPopulationFields(BaseModel):
-    """All of Us: concatenate the `field_codes` of each selected population (no
-    sex split; "max" contributes two codes). Codes live on the option defs."""
+    """All of Us: concatenate the codes of each selected population (no sex
+    split; "max" contributes two). Same TODO as above — codes move to the option
+    defs at merge."""
 
     model_config = ConfigDict(extra="forbid")
 
     builder: Literal["allofus_populations"]
     join: str = "%"
+    populations: list[PopulationCode]
 
 
 FieldsSpec = Union[LiteralFields, GnomadAncestrySexFields, AllofusPopulationFields]

@@ -82,9 +82,44 @@ def _variadic_suffix(flags, options: dict) -> str:
 def _build_fields(fields, options: dict) -> list[str]:
     if isinstance(fields, LiteralFields):
         return list(fields.literal)
-    # gnomad_ancestry_sex / allofus_populations builders arrive in a later
-    # increment (they read field codes off the option definitions).
-    raise NotImplementedError(f"field builder not yet supported: {fields!r}")
+
+    if isinstance(fields, GnomadAncestrySexFields):
+        # non_ukb is inserted after base when the UK-Biobank toggle is off
+        # (exomes only; genomes has no include_ukb_option).
+        non_ukb = bool(fields.include_ukb_option) and not options.get(
+            fields.include_ukb_option
+        )
+
+        def _code(anc_code: str, sex_code: str) -> str:
+            parts = [fields.base]
+            if non_ukb:
+                parts.append("non_ukb")
+            if anc_code:
+                parts.append(anc_code)
+            if sex_code:
+                parts.append(sex_code)
+            return "_".join(parts)
+
+        result: list[str] = []
+        for ancestry in fields.ancestries:
+            if not options.get(ancestry.option):
+                continue
+            if not ancestry.sex_split:  # grpmax: one field, no XX/XY
+                result.append(_code(ancestry.code, ""))
+                continue
+            for sex in fields.sexes:
+                if options.get(f"{ancestry.option}_{sex.suffix}"):
+                    result.append(_code(ancestry.code, sex.code))
+        return result
+
+    if isinstance(fields, AllofusPopulationFields):
+        result = []
+        for population in fields.populations:
+            if options.get(population.option):
+                result.extend(population.codes)
+        return result
+
+    raise ValueError(f"unknown field builder: {fields!r}")
 
 
 def _emit_entry(entry, options, assembly, context) -> str | None:
