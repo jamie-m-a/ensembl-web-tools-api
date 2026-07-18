@@ -1,0 +1,133 @@
+"""Turn selected options + a ConfigSpec into VEP config.ini lines.
+
+The declarative counterpart to
+`pipeline_model.ConfigIniParams.create_config_ini_file`: given the options a
+submission selected, this emits the same `plugin …`, `custom …` and flag lines
+the hardcoded builder does. Additive for now — built alongside the old path and
+proved equal by `tests/test_config_interpreter.py` (a differential test over
+option combinations) before it replaces it.
+
+NOT here: the always-on base config (`force_overwrite`, `numbers`, `symbol`, …
+and the assembly-gated `mane`/`assembly`). Those are VEP-invocation invariants
+that stay in the backend next to the per-genome `gff`/`fasta` resolution — this
+module only turns *selected options* into lines. See docs/design/.
+"""
+
+from vep.models.config_spec_model import (
+    AllofusPopulationFields,
+    ByAssembly,
+    ConfigSpec,
+    CustomEmitter,
+    FlagEmitter,
+    FromOption,
+    GnomadAncestrySexFields,
+    LiteralFields,
+    PluginEmitter,
+)
+
+
+def _interpolate(text: str, context: dict[str, str]) -> str:
+    """Substitute the backend-provided `{path}` / `{gff}` tokens. Anything else
+    (notably the pipeline's `###CHR###` per-chromosome placeholder) is left
+    untouched."""
+    for token, value in context.items():
+        text = text.replace("{" + token + "}", value)
+    return text
+
+
+def _param_value(param, options: dict, assembly: str, context: dict) -> str:
+    if isinstance(param, str):
+        return _interpolate(param, context)
+    if isinstance(param, ByAssembly):
+        chosen = param.by_assembly.get(assembly, param.by_assembly["GRCh38"])
+        return _interpolate(chosen, context)
+    if isinstance(param, FromOption):
+        value = options.get(param.from_option)
+        if param.equals is not None:
+            return "1" if value == param.equals else "0"
+        if param.as_type == "value":
+            return str(value)
+        return str(int(bool(value)))
+    raise ValueError(f"unknown param value: {param!r}")
+
+
+def _params_str(params: dict, options, assembly, context) -> list[str]:
+    return [
+        f"{key}={_param_value(value, options, assembly, context)}"
+        for key, value in params.items()
+    ]
+
+
+def _variadic_suffix(flags, options: dict) -> str:
+    """IntAct's selected sub-flags: `,all=1` when every one is on, else
+    `,<kw>=1` for each selected, else nothing."""
+    selected = [f for f in flags.options if options.get(f.option)]
+    if flags.all_shortcut and len(selected) == len(flags.options):
+        return f",{flags.all_shortcut}=1"
+    if selected:
+        return "".join(f",{f.keyword}=1" for f in selected)
+    return ""
+
+
+def _build_fields(fields, options: dict) -> list[str]:
+    if isinstance(fields, LiteralFields):
+        return list(fields.literal)
+    # gnomad_ancestry_sex / allofus_populations builders arrive in a later
+    # increment (they read field codes off the option definitions).
+    raise NotImplementedError(f"field builder not yet supported: {fields!r}")
+
+
+def _emit_entry(entry, options, assembly, context) -> str | None:
+    emitter = entry.config
+
+    if isinstance(emitter, FlagEmitter):
+        # Flags are always written (as 0 or 1), like the base flag block.
+        return f"{emitter.keyword} {int(bool(options.get(entry.id)))}"
+
+    if not options.get(entry.id):
+        return None  # plugin / custom lines only appear when the option is on
+
+    if isinstance(emitter, PluginEmitter):
+        parts = _params_str(emitter.params, options, assembly, context)
+        line = f"plugin {emitter.name}"
+        if parts:
+            line += "," + ",".join(parts)
+        if emitter.flags:
+            line += _variadic_suffix(emitter.flags, options)
+        return line
+
+    if isinstance(emitter, CustomEmitter):
+        field_list = _build_fields(emitter.fields, options)
+        if emitter.omit_if_no_fields and not field_list:
+            return None
+        join = getattr(emitter.fields, "join", "%")
+        parts: list[str] = []
+        for key, value in emitter.params.items():
+            parts.append(f"{key}={_param_value(value, options, assembly, context)}")
+            if key == emitter.fields_after:
+                parts.append(f"fields={join.join(field_list)}")
+        return "custom " + ",".join(parts)
+
+    raise ValueError(f"unknown emitter: {emitter!r}")
+
+
+def emit_config_lines(
+    spec: ConfigSpec,
+    options: dict,
+    *,
+    assembly: str,
+    plugin_path: str,
+    gff: str,
+) -> list[str]:
+    """The option-driven config.ini lines for `options`, in entry `order`.
+
+    `options` is a flat {option_id: value} map (a `ConfigIniParams.model_dump()`).
+    `plugin_path`/`gff` fill the `{path}`/`{gff}` tokens.
+    """
+    context = {"path": plugin_path, "gff": gff}
+    lines: list[str] = []
+    for entry in sorted(spec.entries, key=lambda e: e.order):
+        line = _emit_entry(entry, options, assembly, context)
+        if line is not None:
+            lines.append(line)
+    return lines
