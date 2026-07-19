@@ -1,10 +1,15 @@
-"""Tests for VEP config.ini construction (ConfigIniParams.create_config_ini_file).
+"""Golden-file tests for VEP config.ini construction
+(ConfigIniParams.create_config_ini_file).
 
-The builder turns the client's submission booleans into a flat VEP config.ini:
-always-on defaults, `key value` flag lines, and `plugin ...` lines (some of
-which are assembly-specific or carry sub-option flags). These tests monkeypatch
-the metadata lookup so no network call is made, build the ini into a tmp dir,
-read it back, and assert on the emitted lines.
+create_config_ini_file is now a thin runtime: the always-on base
+(base_config_lines) plus the option-driven lines the config interpreter emits
+from the config spec. These tests assert the *literal* lines that come out, so
+they are the independent oracle that the base+interpreter path reproduces the
+config.ini the hardcoded builder used to emit (the role the now-retired
+differential test test_config_interpreter.py played against that builder).
+
+These tests monkeypatch the metadata lookup so no network call is made, build
+the ini into a tmp dir, read it back, and assert on the emitted lines.
 """
 
 import re
@@ -12,9 +17,16 @@ import re
 import pytest
 
 from app.vep.models.pipeline_model import ConfigIniParams, PLUGIN_PATH
+from app.vep.utils.spec_loader import load_merged_spec
 
 GFF = "/vep_support/test.gff3.gz"
 FASTA = "/vep_support/test.fa"
+
+# The config half of the bundled merged spec drives the interpreter. Human
+# GRCh38 for both assemblies under test — the spec's by_assembly params pick the
+# GRCh37 files when the submission's assembly resolves to GRCh37 (mirroring the
+# single map set the old builder keyed by assembly).
+CONFIG_SPEC = load_merged_spec("human_grch38").config
 
 
 def build_lines(monkeypatch, tmp_path, *, assembly="GRCh38.p14", **kwargs):
@@ -26,7 +38,7 @@ def build_lines(monkeypatch, tmp_path, *, assembly="GRCh38.p14", **kwargs):
     params = ConfigIniParams(
         genome_id="genome-under-test", assembly_name=assembly, **kwargs
     )
-    params.create_config_ini_file(str(tmp_path))
+    params.create_config_ini_file(str(tmp_path), CONFIG_SPEC)
     return (tmp_path / "config.ini").read_text().splitlines()
 
 

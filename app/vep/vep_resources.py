@@ -89,8 +89,10 @@ async def submit_vep(request: Request):
             # submission — matching how this dev harness already works: one
             # manually-run job at a time (see write_spec_sidecar).
             write_spec_sidecar(DUMP_INI_DIR, merged_spec)
-            return {"submission_id": dump_config_ini(ini_parameters)}
-        ini_file = ini_parameters.create_config_ini_file(request_streamer.temp_dir)
+            return {"submission_id": dump_config_ini(ini_parameters, merged_spec.config)}
+        ini_file = ini_parameters.create_config_ini_file(
+            request_streamer.temp_dir, merged_spec.config
+        )
         write_spec_sidecar(request_streamer.temp_dir, merged_spec)
 
         vep_job_config_parameters = VEPConfigParams(
