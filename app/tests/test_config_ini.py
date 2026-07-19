@@ -51,6 +51,7 @@ def test_always_on_defaults(monkeypatch, tmp_path):
         "biotype 1",
         "transcript_version 1",
         "canonical 1",
+        "database 0",
         f"gff {GFF}",
         f"fasta {FASTA}",
     ]:

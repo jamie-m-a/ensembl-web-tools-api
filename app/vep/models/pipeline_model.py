@@ -206,6 +206,57 @@ ALLOFUS_POPULATIONS: list[tuple[str, list[str]]] = [
 ]
 
 
+def base_config_lines(
+    *,
+    assembly_name: str,
+    gff: str,
+    fasta: str,
+    force_overwrite: int = 1,
+    transcript_version: int = 1,
+    canonical: int = 1,
+) -> list[str]:
+    """The always-on VEP config.ini lines — invocation invariants not exposed as
+    options. Centralised here rather than scattered through the ini builder
+    because, when the option-driven lines move to the declarative config spec,
+    these stay in the backend: they are VEP invariants plus the two
+    runtime-resolved paths (`gff`/`fasta`), which cannot be static spec data.
+    See docs/design/merged-annotation-spec.md §4.5.
+
+    Assembly gating mirrors ConfigIniParams' own prefix checks:
+      mane 1     — human GRCh38 and the mouse reference (GRCm39) only
+      assembly   — the human reference assemblies (GRCh38 / GRCh37)
+    """
+    is_human_grch38 = assembly_name.startswith("GRCh38")
+    is_human_grch37 = assembly_name.startswith("GRCh37")
+    is_mouse_reference = assembly_name.startswith("GRCm39")
+
+    lines = [
+        f"force_overwrite {force_overwrite}",
+        "numbers 1",
+    ]
+    # MANE annotations only exist for human GRCh38 and the mouse reference
+    # (GRCm39); requesting `mane` for other species has no data.
+    if is_human_grch38 or is_mouse_reference:
+        lines.append("mane 1")
+    # VEP assembly name, always on for the human reference assemblies.
+    if is_human_grch38:
+        lines.append("assembly GRCh38")
+    elif is_human_grch37:
+        lines.append("assembly GRCh37")
+    lines += [
+        "symbol 1",
+        "biotype 1",
+        f"transcript_version {transcript_version}",
+        f"canonical {canonical}",
+        # Disable VEP's database connection (cache/plugin-file mode only). A new
+        # always-on invariant, not previously emitted anywhere. See design §4.5.
+        "database 0",
+        f"gff {gff}",
+        f"fasta {fasta}",
+    ]
+    return lines
+
+
 class ConfigIniParams(BaseModel):
     genome_id: str
     force_overwrite: int = 1
@@ -444,38 +495,26 @@ class ConfigIniParams(BaseModel):
         # "GRCm39"), used to gate assembly-conditional lines and to pick
         # assembly-specific plugin data files.
         assembly_name = self.assembly_name or ""
-        is_human_grch38 = assembly_name.startswith("GRCh38")
-        is_human_grch37 = assembly_name.startswith("GRCh37")
-        is_mouse_reference = assembly_name.startswith("GRCm39")
 
         # Always-on defaults (not exposed on the input form).
-        lines = [
-            f"force_overwrite {self.force_overwrite}",
-            "numbers 1",
-        ]
-        # MANE annotations only exist for human GRCh38 and the mouse reference
-        # (GRCm39); requesting `mane` for other species has no data.
-        if is_human_grch38 or is_mouse_reference:
-            lines.append("mane 1")
-        # VEP assembly name, always on for the human reference assemblies.
-        if is_human_grch38:
-            lines.append("assembly GRCh38")
-        elif is_human_grch37:
-            lines.append("assembly GRCh37")
+        lines = base_config_lines(
+            assembly_name=assembly_name,
+            gff=self.gff,
+            fasta=self.fasta,
+            force_overwrite=self.force_overwrite,
+            transcript_version=self.transcript_version,
+            canonical=self.canonical,
+        )
+        # HGVS / SPDI / protein flag lines. These become the config spec's `flag`
+        # emitters at cutover; emitted here while the hardcoded builder is live.
         lines += [
-            "symbol 1",
-            "biotype 1",
-            f"transcript_version {self.transcript_version}",
-            f"canonical {self.canonical}",
             f"hgvs {1 if self.hgvs else 0}",
             f"hgvsg {1 if self.hgvsg else 0}",
             f"spdi {1 if self.spdi else 0}",
             f"protein {1 if self.protein else 0}",
-            f"gff {self.gff}",
-            f"fasta {self.fasta}",
         ]
         # Assembly used to pick assembly-specific plugin files (default GRCh38).
-        assembly = "GRCh37" if is_human_grch37 else "GRCh38"
+        assembly = "GRCh37" if assembly_name.startswith("GRCh37") else "GRCh38"
 
         # Append a `plugin ...` line for every enabled plugin option.
         for option, plugin_line in PLUGIN_CONFIG_LINES.items():

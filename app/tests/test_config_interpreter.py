@@ -29,7 +29,7 @@ CONFIG_SPEC = ConfigSpec.model_validate(json.loads(SPEC_PATH.read_text()))
 # are matched by their first token.
 BASE_KEYWORDS = {
     "force_overwrite", "numbers", "mane", "assembly", "symbol", "biotype",
-    "transcript_version", "canonical", "gff", "fasta",
+    "transcript_version", "canonical", "database", "gff", "fasta",
 }
 
 FAKE_SUPPORT = {"gff_location": "/data/x.gff", "faa_location": "/data/x.faa"}
