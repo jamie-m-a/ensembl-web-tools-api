@@ -19,6 +19,18 @@ class PaginationMetadata(BaseModel):
     total: int
 
 
+class Annotation(BaseModel):
+    """A generic, spec-driven plugin annotation: the payload produced by
+    `spec_interpreter.apply_plugin_spec` for one plugin, tagged with its plugin
+    id and scope. Emitted alongside the typed annotation fields while the flat
+    wire format is being introduced — the envelope (variant/allele/consequence)
+    stays typed; only this payload is generic (`data`)."""
+
+    plugin: str  # spec plugin id, e.g. "mavedb", "gnomad_exomes"
+    scope: str  # "allele" | "transcript"
+    data: dict[str, Any]
+
+
 class PredictedIntergenicConsequence(BaseModel):
     feature_type: Any | None = Field(
         default=None,
@@ -294,6 +306,9 @@ class PredictedTranscriptConsequence(BaseModel):
     utr_annotation: FivePrimeUtrAnnotation | None = None
     riboseq_orfs: RiboseqOrfsAnnotation | None = None
     go_terms: list[GoTerm] = []
+    # Generic spec-driven annotations for this transcript consequence (scope
+    # "transcript"), emitted additively alongside the typed fields above.
+    annotations: list[Annotation] = []
 
 
 class ReferenceVariantAllele(BaseModel):
@@ -379,6 +394,9 @@ class AlternativeVariantAllele(BaseModel):
     open_targets: OpenTargetsAssociation | None = None
     # ClinVar clinical significance (from the ClinVar custom track).
     clinvar: ClinVarAnnotation | None = None
+    # Generic spec-driven annotations for this allele (scope "allele"), emitted
+    # additively alongside the typed allele-level fields above.
+    annotations: list[Annotation] = []
     predicted_molecular_consequences: list[
         PredictedTranscriptConsequence | PredictedIntergenicConsequence
     ]

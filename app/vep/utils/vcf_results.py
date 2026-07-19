@@ -25,6 +25,7 @@ from vep.utils.csq import (
 )
 from vep.utils.vcf_meta import _get_vcf_meta
 from vep.utils.spec_loader import load_expected_columns_sidecar, load_spec_sidecar
+from vep.utils.spec_interpreter import apply_plugin_spec
 from vep.models.parsing_spec_model import ParsingSpec
 
 # Taken from https://github.com/Ensembl/ensembl-hypsipyle
@@ -678,8 +679,35 @@ def _parse_open_targets(csq_values, index_map) -> model.OpenTargetsAssociation |
     )
 
 
+def _spec_annotations(
+    csq_values: list[str],
+    index_map: dict[str, int],
+    spec: ParsingSpec | None,
+    scope: str,
+) -> list[model.Annotation]:
+    """The generic annotations for one CSQ entry at the given scope, driving each
+    matching spec plugin through `apply_plugin_spec`. Additive to the typed
+    fields; when there is no pinned spec this is empty and nothing changes."""
+    if spec is None:
+        return []
+    annotations: list[model.Annotation] = []
+    for plugin in spec.plugins:
+        if plugin.scope != scope:
+            continue
+        data = apply_plugin_spec(csq_values, index_map, plugin)
+        if data is not None:
+            annotations.append(
+                model.Annotation(plugin=plugin.plugin, scope=scope, data=data)
+            )
+    return annotations
+
+
 def _get_alt_allele_details(
-    ref: str, alt: str, csqs: list[str], index_map: dict[str, int]
+    ref: str,
+    alt: str,
+    csqs: list[str],
+    index_map: dict[str, int],
+    spec: ParsingSpec | None = None,
 ) -> model.AlternativeVariantAllele:
     """Creates  AlternativeVariantAllele based on
     target alt allele and CSQ entires"""
@@ -697,6 +725,7 @@ def _get_alt_allele_details(
     cadd_phred = None
     cadd_raw = None
     clinvar = None
+    allele_annotations: list[model.Annotation] = []
     allele_level_captured = False
 
     for str_csq in csqs:
@@ -726,6 +755,9 @@ def _get_alt_allele_details(
                 get_csq_value(csq_values, "CADD_RAW", None, index_map)
             )
             clinvar = _parse_clinvar(csq_values, index_map)
+            allele_annotations = _spec_annotations(
+                csq_values, index_map, spec, "allele"
+            )
             allele_level_captured = True
 
         cons = get_csq_value(csq_values, "Consequence", "", index_map)
@@ -799,6 +831,10 @@ def _get_alt_allele_details(
                     utr_annotation=_parse_utr_annotation(csq_values, index_map),
                     riboseq_orfs=_parse_riboseq_orfs(csq_values, index_map),
                     go_terms=_parse_go(csq_values, index_map),
+                    # Generic spec-driven annotations (additive to the above).
+                    annotations=_spec_annotations(
+                        csq_values, index_map, spec, "transcript"
+                    ),
                 )
             )
         elif "intergenic_variant" in cons:
@@ -822,6 +858,7 @@ def _get_alt_allele_details(
         phenotype_data=phenotype_data,
         open_targets=open_targets,
         clinvar=clinvar,
+        annotations=allele_annotations,
         predicted_molecular_consequences=consequences,
     )
 
@@ -889,6 +926,7 @@ def _get_filtered_results(
     page: int,
     vcf_path: FilePath,
     filters: list[results_filters.ResultsFilter],
+    spec: ParsingSpec | None = None,
 ) -> model.VepResultsResponse:
     """Scan the whole results VCF applying the filter pipeline, then paginate the
     filtered records. The page-index fast path can't be used once records are
@@ -916,7 +954,7 @@ def _get_filtered_results(
 
     stream = StringIO("".join(header_lines) + "".join(page_rows))
     response = get_results_from_stream(
-        page_size, page, filtered_total, stream, presliced=True
+        page_size, page, filtered_total, stream, presliced=True, spec=spec
     )
     response.metadata.filters = model.FilterMetadata(
         unfiltered_total=len(data_lines),
@@ -1031,11 +1069,12 @@ def get_results_from_path(
     Slices the input VCF file to a smaller one
     and converts it to stream for get_results_from_stream"""
 
-    # Load and log the spec pinned to this job at submission, exercising the
-    # results-time seam of the annotation-spec cutover. The page is still parsed
-    # by the hand-written parsers below (piece 3 parses from this spec instead);
-    # a missing or unreadable pin never fails results.
-    _load_pinned_spec(vcf_path)
+    # Load the spec pinned to this job at submission. The page is still parsed by
+    # the hand-written parsers, but the spec now also drives the generic
+    # `annotations` emitted alongside the typed fields (threaded down to
+    # _get_alt_allele_details). A missing or unreadable pin -> None -> no generic
+    # annotations, never failing results.
+    spec = _load_pinned_spec(vcf_path)
     # Runtime missing-expected-field check: warn if the pipeline output is missing
     # a CSQ column the submitted options required. Non-fatal (dev warns only).
     _check_expected_columns(vcf_path)
@@ -1043,7 +1082,7 @@ def get_results_from_path(
     # Filtered requests can't use the page index (filtering shifts record
     # positions), so they take a dedicated scan-and-filter path.
     if filters:
-        return _get_filtered_results(page_size, page, vcf_path, filters)
+        return _get_filtered_results(page_size, page, vcf_path, filters, spec)
 
     # Fast path: if the pipeline emitted a page-index sidecar, seek to the page
     # instead of scanning the file / shelling out to bcftools.
@@ -1058,6 +1097,7 @@ def get_results_from_path(
             index["total_records"],
             StringIO(header_text + rows_text),
             presliced=True,
+            spec=spec,
         )
 
     # Fallback (no sidecar): scan the file from the top through page*page_size
@@ -1082,23 +1122,23 @@ def get_results_from_path(
     )
     vcf_stream = StringIO(vcf_headers + vcf_slice)
 
-    return get_results_from_stream(page_size, page, total, vcf_stream)
+    return get_results_from_stream(page_size, page, total, vcf_stream, spec=spec)
 
 
 def get_results_from_stream(
     page_size: int, page: int, total: int, vcf_stream: StringIO,
-    presliced: bool = False,
+    presliced: bool = False, spec: ParsingSpec | None = None,
 ) -> model.VepResultsResponse:
     """Helper method to convert a filestream to VCF records for _get_results_from_vcfpy"""
 
     # Load vcf
     vcf_records = vcfpy.Reader.from_stream(vcf_stream)
-    return _get_results_from_vcfpy(page_size, page, total, vcf_records, presliced)
+    return _get_results_from_vcfpy(page_size, page, total, vcf_records, presliced, spec)
 
 
 def _get_results_from_vcfpy(
     page_size: int, page: int, total: int, vcf_records: vcfpy.Reader,
-    presliced: bool = False,
+    presliced: bool = False, spec: ParsingSpec | None = None,
 ) -> model.VepResultsResponse:
     """Generates a page of VCF data in the format described in
     APISpecification.yaml for a given VCFPY reader"""
@@ -1145,7 +1185,9 @@ def _get_results_from_vcfpy(
                 ]))
 
             alt_alleles = [
-                _get_alt_allele_details(record.REF, alt, csq_strings, prediction_index_map)
+                _get_alt_allele_details(
+                    record.REF, alt, csq_strings, prediction_index_map, spec
+                )
                 for alt in alt_allele_strings
             ]
 
