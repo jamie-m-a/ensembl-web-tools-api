@@ -8,12 +8,15 @@ import pytest
 from pydantic import FilePath
 
 from app.vep.utils.spec_loader import (
+    EXPECTED_COLUMNS_SIDECAR_FILE,
     SPEC_SIDECAR_FILE,
     _content_digest,
+    load_expected_columns_sidecar,
     load_merged_spec,
     load_merged_spec_file,
     load_spec_sidecar,
     resolve_merged_spec,
+    write_expected_columns_sidecar,
     write_spec_sidecar,
 )
 from app.vep.utils.vcf_results import _load_pinned_spec
@@ -138,6 +141,23 @@ def test_write_and_load_spec_sidecar_round_trip(tmp_path):
 def test_load_spec_sidecar_missing_is_none(tmp_path):
     (tmp_path / "output.vcf.gz").write_bytes(b"")
     assert load_spec_sidecar(FilePath(tmp_path / "output.vcf.gz")) is None
+
+
+# --- expected-columns sidecar (the per-job missing-field check) --------------
+
+
+def test_expected_columns_sidecar_round_trip(tmp_path):
+    columns = {"REVEL", "ClinVar_CLNSIG", "gnomAD_exomes_AF"}
+    written = write_expected_columns_sidecar(tmp_path, columns)
+    assert written == tmp_path / EXPECTED_COLUMNS_SIDECAR_FILE
+    (tmp_path / "output.vcf.gz").write_bytes(b"")
+    loaded = load_expected_columns_sidecar(FilePath(tmp_path / "output.vcf.gz"))
+    assert loaded == columns
+
+
+def test_load_expected_columns_sidecar_missing_is_none(tmp_path):
+    (tmp_path / "output.vcf.gz").write_bytes(b"")
+    assert load_expected_columns_sidecar(FilePath(tmp_path / "output.vcf.gz")) is None
 
 
 def test_write_spec_sidecar_overwrites_the_previous_one(tmp_path):

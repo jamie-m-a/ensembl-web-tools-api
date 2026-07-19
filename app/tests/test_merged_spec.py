@@ -11,7 +11,17 @@ import pytest
 from pydantic import ValidationError
 
 from app.vep.models.merged_spec_model import MergedSpec
+from app.vep.models.pipeline_model import ConfigIniParams
 from app.vep.utils.spec_loader import load_merged_spec
+
+SPEC = load_merged_spec("human_grch38")
+
+
+def _expected(**options):
+    """expected_csq_columns for a submission with these options set (over the
+    bundled spec), using ConfigIniParams so sub-option defaults are realistic."""
+    params = ConfigIniParams(genome_id="g", assembly_name="GRCh38", **options)
+    return SPEC.expected_csq_columns(params.model_dump())
 
 
 def _plugin(plugin_id, csq_fields, *, scope="transcript"):
@@ -212,3 +222,58 @@ def test_parse_plugin_with_no_config_is_a_soft_warning(caplog):
     with caplog.at_level(logging.WARNING):
         MergedSpec.model_validate(doc)  # no raise — a soft signal, not an error
     assert "orphan" in caplog.text
+
+
+# --- expected_csq_columns (the per-job basis for the missing-field check) -----
+
+
+def test_defaults_expect_nothing():
+    # Only the hgvs flag is on by default, and flags are excluded.
+    assert _expected() == set()
+
+
+def test_simple_plugin_expects_its_csq_fields():
+    assert _expected(revel=True) == {"REVEL"}
+    assert _expected(cadd=True) == {"CADD_PHRED", "CADD_RAW"}
+
+
+def test_custom_literal_expects_exact_columns():
+    assert _expected(clinvar=True) == {"ClinVar_CLNSIG", "ClinVar_CLNSIGCONF"}
+
+
+def test_custom_builder_expects_the_combinatorial_columns():
+    # default gnomAD_exomes = All + Both + UKB -> the overall AF column
+    assert _expected(gnomad_exomes=True) == {"gnomAD_exomes_AF"}
+    # adding the afr ancestry (both) adds its column, via the same builder that
+    # writes the config `fields=`
+    assert _expected(gnomad_exomes=True, gnomad_exomes_afr=True) == {
+        "gnomAD_exomes_AF",
+        "gnomAD_exomes_AF_afr",
+    }
+
+
+def test_one_config_to_many_parse_expects_both():
+    # eve config feeds both the eve and popeve parsers
+    assert _expected(eve=True) == {
+        "EVE_CLASS", "EVE_SCORE",
+        "popEVE_SCORE", "popEVE_EVE", "popEVE_mutant",
+    }
+
+
+def test_sub_flagged_plugin_is_excluded():
+    # ProtVar has from_option sub-flags (a sub-option can drop a column), so it is
+    # excluded entirely — even with pocket off, nothing is (wrongly) required.
+    assert _expected(protvar=True) == set()
+    assert _expected(protvar=True, protvar_pocket=False) == set()
+    # IntAct (variadic flags) and mutfunc (from_option sub-flags) likewise
+    assert _expected(intact=True) == set()
+    assert _expected(mutfunc=True) == set()
+
+
+def test_flags_are_excluded():
+    # hgvs/hgvsg/spdi/protein are flags — VEP-internal columns, excluded.
+    assert _expected(hgvsg=True, spdi=True, protein=True) == set()
+
+
+def test_disabled_option_contributes_nothing():
+    assert "REVEL" not in _expected(revel=False)

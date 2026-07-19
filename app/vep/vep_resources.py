@@ -44,7 +44,11 @@ from vep.utils.vcf_results import get_results_from_path
 from vep.utils.tsv_export import stream_vep_tsv, gzip_text_stream
 from vep.utils.results_filters import parse_filters, FilterError
 from vep.utils.web_metadata import get_genome_metadata
-from vep.utils.spec_loader import resolve_merged_spec, write_spec_sidecar
+from vep.utils.spec_loader import (
+    resolve_merged_spec,
+    write_expected_columns_sidecar,
+    write_spec_sidecar,
+)
 from vep.form_panels import get_visible_panels
 
 logging.getLogger().handlers = [InterceptHandler()]
@@ -80,6 +84,10 @@ async def submit_vep(request: Request):
         # "current" one is by the time results are parsed (see
         # spec_loader.resolve_merged_spec).
         merged_spec = resolve_merged_spec(ini_parameters.assembly_name)
+        # The CSQ columns these options require, pinned for the results-time
+        # missing-expected-field check (a plugin the user enabled must produce
+        # its columns; extras are ignored). See spec_loader / get_results_from_path.
+        expected_columns = merged_spec.expected_csq_columns(ini_parameters.model_dump())
 
         if DUMP_INI:
             # Temporary: dump the generated config.ini to disk and return a fake
@@ -89,11 +97,13 @@ async def submit_vep(request: Request):
             # submission — matching how this dev harness already works: one
             # manually-run job at a time (see write_spec_sidecar).
             write_spec_sidecar(DUMP_INI_DIR, merged_spec)
+            write_expected_columns_sidecar(DUMP_INI_DIR, expected_columns)
             return {"submission_id": dump_config_ini(ini_parameters, merged_spec.config)}
         ini_file = ini_parameters.create_config_ini_file(
             request_streamer.temp_dir, merged_spec.config
         )
         write_spec_sidecar(request_streamer.temp_dir, merged_spec)
+        write_expected_columns_sidecar(request_streamer.temp_dir, expected_columns)
 
         vep_job_config_parameters = VEPConfigParams(
             vcf=request_streamer.filepath,

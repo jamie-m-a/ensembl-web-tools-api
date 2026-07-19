@@ -29,6 +29,12 @@ SPEC_DIR = Path(__file__).resolve().parent.parent / "specs"
 # content is now the whole merged document, not just the parsing half.
 SPEC_SIDECAR_FILE = "parsing_spec.json"
 
+# The per-job CSQ columns the submitted options require, pinned beside the spec
+# at submission and checked against the pipeline output header at results time
+# (the runtime missing-expected-field check). Job-specific, so kept separate from
+# the (assembly-generic) merged spec document.
+EXPECTED_COLUMNS_SIDECAR_FILE = "expected_columns.json"
+
 
 def _content_digest(payload: dict) -> str:
     """A stable digest of a spec's meaning, ignoring its own `spec_version`.
@@ -126,3 +132,23 @@ def load_spec_sidecar(vcf_path: FilePath) -> MergedSpec | None:
     if not sidecar_path.exists():
         return None
     return load_merged_spec_file(sidecar_path)
+
+
+def write_expected_columns_sidecar(
+    directory: str | Path, columns: set[str]
+) -> Path:
+    """Pin the CSQ columns this job's options require, beside its spec sidecar,
+    for the results-time missing-expected-field check. Sorted for a stable file."""
+    path = Path(directory) / EXPECTED_COLUMNS_SIDECAR_FILE
+    path.write_text(json.dumps(sorted(columns)))
+    return path
+
+
+def load_expected_columns_sidecar(vcf_path: FilePath) -> set[str] | None:
+    """The expected CSQ columns pinned alongside `vcf_path`, or None if there is
+    no sidecar (output from before this existed). Keyed off the VCF path via
+    `.with_name()`, like the spec and page-index sidecars."""
+    sidecar_path = vcf_path.with_name(EXPECTED_COLUMNS_SIDECAR_FILE)
+    if not sidecar_path.exists():
+        return None
+    return set(json.loads(sidecar_path.read_text()))

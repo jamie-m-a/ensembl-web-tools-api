@@ -24,7 +24,7 @@ from vep.utils.csq import (
     to_float,
 )
 from vep.utils.vcf_meta import _get_vcf_meta
-from vep.utils.spec_loader import load_spec_sidecar
+from vep.utils.spec_loader import load_expected_columns_sidecar, load_spec_sidecar
 from vep.models.parsing_spec_model import ParsingSpec
 
 # Taken from https://github.com/Ensembl/ensembl-hypsipyle
@@ -969,6 +969,58 @@ def _load_pinned_spec(vcf_path: FilePath) -> ParsingSpec | None:
     return spec
 
 
+def _read_csq_columns(vcf_path: FilePath) -> set[str] | None:
+    """The CSQ column names declared in the output VCF header — the fixed layout
+    for the whole file, so a set is enough to check presence. Reads only the
+    header (stops at the first data line). None if there is no CSQ header line or
+    the file can't be read."""
+    header_lines: list[str] = []
+    try:
+        with gzip.open(vcf_path, "rt") as handle:
+            for line in handle:
+                if not line.startswith("#"):
+                    break
+                header_lines.append(line)
+    except OSError:
+        return None
+    index_map = csq_index_map_from_header(header_lines)
+    return set(index_map) or None
+
+
+def _check_expected_columns(vcf_path: FilePath) -> None:
+    """Warn if any CSQ column the submitted options require is missing from the
+    output header (the runtime missing-expected-field check, design §6.2). A
+    missing expected column is a real contract breach — a plugin the user enabled
+    produced no column — while extra columns are always tolerated.
+
+    Dev only warns and never fails results; a missing pin (output predating this)
+    or an unreadable header is a no-op. Production would rerun the pipeline to
+    regenerate the headers, capped at 3 retries (decision 15); that path needs
+    the real pipeline and is not wired into this dev loop.
+    """
+    try:
+        expected = load_expected_columns_sidecar(vcf_path)
+    except Exception as exc:
+        logging.warning(
+            "Ignoring unreadable expected-columns sidecar for %s: %s", vcf_path, exc
+        )
+        return
+    if not expected:
+        return
+    actual = _read_csq_columns(vcf_path)
+    if actual is None:
+        logging.warning(
+            "No CSQ header to check expected columns against for %s", vcf_path
+        )
+        return
+    missing = expected - actual
+    if missing:
+        logging.warning(
+            "VEP output %s is missing %d expected CSQ column(s): %s",
+            vcf_path, len(missing), ", ".join(sorted(missing)),
+        )
+
+
 def get_results_from_path(
     page_size: int,
     page: int,
@@ -984,6 +1036,9 @@ def get_results_from_path(
     # by the hand-written parsers below (piece 3 parses from this spec instead);
     # a missing or unreadable pin never fails results.
     _load_pinned_spec(vcf_path)
+    # Runtime missing-expected-field check: warn if the pipeline output is missing
+    # a CSQ column the submitted options required. Non-fatal (dev warns only).
+    _check_expected_columns(vcf_path)
 
     # Filtered requests can't use the page index (filtering shifts record
     # positions), so they take a dedicated scan-and-filter path.

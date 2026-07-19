@@ -24,9 +24,24 @@ from vep.models.config_spec_model import (
     ConfigEntry,
     ConfigSpec,
     CustomEmitter,
+    FromOption,
     LiteralFields,
+    PluginEmitter,
 )
 from vep.models.parsing_spec_model import ParsingSpec, PluginSpec
+from vep.utils.config_interpreter import build_fields
+
+
+def _is_simple_plugin(emitter: PluginEmitter) -> bool:
+    """A plugin whose CSQ columns all appear in the header whenever it runs — no
+    sub-option gates one away. That means no variadic `flags` (IntAct) and no
+    `from_option` params (ProtVar/mutfunc/DosageSensitivity sub-flags), so all of
+    its `csq_fields` are safe to *require*. Sub-flagged plugins are excluded from
+    the expected set: turning a sub-flag off legitimately drops its column, and
+    requiring it anyway would false-positive."""
+    return emitter.flags is None and not any(
+        isinstance(value, FromOption) for value in emitter.params.values()
+    )
 
 
 class MergedSpec(BaseModel):
@@ -46,6 +61,40 @@ class MergedSpec(BaseModel):
 
     def parse_plugins(self) -> list[PluginSpec]:
         return self.parsing.plugins
+
+    def expected_csq_columns(self, options: dict) -> set[str]:
+        """The CSQ columns a job with these selected `options` must have in its
+        output header (design §6.2) — the per-job basis for the runtime
+        missing-expected-field check. The union, over *enabled* config entries, of:
+
+          * custom emitters → the exact columns the emitted `fields=` names
+            (`<short_name>_<field>`), including the combinatorial gnomAD/AoU set,
+            derived from the *same* `build_fields` that wrote the config line;
+          * simple plugin emitters (no column-gating sub-flags) → their mapped
+            parse plugins' `csq_fields`.
+
+        Sub-flagged plugins and the hgvs/hgvsg flags are deliberately excluded —
+        a sub-option can legitimately drop one of their columns (see
+        `_is_simple_plugin`). Extras are never required. gnomAD/AoU with nothing
+        selected emit no line and so contribute nothing, matching the config.
+        """
+        by_plugin = {p.plugin: p for p in self.parsing.plugins}
+        expected: set[str] = set()
+        for entry in self.config.entries:
+            if not options.get(entry.id):
+                continue
+            emitter = entry.config
+            if isinstance(emitter, CustomEmitter):
+                short_name = emitter.params.get("short_name")
+                if isinstance(short_name, str):
+                    for field in build_fields(emitter.fields, options):
+                        expected.add(f"{short_name}_{field}")
+            elif isinstance(emitter, PluginEmitter) and _is_simple_plugin(emitter):
+                for parse_id in entry.parsed_as:
+                    plugin = by_plugin.get(parse_id)
+                    if plugin is not None:
+                        expected.update(plugin.csq_fields)
+        return expected
 
     @model_validator(mode="after")
     def _config_parsing_consistent(self) -> "MergedSpec":

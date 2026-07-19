@@ -79,7 +79,7 @@ def _variadic_suffix(flags, options: dict) -> str:
     return ""
 
 
-def _build_fields(fields, options: dict) -> list[str]:
+def build_fields(fields, options: dict) -> list[str]:
     if isinstance(fields, LiteralFields):
         return list(fields.literal)
 
@@ -142,7 +142,7 @@ def _emit_entry(entry, options, assembly, context) -> str | None:
         return line
 
     if isinstance(emitter, CustomEmitter):
-        field_list = _build_fields(emitter.fields, options)
+        field_list = build_fields(emitter.fields, options)
         if emitter.omit_if_no_fields and not field_list:
             return None
         join = getattr(emitter.fields, "join", "%")
