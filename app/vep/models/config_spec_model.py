@@ -5,9 +5,9 @@ Sibling to `parsing_spec_model.py`. Where the parsing spec says how to read a
 plugin's CSQ columns, this says how a *selected option* becomes a line in the VEP
 `config.ini` — replacing the hardcoded `PLUGIN_CONFIG_LINES` /
 `PLUGIN_CONFIG_LINES_BY_ASSEMBLY` maps and the `create_config_ini_file` body in
-`pipeline_model.py`. It is *data* (today a JSON file under `config_specs/`, later
-merged into the one document the annotation API serves), so it is validated hard
-on arrival (`extra="forbid"`).
+`pipeline_model.py`. It is *data* (the `config` section of the merged JSON under
+`specs/`, later served by the annotation API), so it is validated hard on arrival
+(`extra="forbid"`).
 
 The emitters are a **small closed set** — `{flag, plugin, custom}` — derived by
 enumerating what `create_config_ini_file` actually emits, not invented, exactly
@@ -245,6 +245,15 @@ class ConfigEntry(BaseModel):
 
     id: str
     order: int
+    # The parse-plugin id(s) this option's output is parsed by — the explicit
+    # config→parsing link the consistency check uses (merged_spec_model.py).
+    # Empty for config-only options (flags like spdi/protein, and loeuf,
+    # geno2mp, enformer, maxentscan, gnomad_mt, the nearest-* plugins). The
+    # relation is not 1:1: one config may feed several parse entries
+    # (eve → eve + popeve) and several configs may feed one ({hgvs, hgvsg} →
+    # hgvs). Kept on the config side so the parsing specs stay untouched; it is
+    # also the seed of a future per-entry merge (design §3).
+    parsed_as: list[str] = []
     config: ConfigEmitter
 
 

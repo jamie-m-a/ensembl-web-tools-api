@@ -44,7 +44,7 @@ from vep.utils.vcf_results import get_results_from_path
 from vep.utils.tsv_export import stream_vep_tsv, gzip_text_stream
 from vep.utils.results_filters import parse_filters, FilterError
 from vep.utils.web_metadata import get_genome_metadata
-from vep.utils.spec_loader import resolve_spec, write_spec_sidecar
+from vep.utils.spec_loader import resolve_merged_spec, write_spec_sidecar
 from vep.form_panels import get_visible_panels
 
 logging.getLogger().handlers = [InterceptHandler()]
@@ -72,13 +72,14 @@ async def submit_vep(request: Request):
         vep_job_parameters_dict = json.loads(vep_job_parameters)
         ini_parameters = ConfigIniParams(**vep_job_parameters_dict, genome_id=genome_id)
 
-        # Resolve and pin the parsing spec for this job's assembly now, at
-        # submission, rather than waiting for results: it must fail here (while
-        # the user is present and nothing has run yet) rather than after the
-        # pipeline completes, and it must be the spec used to build the options
-        # this submission is based on, not whatever the "current" one is by the
-        # time results are parsed (see spec_loader.resolve_spec).
-        parsing_spec = resolve_spec(ini_parameters.assembly_name)
+        # Resolve and pin the merged spec (config + parsing) for this job's
+        # assembly now, at submission, rather than waiting for results: it must
+        # fail here (while the user is present and nothing has run yet) rather
+        # than after the pipeline completes, and it must be the spec used to
+        # build the options this submission is based on, not whatever the
+        # "current" one is by the time results are parsed (see
+        # spec_loader.resolve_merged_spec).
+        merged_spec = resolve_merged_spec(ini_parameters.assembly_name)
 
         if DUMP_INI:
             # Temporary: dump the generated config.ini to disk and return a fake
@@ -87,10 +88,10 @@ async def submit_vep(request: Request):
             # below), so the sidecar written here is overwritten by the next
             # submission — matching how this dev harness already works: one
             # manually-run job at a time (see write_spec_sidecar).
-            write_spec_sidecar(DUMP_INI_DIR, parsing_spec)
+            write_spec_sidecar(DUMP_INI_DIR, merged_spec)
             return {"submission_id": dump_config_ini(ini_parameters)}
         ini_file = ini_parameters.create_config_ini_file(request_streamer.temp_dir)
-        write_spec_sidecar(request_streamer.temp_dir, parsing_spec)
+        write_spec_sidecar(request_streamer.temp_dir, merged_spec)
 
         vep_job_config_parameters = VEPConfigParams(
             vcf=request_streamer.filepath,

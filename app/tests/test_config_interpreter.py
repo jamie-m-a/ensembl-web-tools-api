@@ -7,9 +7,8 @@ so line position is not meaningful. The always-on base lines (identified by thei
 keyword) are subtracted from the golden output; everything else must match what
 the interpreter emits from the same options.
 
-Scope: the representative subset currently in config_specs/human_grch38.json (one
-of each emitter kind). The gnomAD/AoU `custom` field builders land in a later
-increment and are not exercised here.
+Scope: every emitter in the config half of specs/human_grch38.json, including
+the gnomAD/AoU `custom` field builders.
 """
 
 import json
@@ -22,8 +21,8 @@ from vep.models.config_spec_model import ConfigSpec
 from vep.models.pipeline_model import ConfigIniParams, PLUGIN_PATH
 from vep.utils.config_interpreter import emit_config_lines
 
-SPEC_PATH = Path(vep.__file__).resolve().parent / "config_specs" / "human_grch38.json"
-CONFIG_SPEC = ConfigSpec.model_validate(json.loads(SPEC_PATH.read_text()))
+SPEC_PATH = Path(vep.__file__).resolve().parent / "specs" / "human_grch38.json"
+CONFIG_SPEC = ConfigSpec.model_validate(json.loads(SPEC_PATH.read_text())["config"])
 
 # The always-on base config the backend keeps (not the interpreter's job). Lines
 # are matched by their first token.

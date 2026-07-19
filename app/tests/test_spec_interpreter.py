@@ -1,8 +1,8 @@
 """Differential tests: spec-driven parsing vs the hand-written `_parse_*` bank.
 
 The hand-written parsers are the oracle. For the same CSQ entry, the interpreter
-driven by `parsing_specs/human_grch38.json` must produce exactly what the
-corresponding `_parse_*` produces (compared as plain data, via model_dump).
+driven by the parsing half of `specs/human_grch38.json` must produce exactly what
+the corresponding `_parse_*` produces (compared as plain data, via model_dump).
 
 This is what proves the spec vocabulary is sufficient before anything is
 rewired, so the fixtures are deliberately shared with test_csq_parsers.
@@ -14,7 +14,7 @@ from app.tests.test_csq_parsers import EMPTY, INDEX_MAP, row_list
 from app.vep.models.parsing_spec_model import ParsingSpec, TargetSpec
 from app.vep.utils.csq import get_prediction_index_map
 from app.vep.utils.spec_interpreter import apply_plugin_spec
-from app.vep.utils.spec_loader import SPEC_DIR, load_spec_file
+from app.vep.utils.spec_loader import load_merged_spec
 from app.vep.utils.vcf_results import (
     _parse_clinvar,
     _parse_utr_annotation,
@@ -35,7 +35,7 @@ from app.vep.utils.vcf_results import (
     _parse_population_frequencies,
 )
 
-SPEC: ParsingSpec = load_spec_file(SPEC_DIR / "human_grch38.json")
+SPEC: ParsingSpec = load_merged_spec("human_grch38").parsing
 
 
 def dump(model):

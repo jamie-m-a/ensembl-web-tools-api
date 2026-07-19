@@ -1,9 +1,10 @@
 """Static, strongly-typed model of the CSQ parsing spec.
 
 The spec describes how to turn one plugin's CSQ columns into structured output,
-replacing a hand-written `_parse_*` function. It is *data* — today a JSON file
-under `vep/parsing_specs/`, later served by the annotation API — so it is
-validated hard on arrival: this model is the contract with that data.
+replacing a hand-written `_parse_*` function. It is *data* — the `parsing`
+section of the merged JSON under `vep/specs/`, later served by the annotation
+API — so it is validated hard on arrival: this model is the contract with that
+data.
 
 Deliberately strict (`extra="forbid"`): a spec with an unknown key is a spec we
 do not understand, and failing loudly at load time is much cheaper than silently
@@ -260,8 +261,11 @@ class ParsingSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # Content digest of this document; pins a job to the ruleset that produced
-    # its options (see the sidecar written at submission).
-    spec_version: str
+    # its options (see the sidecar written at submission). Optional so a
+    # ParsingSpec can nest inside the merged document, which owns the single
+    # digest and stamps this to match (merged_spec_model.py); still computed by
+    # spec_loader when a ParsingSpec is the whole loaded document.
+    spec_version: str = ""
     genome: dict | None = None
     plugins: list[PluginSpec]
 

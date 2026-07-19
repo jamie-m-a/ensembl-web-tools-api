@@ -35,7 +35,7 @@ import vcfpy
 from app.vep.models.parsing_spec_model import ParsingSpec, PluginSpec
 from app.vep.utils.csq import get_prediction_index_map
 from app.vep.utils.spec_interpreter import apply_plugin_spec
-from app.vep.utils.spec_loader import SPEC_DIR, load_spec_file
+from app.vep.utils.spec_loader import load_merged_spec
 from app.vep.utils.vcf_results import (
     _parse_clinvar,
     _parse_dosage_sensitivity,
@@ -62,7 +62,7 @@ VCF_FILES = ["output.vcf.gz", "has_utr.vcf.gz", "smaller_test.vcf.gz"]
 # from breadth of columns, not depth of records.
 RECORD_CAP = {"output.vcf.gz": 400}
 
-SPEC: ParsingSpec = load_spec_file(SPEC_DIR / "human_grch38.json")
+SPEC: ParsingSpec = load_merged_spec("human_grch38").parsing
 
 
 def _dump(model):

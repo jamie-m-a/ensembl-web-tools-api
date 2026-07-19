@@ -948,20 +948,24 @@ def _load_pinned_spec(vcf_path: FilePath) -> ParsingSpec | None:
 
     Never raises: an output with no sidecar (pre-dating the pin) or an unreadable
     one must still parse exactly as before, so both fall back to None.
+
+    The pinned sidecar is now the whole merged document; the parsing half is what
+    the results path needs, so that is what this returns.
     """
     try:
-        spec = load_spec_sidecar(vcf_path)
+        merged = load_spec_sidecar(vcf_path)
     except Exception as exc:
         logging.warning(
-            "Ignoring unreadable parsing-spec sidecar for %s: %s", vcf_path, exc
+            "Ignoring unreadable spec sidecar for %s: %s", vcf_path, exc
         )
         return None
-    if spec is None:
+    if merged is None:
         logging.debug(
-            "No parsing-spec sidecar for %s; using hand-written parsers", vcf_path
+            "No spec sidecar for %s; using hand-written parsers", vcf_path
         )
-    else:
-        logging.info("Loaded pinned parsing spec %s for %s", spec.spec_version, vcf_path)
+        return None
+    spec = merged.parsing
+    logging.info("Loaded pinned parsing spec %s for %s", spec.spec_version, vcf_path)
     return spec
 
 
