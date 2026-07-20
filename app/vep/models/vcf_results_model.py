@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from vep.models.display_panels_model import DisplayPanel
+from vep.models.display_spec_model import DisplayPayload
 
 class VcfMetadata(BaseModel):
     variant_count: int = Field(
@@ -162,6 +163,11 @@ class Metadata(BaseModel):
     # None for jobs that predate the pin — the results view then falls back to
     # the live form-config panels, as it did before.
     display_panels: list[DisplayPanel] | None = None
+    # How each option's parsed annotation is laid out, from the `display`
+    # section of the job's pinned spec, plus the plugin->scope map derived from
+    # its `parsing` half. None only when no spec (pinned or current) has a
+    # display section at all.
+    display: DisplayPayload | None = None
 
 
 class AlternativeVariantAllele(BaseModel):
