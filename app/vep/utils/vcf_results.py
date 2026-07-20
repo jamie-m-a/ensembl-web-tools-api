@@ -22,7 +22,12 @@ from vep.utils.csq import (
     to_float,
 )
 from vep.utils.vcf_meta import _get_vcf_meta
-from vep.utils.spec_loader import load_expected_columns_sidecar, load_spec_sidecar
+from vep.utils.spec_loader import (
+    load_display_panels_sidecar,
+    load_expected_columns_sidecar,
+    load_spec_sidecar,
+)
+from vep.models.display_panels_model import DisplayPanel
 from vep.utils.spec_interpreter import apply_plugin_spec
 from vep.models.parsing_spec_model import ParsingSpec
 
@@ -465,6 +470,42 @@ def _check_expected_columns(vcf_path: FilePath) -> None:
         )
 
 
+def _load_pinned_display_panels(vcf_path: FilePath) -> list[DisplayPanel] | None:
+    """The option panels pinned to this job at submission, loaded defensively.
+
+    Never raises: a job submitted before this pin existed (no sidecar), or an
+    unreadable one, returns None — the results view then falls back to the live
+    form-config panels, exactly as it did before pinning.
+    """
+    try:
+        panels = load_display_panels_sidecar(vcf_path)
+    except Exception as exc:
+        logging.warning(
+            "Ignoring unreadable display-panels sidecar for %s: %s", vcf_path, exc
+        )
+        return None
+    if not panels:
+        # None (no sidecar) and [] are both "nothing usable pinned". An empty
+        # list can only come from a corrupted sidecar — get_visible_panels always
+        # returns at least the always-visible panels — and treating it as a valid
+        # pin would render a job with no panels at all rather than falling back.
+        logging.debug(
+            "No display-panels sidecar for %s; results will use the live panels",
+            vcf_path,
+        )
+        return None
+    return panels
+
+
+def _with_display_panels(
+    response: model.VepResultsResponse, panels: list[DisplayPanel] | None
+) -> model.VepResultsResponse:
+    """Attach the pinned panels to a response built by the parsing path (which
+    knows nothing about them). None leaves the field absent."""
+    response.metadata.display_panels = panels
+    return response
+
+
 def get_results_from_path(
     page_size: int,
     page: int,
@@ -483,11 +524,16 @@ def get_results_from_path(
     # Runtime missing-expected-field check: warn if the pipeline output is missing
     # a CSQ column the submitted options required. Non-fatal (dev warns only).
     _check_expected_columns(vcf_path)
+    # The option panels this job was submitted against (None for older jobs).
+    display_panels = _load_pinned_display_panels(vcf_path)
 
     # Filtered requests can't use the page index (filtering shifts record
     # positions), so they take a dedicated scan-and-filter path.
     if filters:
-        return _get_filtered_results(page_size, page, vcf_path, filters, spec)
+        return _with_display_panels(
+            _get_filtered_results(page_size, page, vcf_path, filters, spec),
+            display_panels,
+        )
 
     # Fast path: if the pipeline emitted a page-index sidecar, seek to the page
     # instead of scanning the file / shelling out to bcftools.
@@ -496,14 +542,14 @@ def get_results_from_path(
         page = max(page, 1)
         page_size = max(page_size, 0)
         header_text, rows_text = _read_indexed_page(vcf_path, index, page, page_size)
-        return get_results_from_stream(
+        return _with_display_panels(get_results_from_stream(
             page_size,
             page,
             index["total_records"],
             StringIO(header_text + rows_text),
             presliced=True,
             spec=spec,
-        )
+        ), display_panels)
 
     # Fallback (no sidecar): scan the file from the top through page*page_size
     # records and shell out to bcftools for the counts. `head` short-circuits so
@@ -527,7 +573,10 @@ def get_results_from_path(
     )
     vcf_stream = StringIO(vcf_headers + vcf_slice)
 
-    return get_results_from_stream(page_size, page, total, vcf_stream, spec=spec)
+    return _with_display_panels(
+        get_results_from_stream(page_size, page, total, vcf_stream, spec=spec),
+        display_panels,
+    )
 
 
 def get_results_from_stream(

@@ -46,9 +46,11 @@ from vep.utils.results_filters import parse_filters, FilterError
 from vep.utils.web_metadata import get_genome_metadata
 from vep.utils.spec_loader import (
     resolve_merged_spec,
+    write_display_panels_sidecar,
     write_expected_columns_sidecar,
     write_spec_sidecar,
 )
+from vep.models.display_panels_model import to_display_panels
 from vep.form_panels import get_visible_panels
 
 logging.getLogger().handlers = [InterceptHandler()]
@@ -88,6 +90,20 @@ async def submit_vep(request: Request):
         # missing-expected-field check (a plugin the user enabled must produce
         # its columns; extras are ignored). See spec_loader / get_results_from_path.
         expected_columns = merged_spec.expected_csq_columns(ini_parameters.model_dump())
+        # The option panels this submission was built against, pinned so the
+        # results view renders the submitted layout rather than whatever
+        # /form_config returns by the time the results are looked at. Computed
+        # with exactly the predicates /form_config uses — hence
+        # `species_taxonomy_id` on the submission payload; without it every
+        # human-specific panel would silently vanish from the pin. `attributes`
+        # is not passed (get_visible_panels never reads it), so this needs no
+        # genome-metadata call.
+        display_panels = to_display_panels(
+            get_visible_panels(
+                species_taxonomy_id=ini_parameters.species_taxonomy_id,
+                assembly_name=ini_parameters.assembly_name,
+            )
+        )
 
         if DUMP_INI:
             # Temporary: dump the generated config.ini to disk and return a fake
@@ -98,12 +114,14 @@ async def submit_vep(request: Request):
             # manually-run job at a time (see write_spec_sidecar).
             write_spec_sidecar(DUMP_INI_DIR, merged_spec)
             write_expected_columns_sidecar(DUMP_INI_DIR, expected_columns)
+            write_display_panels_sidecar(DUMP_INI_DIR, display_panels)
             return {"submission_id": dump_config_ini(ini_parameters, merged_spec.config)}
         ini_file = ini_parameters.create_config_ini_file(
             request_streamer.temp_dir, merged_spec.config
         )
         write_spec_sidecar(request_streamer.temp_dir, merged_spec)
         write_expected_columns_sidecar(request_streamer.temp_dir, expected_columns)
+        write_display_panels_sidecar(request_streamer.temp_dir, display_panels)
 
         vep_job_config_parameters = VEPConfigParams(
             vcf=request_streamer.filepath,

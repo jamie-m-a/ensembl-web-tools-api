@@ -18,6 +18,11 @@ from pathlib import Path
 
 from pydantic import FilePath
 
+from vep.models.display_panels_model import (
+    DisplayPanel,
+    dump_display_panels,
+    to_display_panels,
+)
 from vep.models.merged_spec_model import MergedSpec
 
 SPEC_DIR = Path(__file__).resolve().parent.parent / "specs"
@@ -34,6 +39,14 @@ SPEC_SIDECAR_FILE = "parsing_spec.json"
 # (the runtime missing-expected-field check). Job-specific, so kept separate from
 # the (assembly-generic) merged spec document.
 EXPECTED_COLUMNS_SIDECAR_FILE = "expected_columns.json"
+
+# The option panels this job was submitted against, pinned beside the spec at
+# submission and handed back on the results response so the results view lays
+# itself out from the submitted options rather than the live form config (which
+# may have gained or lost panels since). Computed per job (it depends on the
+# submission's species/assembly), so a sidecar rather than part of the
+# content-digested spec document.
+DISPLAY_PANELS_SIDECAR_FILE = "display_panels.json"
 
 
 def _content_digest(payload: dict) -> str:
@@ -152,3 +165,25 @@ def load_expected_columns_sidecar(vcf_path: FilePath) -> set[str] | None:
     if not sidecar_path.exists():
         return None
     return set(json.loads(sidecar_path.read_text()))
+
+
+def write_display_panels_sidecar(
+    directory: str | Path, panels: list[DisplayPanel]
+) -> Path:
+    """Pin the option panels this job was submitted against, beside its spec
+    sidecar, so the results view can render the submitted layout rather than the
+    current one. Same directory convention as the other sidecars."""
+    path = Path(directory) / DISPLAY_PANELS_SIDECAR_FILE
+    path.write_text(json.dumps(dump_display_panels(panels)))
+    return path
+
+
+def load_display_panels_sidecar(vcf_path: FilePath) -> list[DisplayPanel] | None:
+    """The option panels pinned alongside `vcf_path`, or None if there is no
+    sidecar (output from before this existed — such a job keeps rendering
+    against the live form-config panels). Keyed off the VCF path via
+    `.with_name()`, like the spec and expected-columns sidecars."""
+    sidecar_path = vcf_path.with_name(DISPLAY_PANELS_SIDECAR_FILE)
+    if not sidecar_path.exists():
+        return None
+    return to_display_panels(json.loads(sidecar_path.read_text()))
