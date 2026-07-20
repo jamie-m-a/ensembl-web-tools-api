@@ -1,38 +1,37 @@
-"""Tests for the CSQ field parsers (app/vep/utils/vcf_results._parse_*).
+"""Tests for the surviving CSQ field parsers and for `_get_alt_allele_details`.
 
-The existing test_vep.py exercises `_get_alt_allele_details` against an *old*
-CSQ header (SIFT/PolyPhen/AF era) with none of the modern plugin columns, so the
-new plugin parsers are otherwise unexercised. Here a modern CSQ header (with the
-plugin columns) is used to build an index_map; each parser is called with one
-populated row and one empty row, and there is an end-to-end allele test for a
-transcript row and an intergenic row.
+Since the go-flat cutover the plugin annotations are produced by the spec
+interpreter, not by a bank of hand-written parsers; only the unspecced tail
+(uniprot / protein_matches / sift / polyphen) is still parsed by hand here. A
+modern CSQ header (with the plugin columns) builds the index_map, and the
+end-to-end tests check an allele built from a transcript row and from an
+intergenic row.
+
+The header fixtures below (ALL_COLS / INDEX_MAP / row_list / EMPTY) are shared
+with test_spec_interpreter.
 """
 
 from app.vep.models import vcf_results_model as model
+from app.vep.utils.csq import get_prediction_index_map
+from app.vep.utils.spec_loader import load_merged_spec
 from app.vep.utils.vcf_results import (
-    _get_prediction_index_map,
     _get_alt_allele_details,
-    _parse_frequencies,
-    _parse_protvar,
-    _parse_protvar_pocket,
-    _parse_intact,
-    _parse_mutfunc,
-    _parse_mavedb,
-    _parse_popeve,
-    _parse_dosage_sensitivity,
-    _parse_utr_annotation,
-    _parse_riboseq_orfs,
-    _parse_spliceai,
-    _parse_pathogenicity,
-    _parse_clinvar,
+    _parse_prediction,
+    _parse_protein_matches,
+    _parse_uniprot,
 )
 
-# A modern CSQ header: the columns the new plugin parsers read.
+SPEC = load_merged_spec("human_grch38").parsing
+
+# A modern CSQ header: the columns the plugin specs read.
 ALL_COLS = [
     # core / allele-level
     "Allele", "AF", "Consequence", "Feature", "Feature_type", "BIOTYPE",
     "CANONICAL", "SYMBOL", "Gene", "STRAND", "ENSP", "Existing_variation",
     "MANE", "MANE_SELECT", "MANE_PLUS_CLINICAL",
+    # the unspecced typed tail
+    "SIFT", "PolyPhen", "SWISSPROT", "TREMBL", "UNIPARC", "UNIPROT_ISOFORM",
+    "DOMAINS",
     "SPDI", "HGVSg", "HGVSc", "HGVSp", "CADD_PHRED", "CADD_RAW", "LOEUF",
     # ProtVar
     "ProtVar_stability", "ProtVar_pocket", "ProtVar_int",
@@ -68,7 +67,7 @@ ALL_COLS = [
 ]
 
 HEADER = "Consequence annotations from Ensembl VEP. Format: " + "|".join(ALL_COLS)
-INDEX_MAP = _get_prediction_index_map(HEADER)
+INDEX_MAP = get_prediction_index_map(HEADER)
 
 
 def row_list(**values):
@@ -84,393 +83,64 @@ def row_str(**values):
 EMPTY = row_list()
 
 
-# --- ProtVar -----------------------------------------------------------------
+# --- the unspecced typed tail ------------------------------------------------
+#
+# uniprot / protein_matches / sift / polyphen are deliberately still parsed by
+# hand (no sample data carries their columns, so no plugin spec could be
+# validated for them). These are the only hand-written parsers left.
 
 
-def test_parse_protvar_pocket_positional_and_no_residues():
-    pocket = _parse_protvar_pocket("POCKET1&-5.2&0.3&0.8&0.6&12.5&RES:12,13")
-    assert pocket.pocket_id == "POCKET1"
-    assert pocket.energy == -5.2
-    assert pocket.energy_per_volume == 0.3
-    assert pocket.score == 0.8
-    assert pocket.buriedness == 0.6
-    assert pocket.radius_of_gyration == 12.5
-    # residues are intentionally not captured
-    assert not hasattr(pocket, "residues")
-
-
-def test_parse_protvar_populated():
-    result = _parse_protvar(
+def test_parse_uniprot_cross_references():
+    result = _parse_uniprot(
         row_list(
-            ProtVar_stability="0.42",
-            ProtVar_pocket="POCKET1&-5.2&0.3&0.8&0.6&12.5&RES",
-            ProtVar_int="PARTNER1&0.9&PARTNER2&0.8",
+            SWISSPROT="P04637.1", TREMBL="A0A2X", UNIPARC="UPI000002",
+            UNIPROT_ISOFORM="P04637-2",
         ),
         INDEX_MAP,
     )
-    assert result.structure_stability_score == 0.42
-    assert len(result.pockets) == 1
-    assert result.pockets[0].pocket_id == "POCKET1"
-    assert [i.partner for i in result.interaction_interfaces] == [
-        "PARTNER1",
-        "PARTNER2",
-    ]
-    assert result.interaction_interfaces[0].score == 0.9
+    assert result.swissprot == "P04637.1"
+    assert result.trembl == "A0A2X"
+    assert result.uniparc == "UPI000002"
+    assert result.isoform == "P04637-2"
 
 
-def test_parse_protvar_empty_is_none():
-    assert _parse_protvar(EMPTY, INDEX_MAP) is None
+def test_parse_uniprot_empty_is_none():
+    assert _parse_uniprot(EMPTY, INDEX_MAP) is None
 
 
-# --- IntAct ------------------------------------------------------------------
-
-
-def test_parse_intact_base_and_sub_options():
-    result = _parse_intact(
-        row_list(
-            IntAct_feature_type="mutation",
-            IntAct_interaction_ac="EBI-123",
-            IntAct_feature_ac="EBI-ac",
-            IntAct_feature_short_label="short",
-            IntAct_feature_annotation="annot",
-            IntAct_ap_ac="EBI-ap",
-            IntAct_interaction_participants="2",
-            IntAct_pmid="123456",
-        ),
+def test_parse_protein_matches_splits_source_and_id():
+    matches = _parse_protein_matches(
+        row_list(DOMAINS="AFDB-ENSP_mappings:AF-P04637-F1&PDB-ENSP_mappings:1TUP"),
         INDEX_MAP,
     )
-    assert result.feature_type == "mutation"
-    assert result.interaction_ac == "EBI-123"
-    assert result.feature_ac == "EBI-ac"
-    assert result.feature_short_label == "short"
-    assert result.feature_annotation == "annot"
-    assert result.ap_ac == "EBI-ap"
-    assert result.interaction_participants == "2"
-    assert result.pmid == "123456"
-
-
-def test_parse_intact_empty_is_none():
-    assert _parse_intact(EMPTY, INDEX_MAP) is None
-
-
-# --- mutfunc -----------------------------------------------------------------
-
-
-def test_parse_mutfunc_scores():
-    result = _parse_mutfunc(
-        row_list(
-            mutfunc_motif="0.1",
-            mutfunc_int="0.2",
-            mutfunc_mod="0.3",
-            mutfunc_exp="0.4",
-        ),
-        INDEX_MAP,
-    )
-    assert result.linear_motifs == 0.1
-    assert result.protein_interactions == 0.2
-    assert result.protein_structure == 0.3
-    assert result.protein_structure_experimental == 0.4
-
-
-def test_parse_mutfunc_empty_is_none():
-    assert _parse_mutfunc(EMPTY, INDEX_MAP) is None
-
-
-# --- MaveDB (multi-assay) ----------------------------------------------------
-
-
-def test_parse_mavedb_multi_assay_pairs_urn_and_score():
-    result = _parse_mavedb(
-        row_list(
-            MaveDB_score="1.5&2.5&NA",
-            MaveDB_urn="urn:1&urn:2&urn:3",
-            MaveDB_doi="10.1/a&NA&10.1/c",
-            MaveDB_nt="c.1A>G&NA",
-            MaveDB_pro="p.Lys1Arg&NA",
-        ),
-        INDEX_MAP,
-    )
-    # Three assays, each pairing its urn with its (positional) score. The third
-    # score is NA -> None, but its urn is present so the assay is kept.
-    assert [(a.urn, a.score) for a in result.assays] == [
-        ("urn:1", 1.5),
-        ("urn:2", 2.5),
-        ("urn:3", None),
-    ]
-    assert result.protein_variant == "p.Lys1Arg"
-
-
-def test_parse_mavedb_empty_is_none():
-    assert _parse_mavedb(EMPTY, INDEX_MAP) is None
-
-
-# --- popEVE ------------------------------------------------------------------
-
-
-def test_parse_popeve_populated():
-    result = _parse_popeve(
-        row_list(
-            popEVE_SCORE="0.91",
-            popEVE_EVE="0.8",
-            popEVE_ESM1v="-0.5",
-            popEVE_pop_adjusted_EVE="0.7",
-            popEVE_pop_adjusted_ESM1v="-0.4",
-            popEVE_gene="TP53",
-            popEVE_protein="ENSP1",
-            popEVE_mutant="K41R",
-            popEVE_gap_frequency="0.02",
-        ),
-        INDEX_MAP,
-    )
-    assert result.score == 0.91
-    assert result.eve == 0.8
-    assert result.esm1v == -0.5
-    assert result.pop_adjusted_eve == 0.7
-    assert result.pop_adjusted_esm1v == -0.4
-    assert result.gene == "TP53"
-    assert result.protein == "ENSP1"
-    assert result.mutant == "K41R"
-    assert result.gap_frequency == 0.02
-
-
-def test_parse_popeve_empty_is_none():
-    assert _parse_popeve(EMPTY, INDEX_MAP) is None
-
-
-# --- dosage sensitivity ------------------------------------------------------
-
-
-def test_parse_dosage_sensitivity_populated():
-    result = _parse_dosage_sensitivity(
-        row_list(pHaplo="0.95", pTriplo="0.12"), INDEX_MAP
-    )
-    assert result.phaplo == 0.95
-    assert result.ptriplo == 0.12
-
-
-def test_parse_dosage_sensitivity_empty_is_none():
-    assert _parse_dosage_sensitivity(EMPTY, INDEX_MAP) is None
-
-
-# --- UTRAnnotator ------------------------------------------------------------
-
-
-def test_parse_utr_annotation_populated():
-    result = _parse_utr_annotation(
-        row_list(
-            **{
-                "5UTR_consequence": "5_prime_UTR_premature_start_codon_gain_variant",
-                "5UTR_annotation": "uORF",
-                "Existing_uORFs": "2",
-                "Existing_InFrame_oORFs": "1",
-                "Existing_OutOfFrame_oORFs": "0",
-            }
-        ),
-        INDEX_MAP,
-    )
-    assert result.consequence == "5_prime_UTR_premature_start_codon_gain_variant"
-    assert result.annotation == "uORF"
-    assert result.existing_uorfs == "2"
-    assert result.existing_inframe_oorfs == "1"
-    assert result.existing_outofframe_oorfs == "0"
-
-
-def test_parse_utr_annotation_empty_is_none():
-    assert _parse_utr_annotation(EMPTY, INDEX_MAP) is None
-
-
-# --- Ribo-seq ORFs -----------------------------------------------------------
-
-
-def test_parse_riboseq_orfs_populated():
-    result = _parse_riboseq_orfs(
-        row_list(
-            RiboseqORFs_id="c1orf1",
-            RiboseqORFs_consequences="missense_variant&synonymous_variant",
-            RiboseqORFs_impact="MODERATE",
-        ),
-        INDEX_MAP,
-    )
-    assert result.orf_id == "c1orf1"
-    assert result.consequences == ["missense_variant", "synonymous_variant"]
-    assert result.impact == "MODERATE"
-
-
-def test_parse_riboseq_orfs_empty_is_none():
-    assert _parse_riboseq_orfs(EMPTY, INDEX_MAP) is None
-
-
-# --- SpliceAI ----------------------------------------------------------------
-
-
-def test_parse_spliceai_all_fields():
-    result = _parse_spliceai(
-        row_list(
-            SpliceAI_pred_SYMBOL="TP53",
-            SpliceAI_pred_DS_AG="0.01",
-            SpliceAI_pred_DS_AL="0.02",
-            SpliceAI_pred_DS_DG="0.90",
-            SpliceAI_pred_DS_DL="0.03",
-            SpliceAI_pred_DP_AG="-5",
-            SpliceAI_pred_DP_AL="10",
-            SpliceAI_pred_DP_DG="2",
-            SpliceAI_pred_DP_DL="-7",
-        ),
-        INDEX_MAP,
-    )
-    assert result.symbol == "TP53"
-    assert result.ds_acceptor_gain == 0.01
-    assert result.ds_acceptor_loss == 0.02
-    assert result.ds_donor_gain == 0.90
-    assert result.ds_donor_loss == 0.03
-    assert result.dp_acceptor_gain == -5
-    assert result.dp_acceptor_loss == 10
-    assert result.dp_donor_gain == 2
-    assert result.dp_donor_loss == -7
-
-
-def test_parse_spliceai_symbol_only_is_none():
-    # a symbol with no delta scores is not a real result
-    assert _parse_spliceai(row_list(SpliceAI_pred_SYMBOL="TP53"), INDEX_MAP) is None
-
-
-# --- pathogenicity (aggregate) -----------------------------------------------
-
-
-def test_parse_pathogenicity_aggregates_nested_and_flat():
-    result = _parse_pathogenicity(
-        row_list(
-            am_class="likely_pathogenic",
-            am_pathogenicity="0.98",
-            REVEL="0.75",
-            CADD_PHRED="25.3",
-            CADD_RAW="4.1",
-            EVE_CLASS="Pathogenic",
-            EVE_SCORE="0.88",
-            SpliceAI_pred_DS_DG="0.90",  # nested spliceai
-            popEVE_SCORE="0.91",  # nested popeve
-        ),
-        INDEX_MAP,
-    )
-    assert result.alphamissense_class == "likely_pathogenic"
-    assert result.alphamissense_score == 0.98
-    assert result.revel == 0.75
-    assert result.cadd_phred == 25.3
-    assert result.cadd_raw == 4.1
-    assert result.eve_class == "Pathogenic"
-    assert result.eve_score == 0.88
-    assert result.spliceai is not None
-    assert result.spliceai.ds_donor_gain == 0.90
-    assert result.popeve is not None
-    assert result.popeve.score == 0.91
-
-
-def test_parse_pathogenicity_empty_is_none():
-    assert _parse_pathogenicity(EMPTY, INDEX_MAP) is None
-
-
-# --- ClinVar clinical significance -------------------------------------------
-
-
-def test_parse_clinvar_non_conflicting_ignores_clnsigconf():
-    result = _parse_clinvar(
-        # CLNSIGCONF present but must be ignored when the class isn't conflicting
-        row_list(ClinVar_CLNSIG="Pathogenic", ClinVar_CLNSIGCONF="Benign_(3)"),
-        INDEX_MAP,
-    )
-    assert result.significance == ["Pathogenic"]
-    assert result.conflicting_breakdown == []
-
-
-def test_parse_clinvar_conflicting_extracts_clnsigconf_breakdown():
-    result = _parse_clinvar(
-        row_list(
-            ClinVar_CLNSIG="Conflicting_classifications_of_pathogenicity",
-            ClinVar_CLNSIGCONF=(
-                "Pathogenic_(10)&Likely_pathogenic_(6)&Uncertain_significance_(2)"
-            ),
-        ),
-        INDEX_MAP,
-    )
-    assert result.significance == ["Conflicting_classifications_of_pathogenicity"]
-    assert [(s.significance, s.count) for s in result.conflicting_breakdown] == [
-        ("Pathogenic", 10),
-        ("Likely_pathogenic", 6),
-        ("Uncertain_significance", 2),
+    assert [(m.source, m.id) for m in matches] == [
+        ("AFDB-ENSP_mappings", "AF-P04637-F1"),
+        ("PDB-ENSP_mappings", "1TUP"),
     ]
 
 
-def test_parse_clinvar_empty_is_none():
-    assert _parse_clinvar(EMPTY, INDEX_MAP) is None
+def test_parse_protein_matches_without_a_source_keeps_the_id():
+    matches = _parse_protein_matches(row_list(DOMAINS="1TUP"), INDEX_MAP)
+    assert [(m.source, m.id) for m in matches] == [("", "1TUP")]
 
 
-# --- allele frequencies (All of Us AoU_ prefix) ------------------------------
+def test_parse_protein_matches_empty_is_empty_list():
+    assert _parse_protein_matches(EMPTY, INDEX_MAP) == []
 
 
-def test_parse_frequencies_allofus_uses_aou_prefix():
-    # short_name=AoU means the custom columns come back prefixed AoU_gvs_*
-    cols = [
-        "AoU_gvs_all_af",
-        "AoU_gvs_afr_af",
-        "AoU_gvs_max_af",
-        "AoU_gvs_max_subpop",
-    ]
-    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
-    values = ["0.10", "0.20", "0.30", "eur"]
-
-    result = _parse_frequencies(values, index_map)
-    assert result is not None
-    aou = result.all_of_us
-    assert aou.overall == 0.10  # AoU_gvs_all_af
-    assert aou.populations["afr"] == 0.20
-    assert aou.populations["max"] == 0.30  # AoU_gvs_max_af
-    # the label column AoU_gvs_max_subpop is not a frequency and is excluded
-    assert "max_subpop" not in aou.populations
+def test_parse_prediction_splits_score_from_term():
+    result = _parse_prediction("tolerated(0.15)")
+    assert (result.prediction, result.score) == ("tolerated", 0.15)
 
 
-def test_parse_frequencies_ignores_legacy_allofus_prefix():
-    # the old AllOfUs_ prefix must no longer be picked up
-    cols = ["AllOfUs_gvs_all_af", "AllOfUs_gvs_afr_af"]
-    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
-    assert _parse_frequencies(["0.4", "0.5"], index_map) is None
+def test_parse_prediction_without_a_score_keeps_the_term():
+    result = _parse_prediction("tolerated")
+    assert (result.prediction, result.score) == ("tolerated", None)
 
 
-def test_parse_frequencies_gnomad_exomes_uses_custom_prefix():
-    # short_name=gnomAD_exomes -> gnomAD_exomes_AF (overall) + AF_<...> variants
-    cols = [
-        "gnomAD_exomes_AF",
-        "gnomAD_exomes_AF_afr",
-        "gnomAD_exomes_AF_nfe_XX",
-    ]
-    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
-    result = _parse_frequencies(["0.01", "0.02", "0.03"], index_map)
-    assert result is not None
-    exomes = result.gnomad_exomes
-    assert exomes.overall == 0.01
-    assert exomes.populations["afr"] == 0.02
-    assert exomes.populations["nfe_XX"] == 0.03  # sex-split variant captured
-
-
-def test_parse_frequencies_gnomad_genomes_uses_custom_prefix():
-    cols = [
-        "gnomAD_genomes_AF",
-        "gnomAD_genomes_AF_ami",
-        "gnomAD_genomes_AF_grpmax",
-    ]
-    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
-    result = _parse_frequencies(["0.10", "0.20", "0.30"], index_map)
-    assert result is not None
-    genomes = result.gnomad_genomes
-    assert genomes.overall == 0.10
-    assert genomes.populations["ami"] == 0.20
-    assert genomes.populations["grpmax"] == 0.30
-
-
-def test_parse_frequencies_ignores_legacy_gnomad_prefixes():
-    # the old gnomADe_/gnomADg_ prefixes must no longer match
-    cols = ["gnomADe_AF", "gnomADg_AF", "gnomADe_afr_AF"]
-    index_map = _get_prediction_index_map("Format: " + "|".join(cols))
-    assert _parse_frequencies(["0.1", "0.2", "0.3"], index_map) is None
+def test_parse_prediction_empty_is_none():
+    assert _parse_prediction("") is None
+    assert _parse_prediction(None) is None
 
 
 # --- end-to-end allele (modern header) ---------------------------------------
@@ -488,6 +158,10 @@ def test_get_alt_allele_details_transcript_row_populates_annotations():
         Gene="ENSG00000141510",
         STRAND="1",
         ENSP="ENSP00000269305",
+        SIFT="deleterious(0.01)",
+        PolyPhen="probably_damaging(0.98)",
+        SWISSPROT="P04637.1",
+        DOMAINS="AFDB-ENSP_mappings:AF-P04637-F1",
         HGVSc="c.123A>G",
         HGVSp="p.Lys41Arg",
         HGVSg="17:g.7676154A>G",
@@ -498,13 +172,15 @@ def test_get_alt_allele_details_transcript_row_populates_annotations():
         IntAct_feature_type="mutation",
         mutfunc_motif="0.1",
         MaveDB_score="1.5",
+        MaveDB_urn="urn:1",
         am_class="likely_pathogenic",
+        am_pathogenicity="0.9",
         pHaplo="0.95",
         **{"5UTR_consequence": "uORF_variant"},
         RiboseqORFs_id="c1orf1",
     )
 
-    result = _get_alt_allele_details("C", "T", [transcript], INDEX_MAP)
+    result = _get_alt_allele_details("C", "T", [transcript], INDEX_MAP, SPEC)
     assert len(result.predicted_molecular_consequences) == 1
     consequence = result.predicted_molecular_consequences[0]
 
@@ -512,24 +188,73 @@ def test_get_alt_allele_details_transcript_row_populates_annotations():
     # this test imports `app.vep.models...`, so the enum *members* differ by
     # identity even though their values match (same reason test_vep.py skips it).
     assert consequence.feature_type.value == "transcript"
-    assert consequence.protvar is not None
-    assert consequence.intact is not None
-    assert consequence.mutfunc is not None
-    assert consequence.mavedb is not None
-    assert consequence.hgvs is not None
-    assert consequence.pathogenicity is not None
-    assert consequence.loeuf == 0.15
-    assert consequence.dosage_sensitivity is not None
-    assert consequence.utr_annotation is not None
-    assert consequence.riboseq_orfs is not None
 
-    # allele-level fields captured on the allele
-    assert result.spdi == "NC_000017.11:7676153:A:G"
-    assert result.hgvsg == "17:g.7676154A>G"
-    assert result.cadd_phred == 25.3
+    # the retained typed tail
+    assert consequence.uniprot.swissprot == "P04637.1"
+    assert [m.id for m in consequence.protein_matches] == ["AF-P04637-F1"]
+    assert (consequence.sift.prediction, consequence.sift.score) == (
+        "deleterious", 0.01
+    )
+    assert consequence.polyphen.prediction == "probably_damaging"
+
+    # everything else arrives as generic transcript-scope annotations
+    by_plugin = {a.plugin: a.data for a in consequence.annotations}
+    assert all(a.scope == "transcript" for a in consequence.annotations)
+    assert by_plugin.keys() >= {
+        "protvar", "intact", "mutfunc", "mavedb", "hgvs", "alphamissense",
+        "loeuf", "dosage_sensitivity", "utr_annotation", "riboseq_orfs",
+    }
+    assert by_plugin["hgvs"]["transcript"] == "c.123A>G"
+    assert by_plugin["alphamissense"] == {
+        "classification": "likely_pathogenic", "score": 0.9
+    }
+
+    # ...and the allele-level ones as generic allele-scope annotations
+    allele_plugins = {a.plugin: a.data for a in result.annotations}
+    assert all(a.scope == "allele" for a in result.annotations)
+    assert allele_plugins["spdi"] == {"spdi": "NC_000017.11:7676153:A:G"}
+    assert allele_plugins["hgvsg"] == {"genomic": "17:g.7676154A>G"}
+    assert allele_plugins["cadd"]["phred"] == 25.3
 
 
-def test_get_alt_allele_details_intergenic_surfaces_allele_level_fields():
+def test_new_plugins_surface_at_their_declared_scope():
+    """loeuf / spdi / hgvsg were added by the go-flat cutover: loeuf is
+    transcript-scoped, spdi and hgvsg are allele-scoped (intergenic variants
+    have no transcript rows, so they must be readable off the allele)."""
+    transcript = row_str(
+        Allele="T",
+        Consequence="missense_variant",
+        Feature="ENST00000269305.9",
+        Feature_type="Transcript",
+        BIOTYPE="protein_coding",
+        CANONICAL="YES",
+        SYMBOL="TP53",
+        Gene="ENSG00000141510",
+        STRAND="1",
+        LOEUF="0.15",
+        SPDI="NC_000017.11:7676153:A:G",
+        HGVSg="17:g.7676154A>G",
+    )
+
+    result = _get_alt_allele_details("C", "T", [transcript], INDEX_MAP, SPEC)
+    consequence = result.predicted_molecular_consequences[0]
+
+    transcript_scoped = {a.plugin: a for a in consequence.annotations}
+    allele_scoped = {a.plugin: a for a in result.annotations}
+
+    assert transcript_scoped["loeuf"].scope == "transcript"
+    assert transcript_scoped["loeuf"].data == {"score": 0.15}
+    assert "loeuf" not in allele_scoped
+
+    assert allele_scoped["spdi"].scope == "allele"
+    assert allele_scoped["spdi"].data == {"spdi": "NC_000017.11:7676153:A:G"}
+    assert allele_scoped["hgvsg"].scope == "allele"
+    assert allele_scoped["hgvsg"].data == {"genomic": "17:g.7676154A>G"}
+    assert "spdi" not in transcript_scoped
+    assert "hgvsg" not in transcript_scoped
+
+
+def test_get_alt_allele_details_intergenic_surfaces_allele_level_annotations():
     intergenic = row_str(
         Allele="A",
         Consequence="intergenic_variant",
@@ -537,13 +262,38 @@ def test_get_alt_allele_details_intergenic_surfaces_allele_level_fields():
         SPDI="NC_000017.11:7676153:T:A",
         HGVSg="17:g.7676154T>A",
         CADD_PHRED="8.2",
+        Existing_variation="rs123&rs456",
     )
 
-    result = _get_alt_allele_details("T", "A", [intergenic], INDEX_MAP)
+    result = _get_alt_allele_details("T", "A", [intergenic], INDEX_MAP, SPEC)
     assert len(result.predicted_molecular_consequences) == 1
     # no transcript consequence for an intergenic variant
     assert result.predicted_molecular_consequences[0].feature_type is None
-    # ...but the allele-level representations / CADD are still surfaced
-    assert result.spdi == "NC_000017.11:7676153:T:A"
-    assert result.hgvsg == "17:g.7676154T>A"
-    assert result.cadd_phred == 8.2
+    # ...but the allele-scope annotations (and colocated variants) still surface
+    by_plugin = {a.plugin: a.data for a in result.annotations}
+    assert by_plugin["spdi"] == {"spdi": "NC_000017.11:7676153:T:A"}
+    assert by_plugin["hgvsg"] == {"genomic": "17:g.7676154T>A"}
+    assert by_plugin["cadd"]["phred"] == 8.2
+    assert result.colocated_variants == ["rs123", "rs456"]
+
+
+def test_no_spec_means_no_annotations():
+    transcript = row_str(
+        Allele="T",
+        Consequence="missense_variant",
+        Feature="ENST00000269305.9",
+        Feature_type="Transcript",
+        BIOTYPE="protein_coding",
+        CANONICAL="YES",
+        Gene="ENSG00000141510",
+        STRAND="1",
+        LOEUF="0.15",
+        SIFT="deleterious(0.01)",
+    )
+
+    result = _get_alt_allele_details("C", "T", [transcript], INDEX_MAP, None)
+    assert result.annotations == []
+    consequence = result.predicted_molecular_consequences[0]
+    assert consequence.annotations == []
+    # the typed tail does not depend on the spec
+    assert consequence.sift.prediction == "deleterious"

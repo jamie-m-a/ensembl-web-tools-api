@@ -9,15 +9,26 @@ from app.vep.models import vcf_results_model as model
 from app.vep.utils.vcf_results import (
     get_results_from_path,
     get_results_from_stream,
-    stream_vep_tsv,
-    gzip_text_stream,
-    _get_prediction_index_map,
-    TARGET_COLUMNS,
 )
+from app.vep.utils.csq import get_prediction_index_map, get_csq_value
+from app.vep.utils.tsv_export import stream_vep_tsv, gzip_text_stream
+
+# A representative CSQ column list, used to build a CSQ header fixture for the
+# index-map test. `get_prediction_index_map` indexes whatever columns a header
+# declares, so any distinct list exercises it.
+TARGET_COLUMNS = [
+    "Allele", "AF", "Consequence", "Feature", "Feature_type", "BIOTYPE",
+    "CANONICAL", "SYMBOL", "Gene", "STRAND", "IMPACT",
+    "MANE_SELECT", "MANE_PLUS_CLINICAL",
+    "ENSP", "SWISSPROT", "TREMBL", "UNIPARC", "UNIPROT_ISOFORM", "DOMAINS",
+    "ProtVar_stability", "ProtVar_int", "ProtVar_pocket",
+    "IntAct_feature_ac", "IntAct_feature_type", "IntAct_interaction_ac",
+    "mutfunc_motif", "mutfunc_int", "mutfunc_mod", "mutfunc_exp",
+    "MaveDB_score", "MaveDB_urn", "MaveDB_doi", "MaveDB_nt", "MaveDB_pro",
+]
 from app.vep.utils.vcf_results import (
     _set_allele_type,
     _get_alt_allele_details,
-    _get_csq_value,
 )
 
 CSQ_DESCRIPTION = "Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL|Gene|Feature_type|Feature|BIOTYPE|EXON|INTRON|HGVSc|HGVSp|cDNA_position|CDS_position|Protein_position|Amino_acids|Codons|Existing_variation|REF_ALLELE|UPLOADED_ALLELE|DISTANCE|STRAND|FLAGS|SYMBOL_SOURCE|HGNC_ID|CANONICAL|SIFT|PolyPhen|AF|CLIN_SIG|SOMATIC|PHENO|MOTIF_NAME|MOTIF_POS|HIGH_INF_POS|MOTIF_SCORE_CHANGE|TRANSCRIPTION_FACTORS"
@@ -84,7 +95,7 @@ def test_get_prediction_index_map():
 
     csq_header = f"""Consequence annotations from Ensembl VEP. Format: {'|'.join(TARGET_COLUMNS)}"""
 
-    prediction_index_map = _get_prediction_index_map(csq_header)
+    prediction_index_map = get_prediction_index_map(csq_header)
     assert prediction_index_map == expected_index
 
 
@@ -111,22 +122,25 @@ def test_get_csq_value():
     }
     csq_values = ["foo", 2, True, ""]
 
-    assert _get_csq_value(csq_values, "TEST_STR", "ERROR", index_map) == "foo"
-    assert _get_csq_value(csq_values, "TEST_NUM", -1, index_map) == 2
-    assert _get_csq_value(csq_values, "TEST_BOOL", False, index_map)
-    assert _get_csq_value(csq_values, "TEST_MISSING", "ERROR", index_map) == "ERROR"
-    assert _get_csq_value(csq_values, "TEST_EMPTY", None, index_map) == None
+    assert get_csq_value(csq_values, "TEST_STR", "ERROR", index_map) == "foo"
+    assert get_csq_value(csq_values, "TEST_NUM", -1, index_map) == 2
+    assert get_csq_value(csq_values, "TEST_BOOL", False, index_map)
+    assert get_csq_value(csq_values, "TEST_MISSING", "ERROR", index_map) == "ERROR"
+    assert get_csq_value(csq_values, "TEST_EMPTY", None, index_map) == None
 
 
 def test_get_alt_allele_details():
-    index_map = _get_prediction_index_map(CSQ_DESCRIPTION)
+    index_map = get_prediction_index_map(CSQ_DESCRIPTION)
     csq_list = [CSQ_1, CSQ_2, CSQ_NO_FREQ]
 
     results = _get_alt_allele_details("C", "T", csq_list, index_map)
     #assert type(results) == model.AlternativeVariantAllele
     assert results.allele_sequence == "T"
     assert results.allele_type == "SNV"
-    assert results.representative_population_allele_frequency == 0.4860
+    # the retained allele-level typed tail; no spec was passed, so the generic
+    # annotations are empty (this fixture is a pre-plugin CSQ header anyway)
+    assert results.colocated_variants == ["rs868831437"]
+    assert results.annotations == []
     assert len(results.predicted_molecular_consequences) == 2
     #assert (
     #    results.predicted_molecular_consequences[0].feature_type
@@ -137,7 +151,7 @@ def test_get_alt_allele_details():
 
 
 def test_get_alt_allele_no_consequence():
-    index_map = _get_prediction_index_map(CSQ_DESCRIPTION)
+    index_map = get_prediction_index_map(CSQ_DESCRIPTION)
 
     csq_list = [CSQ_NO_CON]
 
@@ -150,7 +164,7 @@ def test_get_alt_allele_no_consequence():
 
 
 def test_get_alt_allele_details_intergenic():
-    index_map = _get_prediction_index_map(CSQ_DESCRIPTION)
+    index_map = get_prediction_index_map(CSQ_DESCRIPTION)
 
     csq_list = [CSQ_2]
 
@@ -191,18 +205,9 @@ def test_get_results_from_stream():
     assert results.variants[0].alternative_alleles[0].allele_sequence == "T"
     assert results.variants[0].alternative_alleles[0].allele_type == "SNV"
 
-    assert (
-        results.variants[0]
-        .alternative_alleles[0]
-        .representative_population_allele_frequency
-        == 0.4860
-    )
-    assert (
-        results.variants[1]
-        .alternative_alleles[0]
-        .representative_population_allele_frequency
-        == None
-    )
+    # no parsing spec is pinned to this stream, so no generic annotations
+    assert results.variants[0].alternative_alleles[0].annotations == []
+    assert results.variants[1].alternative_alleles[0].annotations == []
 
 def test_paging():
     variant_count = 21
@@ -245,8 +250,6 @@ def test_get_results_with_file_and_dump():
         "/Users/jon/Programming/ensembl-web-tools-api/test_VEP.vcf.gz"
     )
     results = get_results_from_path(100, 1, vcf_path)
-
-    expected_index = {TARGET_COLUMNS[x]: x for x in range(0, len(TARGET_COLUMNS))}
 
     with open("dump.json", "w") as test_dump:
         test_dump.write(results.json())

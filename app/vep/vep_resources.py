@@ -26,7 +26,7 @@ from pydantic import FilePath
 from requests import HTTPError
 from starlette.responses import JSONResponse, FileResponse, StreamingResponse
 
-from core.config import DUMP_INI, LOCAL_RESULTS_VCF
+from core.config import DUMP_INI, DUMP_INI_DIR, LOCAL_RESULTS_VCF
 from core.error_response import response_error_handler
 from core.logging import InterceptHandler
 from vep.models.pipeline_model import (
@@ -40,13 +40,15 @@ from vep.models.submission_form import Dropdown, FormConfig
 from vep.models.upload_vcf_files import Streamer, MaxBodySizeException
 from vep.utils.nextflow import launch_workflow, get_workflow_status
 from vep.utils.dump_ini import dump_config_ini
-from vep.utils.vcf_results import (
-    get_results_from_path,
-    stream_vep_tsv,
-    gzip_text_stream,
-)
+from vep.utils.vcf_results import get_results_from_path
+from vep.utils.tsv_export import stream_vep_tsv, gzip_text_stream
 from vep.utils.results_filters import parse_filters, FilterError
 from vep.utils.web_metadata import get_genome_metadata
+from vep.utils.spec_loader import (
+    resolve_merged_spec,
+    write_expected_columns_sidecar,
+    write_spec_sidecar,
+)
 from vep.form_panels import get_visible_panels
 
 logging.getLogger().handlers = [InterceptHandler()]
@@ -73,11 +75,35 @@ async def submit_vep(request: Request):
         genome_id = request_streamer.genome_id.value.decode()
         vep_job_parameters_dict = json.loads(vep_job_parameters)
         ini_parameters = ConfigIniParams(**vep_job_parameters_dict, genome_id=genome_id)
+
+        # Resolve and pin the merged spec (config + parsing) for this job's
+        # assembly now, at submission, rather than waiting for results: it must
+        # fail here (while the user is present and nothing has run yet) rather
+        # than after the pipeline completes, and it must be the spec used to
+        # build the options this submission is based on, not whatever the
+        # "current" one is by the time results are parsed (see
+        # spec_loader.resolve_merged_spec).
+        merged_spec = resolve_merged_spec(ini_parameters.assembly_name)
+        # The CSQ columns these options require, pinned for the results-time
+        # missing-expected-field check (a plugin the user enabled must produce
+        # its columns; extras are ignored). See spec_loader / get_results_from_path.
+        expected_columns = merged_spec.expected_csq_columns(ini_parameters.model_dump())
+
         if DUMP_INI:
             # Temporary: dump the generated config.ini to disk and return a fake
             # id, without building launch params or contacting the runner.
-            return {"submission_id": dump_config_ini(ini_parameters)}
-        ini_file = ini_parameters.create_config_ini_file(request_streamer.temp_dir)
+            # DUMP_INI_DIR has no per-job subdirectory (unlike the real outdir
+            # below), so the sidecar written here is overwritten by the next
+            # submission — matching how this dev harness already works: one
+            # manually-run job at a time (see write_spec_sidecar).
+            write_spec_sidecar(DUMP_INI_DIR, merged_spec)
+            write_expected_columns_sidecar(DUMP_INI_DIR, expected_columns)
+            return {"submission_id": dump_config_ini(ini_parameters, merged_spec.config)}
+        ini_file = ini_parameters.create_config_ini_file(
+            request_streamer.temp_dir, merged_spec.config
+        )
+        write_spec_sidecar(request_streamer.temp_dir, merged_spec)
+        write_expected_columns_sidecar(request_streamer.temp_dir, expected_columns)
 
         vep_job_config_parameters = VEPConfigParams(
             vcf=request_streamer.filepath,
