@@ -137,7 +137,10 @@ def test_get_alt_allele_details():
     #assert type(results) == model.AlternativeVariantAllele
     assert results.allele_sequence == "T"
     assert results.allele_type == "SNV"
-    assert results.representative_population_allele_frequency == 0.4860
+    # the retained allele-level typed tail; no spec was passed, so the generic
+    # annotations are empty (this fixture is a pre-plugin CSQ header anyway)
+    assert results.colocated_variants == ["rs868831437"]
+    assert results.annotations == []
     assert len(results.predicted_molecular_consequences) == 2
     #assert (
     #    results.predicted_molecular_consequences[0].feature_type
@@ -202,18 +205,9 @@ def test_get_results_from_stream():
     assert results.variants[0].alternative_alleles[0].allele_sequence == "T"
     assert results.variants[0].alternative_alleles[0].allele_type == "SNV"
 
-    assert (
-        results.variants[0]
-        .alternative_alleles[0]
-        .representative_population_allele_frequency
-        == 0.4860
-    )
-    assert (
-        results.variants[1]
-        .alternative_alleles[0]
-        .representative_population_allele_frequency
-        == None
-    )
+    # no parsing spec is pinned to this stream, so no generic annotations
+    assert results.variants[0].alternative_alleles[0].annotations == []
+    assert results.variants[1].alternative_alleles[0].annotations == []
 
 def test_paging():
     variant_count = 21

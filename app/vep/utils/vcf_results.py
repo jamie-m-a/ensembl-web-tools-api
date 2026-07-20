@@ -15,11 +15,9 @@ from vep.utils import results_filters
 from vep.utils.bgzf import _BgzfReader
 from vep.utils.csq import (
     csq_index_map_from_header,
-    first_amp,
     get_csq_value,
     get_prediction_index_map,
     has_any_column,
-    raw_amp,
     split_amp,
     to_float,
 )
@@ -119,280 +117,6 @@ def _parse_protein_matches(csq_values, index_map) -> list[model.ProteinMatch]:
     return matches
 
 
-def _parse_protvar_pocket(raw: str) -> model.ProtVarPocket:
-    """Parse a ProtVar_pocket value, positionally:
-    id & energy & energy_per_volume & score & buriedness & radius_of_gyration &
-    residues. The leading id (and trailing residue token) are non-numeric; the
-    middle parts are the numeric scores captured here. Residues are ignored.
-
-    Each score is read from its own index. An item that is absent or does not
-    parse leaves only its own field empty; it must not pull the later values
-    forward, or they would be silently reported under the wrong names."""
-    parts = raw.split("&")
-
-    def slot(index: int) -> float | None:
-        return to_float(parts[index]) if index < len(parts) else None
-
-    return model.ProtVarPocket(
-        pocket_id=parts[0] if parts else "",
-        energy=slot(1),
-        energy_per_volume=slot(2),
-        score=slot(3),
-        buriedness=slot(4),
-        radius_of_gyration=slot(5),
-        raw=raw,
-    )
-
-
-def _parse_protvar(csq_values, index_map) -> model.ProtVarAnnotation | None:
-    """Build a ProtVar annotation from the stability/pocket/interaction CSQ
-    columns; returns None if none are present."""
-    if not has_any_column(index_map, "ProtVar_stability", "ProtVar_pocket", "ProtVar_int"):
-        return None
-    stability = get_csq_value(csq_values, "ProtVar_stability", None, index_map)
-    pocket = get_csq_value(csq_values, "ProtVar_pocket", None, index_map)
-    interaction = get_csq_value(csq_values, "ProtVar_int", None, index_map)
-    if not any([stability, pocket, interaction]):
-        return None
-
-    pockets = [_parse_protvar_pocket(pocket)] if pocket else []
-
-    interfaces = []
-    if interaction:
-        tokens = interaction.split("&")
-        # partner & score [& partner & score ...]
-        for i in range(0, len(tokens), 2):
-            partner = tokens[i]
-            score = tokens[i + 1] if i + 1 < len(tokens) else None
-            interfaces.append(
-                model.ProtVarInteractionInterface(
-                    partner=partner,
-                    score=to_float(score),
-                    raw="&".join(t for t in [partner, score] if t),
-                )
-            )
-
-    return model.ProtVarAnnotation(
-        structure_stability_score=to_float(stability),
-        pockets=pockets,
-        interaction_interfaces=interfaces,
-    )
-
-
-def _parse_intact(csq_values, index_map) -> model.IntActAnnotation | None:
-    """Build an IntAct annotation; returns None if no IntAct columns present.
-
-    Besides the base feature_type / interaction_ac, the plugin emits one column
-    per selected sub-option (IntAct_<flag>), so read those too."""
-    if not has_any_column(
-        index_map, "IntAct_feature_type", "IntAct_interaction_ac", "IntAct_feature_ac"
-    ):
-        return None
-
-    def col(name):
-        return get_csq_value(csq_values, name, None, index_map)
-
-    feature_type = col("IntAct_feature_type")
-    interaction_ac = col("IntAct_interaction_ac")
-    # Sub-option columns (present when the corresponding flag was selected).
-    feature_ac = col("IntAct_feature_ac")
-    feature_short_label = col("IntAct_feature_short_label")
-    feature_annotation = col("IntAct_feature_annotation")
-    ap_ac = col("IntAct_ap_ac")
-    interaction_participants = col("IntAct_interaction_participants")
-    pmid = col("IntAct_pmid")
-    if not any(
-        [
-            feature_type,
-            interaction_ac,
-            feature_ac,
-            feature_short_label,
-            feature_annotation,
-            ap_ac,
-            interaction_participants,
-            pmid,
-        ]
-    ):
-        return None
-    return model.IntActAnnotation(
-        feature_type=feature_type,
-        interaction_ac=interaction_ac,
-        feature_ac=feature_ac,
-        feature_short_label=feature_short_label,
-        feature_annotation=feature_annotation,
-        ap_ac=ap_ac,
-        interaction_participants=interaction_participants,
-        pmid=pmid,
-    )
-
-
-def _parse_mutfunc(csq_values, index_map) -> model.MutfuncAnnotation | None:
-    """Build a mutfunc annotation from its per-data-type score columns; returns
-    None if none are present."""
-    if not has_any_column(
-        index_map, "mutfunc_motif", "mutfunc_int", "mutfunc_mod", "mutfunc_exp"
-    ):
-        return None
-    motif = get_csq_value(csq_values, "mutfunc_motif", None, index_map)
-    interactions = get_csq_value(csq_values, "mutfunc_int", None, index_map)
-    structure = get_csq_value(csq_values, "mutfunc_mod", None, index_map)
-    structure_exp = get_csq_value(csq_values, "mutfunc_exp", None, index_map)
-    if not any([motif, interactions, structure, structure_exp]):
-        return None
-    return model.MutfuncAnnotation(
-        linear_motifs=to_float(motif),
-        protein_interactions=to_float(interactions),
-        protein_structure=to_float(structure),
-        protein_structure_experimental=to_float(structure_exp),
-    )
-
-
-
-def _parse_mavedb(csq_values, index_map) -> model.MaveDBAnnotation | None:
-    """Build a MaveDB annotation; returns None if no MaveDB columns present.
-
-    The MaveDB plugin reports several assays for one variant as parallel
-    '&'-joined lists (score/urn/pro). Zip score and urn positionally into one
-    assay each, so every score pairs with its score-set URN."""
-    if not has_any_column(
-        index_map, "MaveDB_score", "MaveDB_urn", "MaveDB_doi", "MaveDB_nt", "MaveDB_pro"
-    ):
-        return None
-    score = get_csq_value(csq_values, "MaveDB_score", None, index_map)
-    urn = get_csq_value(csq_values, "MaveDB_urn", None, index_map)
-    pro = get_csq_value(csq_values, "MaveDB_pro", None, index_map)
-    if not any([score, urn, pro]):
-        return None
-    scores = raw_amp(score)
-    urns = raw_amp(urn)
-    assays: list[model.MaveDBAssay] = []
-    for i in range(max(len(scores), len(urns))):
-        raw_urn = urns[i] if i < len(urns) else ""
-        assay_urn = raw_urn if raw_urn and raw_urn != "NA" else None
-        assay_score = to_float(scores[i]) if i < len(scores) else None
-        if assay_urn is None and assay_score is None:
-            continue
-        assays.append(model.MaveDBAssay(urn=assay_urn, score=assay_score))
-    if not assays:
-        return None
-    return model.MaveDBAnnotation(
-        protein_variant=first_amp(pro),
-        assays=assays,
-    )
-
-
-def _parse_popeve(csq_values, index_map) -> model.PopEve | None:
-    """Build popEVE scores; returns None if no popEVE columns present."""
-    if not has_any_column(index_map, "popEVE_SCORE", "popEVE_EVE", "popEVE_mutant"):
-        return None
-
-    def v(name):
-        return get_csq_value(csq_values, name, None, index_map)
-
-    score = v("popEVE_SCORE")
-    if not any([score, v("popEVE_EVE"), v("popEVE_mutant")]):
-        return None
-    return model.PopEve(
-        score=to_float(score),
-        eve=to_float(v("popEVE_EVE")),
-        esm1v=to_float(v("popEVE_ESM1v")),
-        pop_adjusted_eve=to_float(v("popEVE_pop_adjusted_EVE")),
-        pop_adjusted_esm1v=to_float(v("popEVE_pop_adjusted_ESM1v")),
-        gene=v("popEVE_gene"),
-        protein=v("popEVE_protein"),
-        mutant=v("popEVE_mutant"),
-        gap_frequency=to_float(v("popEVE_gap_frequency")),
-    )
-
-
-
-def _parse_dosage_sensitivity(
-    csq_values, index_map
-) -> model.DosageSensitivity | None:
-    """Build gnomAD dosage-sensitivity probabilities (pHaplo/pTriplo);
-    returns None if neither column is present."""
-    if not has_any_column(index_map, "pHaplo", "pTriplo"):
-        return None
-    phaplo = get_csq_value(csq_values, "pHaplo", None, index_map)
-    ptriplo = get_csq_value(csq_values, "pTriplo", None, index_map)
-    if not any([phaplo, ptriplo]):
-        return None
-    return model.DosageSensitivity(
-        phaplo=to_float(phaplo), ptriplo=to_float(ptriplo)
-    )
-
-
-def _parse_utr_annotation(
-    csq_values, index_map
-) -> model.FivePrimeUtrAnnotation | None:
-    """Build a UTRAnnotator 5' UTR annotation; returns None if no 5'UTR /
-    uORF columns are present."""
-    if not has_any_column(
-        index_map, "5UTR_consequence", "5UTR_annotation", "Existing_uORFs",
-        "Existing_InFrame_oORFs", "Existing_OutOfFrame_oORFs",
-    ):
-        return None
-    consequence = get_csq_value(csq_values, "5UTR_consequence", None, index_map)
-    annotation = get_csq_value(csq_values, "5UTR_annotation", None, index_map)
-    uorfs = get_csq_value(csq_values, "Existing_uORFs", None, index_map)
-    inframe = get_csq_value(
-        csq_values, "Existing_InFrame_oORFs", None, index_map
-    )
-    outofframe = get_csq_value(
-        csq_values, "Existing_OutOfFrame_oORFs", None, index_map
-    )
-    if not any([consequence, annotation, uorfs, inframe, outofframe]):
-        return None
-    return model.FivePrimeUtrAnnotation(
-        consequence=consequence,
-        annotation=annotation,
-        existing_uorfs=uorfs,
-        existing_inframe_oorfs=inframe,
-        existing_outofframe_oorfs=outofframe,
-    )
-
-
-def _parse_riboseq_orfs(
-    csq_values, index_map
-) -> model.RiboseqOrfsAnnotation | None:
-    """Build a Ribo-seq ORFs annotation; returns None if no RiboseqORFs
-    columns are present."""
-    if not has_any_column(
-        index_map, "RiboseqORFs_id", "RiboseqORFs_consequences", "RiboseqORFs_impact",
-        "RiboseqORFs_protein_position", "RiboseqORFs_codons",
-        "RiboseqORFs_amino_acids", "RiboseqORFs_publications",
-    ):
-        return None
-    orf_id = get_csq_value(csq_values, "RiboseqORFs_id", None, index_map)
-    consequences = split_amp(
-        get_csq_value(csq_values, "RiboseqORFs_consequences", None, index_map)
-    )
-    impact = get_csq_value(csq_values, "RiboseqORFs_impact", None, index_map)
-    protein_position = get_csq_value(
-        csq_values, "RiboseqORFs_protein_position", None, index_map
-    )
-    codons = get_csq_value(csq_values, "RiboseqORFs_codons", None, index_map)
-    amino_acids = get_csq_value(
-        csq_values, "RiboseqORFs_amino_acids", None, index_map
-    )
-    publications = split_amp(
-        get_csq_value(csq_values, "RiboseqORFs_publications", None, index_map)
-    )
-    if not any(
-        [orf_id, consequences, impact, protein_position, codons, amino_acids, publications]
-    ):
-        return None
-    return model.RiboseqOrfsAnnotation(
-        orf_id=orf_id,
-        consequences=consequences,
-        impact=impact,
-        protein_position=protein_position,
-        codons=codons,
-        amino_acids=amino_acids,
-        publications=publications,
-    )
-
-
 _PREDICTION_RE = re.compile(r"^(?P<prediction>[^(]+)\((?P<score>[-\d.eE]+)\)$")
 
 
@@ -407,276 +131,6 @@ def _parse_prediction(value: str | None) -> model.PredictionWithScore | None:
             score=to_float(match.group("score")),
         )
     return model.PredictionWithScore(prediction=value, score=None)
-
-
-def _parse_hgvs(csq_values, index_map) -> model.HgvsNotations | None:
-    if not has_any_column(index_map, "HGVSg", "HGVSc", "HGVSp"):
-        return None
-    genomic = get_csq_value(csq_values, "HGVSg", None, index_map)
-    transcript = get_csq_value(csq_values, "HGVSc", None, index_map)
-    protein = get_csq_value(csq_values, "HGVSp", None, index_map)
-    if not any([genomic, transcript, protein]):
-        return None
-    return model.HgvsNotations(
-        genomic=genomic, transcript=transcript, protein=protein
-    )
-
-
-def _parse_spliceai(csq_values, index_map) -> model.SpliceAiScores | None:
-    if not has_any_column(index_map, "SpliceAI_pred_DS_AG"):
-        return None
-
-    def f(name):
-        return to_float(get_csq_value(csq_values, name, None, index_map))
-
-    def i(name):
-        value = get_csq_value(csq_values, name, None, index_map)
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
-
-    # Compute the delta scores first; only build the model when at least one is
-    # present (avoids constructing + model_dump-ing an all-None model per
-    # transcript just to discover it is empty).
-    values = dict(
-        ds_acceptor_gain=f("SpliceAI_pred_DS_AG"),
-        ds_acceptor_loss=f("SpliceAI_pred_DS_AL"),
-        ds_donor_gain=f("SpliceAI_pred_DS_DG"),
-        ds_donor_loss=f("SpliceAI_pred_DS_DL"),
-        dp_acceptor_gain=i("SpliceAI_pred_DP_AG"),
-        dp_acceptor_loss=i("SpliceAI_pred_DP_AL"),
-        dp_donor_gain=i("SpliceAI_pred_DP_DG"),
-        dp_donor_loss=i("SpliceAI_pred_DP_DL"),
-    )
-    if not any(value is not None for value in values.values()):
-        return None
-    symbol = get_csq_value(csq_values, "SpliceAI_pred_SYMBOL", None, index_map)
-    return model.SpliceAiScores(symbol=symbol, **values)
-
-
-def _parse_pathogenicity(csq_values, index_map) -> model.PathogenicityPredictions | None:
-    if not has_any_column(
-        index_map,
-        "SIFT", "PolyPhen", "REVEL", "am_class", "am_pathogenicity",
-        "CADD_PHRED", "CADD_RAW", "EVE_CLASS", "EVE_SCORE",
-        "SpliceAI_pred_DS_AG", "popEVE_SCORE",
-    ):
-        return None
-
-    def v(name):
-        return get_csq_value(csq_values, name, None, index_map)
-
-    sift = _parse_prediction(v("SIFT"))
-    polyphen = _parse_prediction(v("PolyPhen"))
-    spliceai = _parse_spliceai(csq_values, index_map)
-    fields = dict(
-        sift=sift,
-        polyphen=polyphen,
-        revel=to_float(v("REVEL")),
-        alphamissense_class=v("am_class"),
-        alphamissense_score=to_float(v("am_pathogenicity")),
-        cadd_phred=to_float(v("CADD_PHRED")),
-        cadd_raw=to_float(v("CADD_RAW")),
-        spliceai=spliceai,
-        eve_class=v("EVE_CLASS"),
-        eve_score=to_float(v("EVE_SCORE")),
-        popeve=_parse_popeve(csq_values, index_map),
-    )
-    if not any(value is not None for value in fields.values()):
-        return None
-    return model.PathogenicityPredictions(**fields)
-
-
-def _parse_population_frequencies(
-    csq_values, index_map, overall_key: str, pop_pattern: str
-) -> model.PopulationFrequencies | None:
-    """Build overall + per-population frequencies. pop_pattern has a single
-    '{}' where the population code sits, e.g. 'gnomADe_{}_AF'."""
-    overall = to_float(get_csq_value(csq_values, overall_key, None, index_map))
-    prefix, suffix = pop_pattern.split("{}")
-    populations: dict[str, float] = {}
-    for column in index_map:
-        if (
-            column.startswith(prefix)
-            and column.endswith(suffix)
-            and column != overall_key
-        ):
-            pop = column[len(prefix): len(column) - len(suffix)]
-            value = to_float(get_csq_value(csq_values, column, None, index_map))
-            if value is not None:
-                populations[pop] = value
-    if overall is None and not populations:
-        return None
-    return model.PopulationFrequencies(overall=overall, populations=populations)
-
-
-def _parse_frequencies(csq_values, index_map) -> model.AlleleFrequencies | None:
-    if not has_any_column(
-        index_map, "gnomAD_exomes_AF", "gnomAD_genomes_AF", "AoU_gvs_all_af"
-    ):
-        return None
-    # gnomAD exomes/genomes are added via VEP `custom` tracks with
-    # short_name=gnomAD_exomes / gnomAD_genomes, so their columns are prefixed
-    # accordingly and the emitted field is `AF` (overall) plus `AF_<...>` variants
-    # (ancestry / sex / subset). Everything after the `<track>_AF_` prefix becomes
-    # the population key (e.g. afr, nfe_XX, non_ukb_afr, grpmax).
-    gnomad_exomes = _parse_population_frequencies(
-        csq_values, index_map, "gnomAD_exomes_AF", "gnomAD_exomes_AF_{}"
-    )
-    gnomad_genomes = _parse_population_frequencies(
-        csq_values, index_map, "gnomAD_genomes_AF", "gnomAD_genomes_AF_{}"
-    )
-    # All of Us is added via a VEP `custom` with short_name=AoU, so its columns
-    # are prefixed AoU_ (e.g. AoU_gvs_all_af, AoU_gvs_afr_af). The AoU_gvs_max_af
-    # subpopulation frequency is picked up as the "max" population; the companion
-    # AoU_gvs_max_subpop column names which subpopulation that max came from
-    # (a code, e.g. "eur"), attached so the results view can show it in brackets.
-    all_of_us = _parse_population_frequencies(
-        csq_values, index_map, "AoU_gvs_all_af", "AoU_gvs_{}_af"
-    )
-    if all_of_us is not None:
-        max_subpop = get_csq_value(csq_values, "AoU_gvs_max_subpop", None, index_map)
-        if max_subpop:
-            all_of_us.max_subpopulation = max_subpop
-    if not any([gnomad_exomes, gnomad_genomes, all_of_us]):
-        return None
-    return model.AlleleFrequencies(
-        gnomad_exomes=gnomad_exomes,
-        gnomad_genomes=gnomad_genomes,
-        all_of_us=all_of_us,
-    )
-
-
-def _parse_go(csq_values, index_map) -> list[model.GoTerm]:
-    """Gene Ontology terms from the GO plugin's GO column. Each '&'-separated
-    entry is `GO:<id>:<term>` (term underscore-delimited), e.g.
-    `GO:0001558:regulation_of_cell_growth` -> id 'GO:0001558', name
-    'regulation of cell growth'."""
-    if not has_any_column(index_map, "GO"):
-        return []
-    terms: list[model.GoTerm] = []
-    for entry in split_amp(get_csq_value(csq_values, "GO", None, index_map)):
-        parts = entry.split(":")
-        if len(parts) < 3:
-            continue
-        go_id = ":".join(parts[:2])  # "GO:0001558"
-        name = ":".join(parts[2:]).replace("_", " ").strip()
-        terms.append(model.GoTerm(id=go_id, name=name))
-    return terms
-
-
-def _parse_phenotype_data(csq_values, index_map) -> model.VariantPhenotypeData | None:
-    if not has_any_column(index_map, "PHENOTYPES", "CLIN_SIG", "PUBMED"):
-        return None
-    phenotypes = split_amp(get_csq_value(csq_values, "PHENOTYPES", None, index_map))
-    clin_sig = split_amp(get_csq_value(csq_values, "CLIN_SIG", None, index_map))
-    pubmed = split_amp(get_csq_value(csq_values, "PUBMED", None, index_map))
-    if not any([phenotypes, clin_sig, pubmed]):
-        return None
-    return model.VariantPhenotypeData(
-        phenotypes=phenotypes,
-        clinical_significance=clin_sig,
-        pubmed_ids=pubmed,
-    )
-
-
-_CLNSIG_CONFLICTING = "Conflicting_classifications_of_pathogenicity"
-# A CLNSIGCONF token, e.g. "Likely_pathogenic_(6)" -> ("Likely_pathogenic", 6).
-_CLNSIGCONF_RE = re.compile(r"^(?P<term>.+)_\((?P<count>\d+)\)$")
-
-
-def _parse_clinvar(csq_values, index_map) -> model.ClinVarAnnotation | None:
-    """ClinVar clinical significance from the ClinVar custom track. CLNSIG is the
-    overall classification; CLNSIGCONF (the per-classification submission
-    breakdown) is surfaced only when the classification is conflicting, and
-    ignored otherwise. Returns None if there is no CLNSIG value."""
-    if not has_any_column(index_map, "ClinVar_CLNSIG"):
-        return None
-    clnsig = get_csq_value(csq_values, "ClinVar_CLNSIG", None, index_map)
-    if not clnsig:
-        return None
-    significance = split_amp(clnsig)
-
-    breakdown: list[model.ClinVarSignificance] = []
-    if _CLNSIG_CONFLICTING in significance:
-        conf = get_csq_value(csq_values, "ClinVar_CLNSIGCONF", None, index_map)
-        for token in split_amp(conf):
-            match = _CLNSIGCONF_RE.match(token)
-            if match:
-                breakdown.append(
-                    model.ClinVarSignificance(
-                        significance=match.group("term"),
-                        count=int(match.group("count")),
-                    )
-                )
-    return model.ClinVarAnnotation(
-        significance=significance, conflicting_breakdown=breakdown
-    )
-
-
-
-def _parse_open_targets(csq_values, index_map) -> model.OpenTargetsAssociation | None:
-    if not has_any_column(
-        index_map, "OpenTargets_gwasDiseases", "OpenTargets_qtlGeneId"
-    ):
-        return None
-
-    def raw(name):
-        return raw_amp(get_csq_value(csq_values, name, None, index_map))
-
-    diseases = raw("OpenTargets_gwasDiseases")
-    gene_ids = raw("OpenTargets_gwasGeneId")
-    l2g = raw("OpenTargets_gwasLocusToGeneScore")
-    qtl_genes = raw("OpenTargets_qtlGeneId")
-    qtl_biosamples = raw("OpenTargets_qtlBiosampleName")
-
-    # GWAS: disease / gene / L2G are positionally aligned. Keep real (non-NA)
-    # rows and de-duplicate (the plugin currently emits duplicate rows).
-    gwas_associations = []
-    seen_gwas = set()
-    for disease, gene_id, score in zip(diseases, gene_ids, l2g):
-        if not disease or disease == "NA":
-            continue
-        key = (disease, gene_id, score)
-        if key in seen_gwas:
-            continue
-        seen_gwas.add(key)
-        gwas_associations.append(
-            model.OpenTargetsGwasAssociation(
-                disease=disease, gene_id=gene_id, l2g_score=to_float(score)
-            )
-        )
-
-    # QTL: gene / biosample are positionally aligned. Keep real rows, unique.
-    qtl_associations = []
-    seen_qtl = set()
-    for gene_id, biosample in zip(qtl_genes, qtl_biosamples):
-        if not gene_id or gene_id == "NA":
-            continue
-        key = (gene_id, biosample)
-        if key in seen_qtl:
-            continue
-        seen_qtl.add(key)
-        qtl_associations.append(
-            model.OpenTargetsQtlAssociation(
-                gene_id=gene_id,
-                biosample=None if biosample in ("", "NA") else biosample,
-            )
-        )
-
-    # Strongest associations first (missing scores last).
-    gwas_associations.sort(
-        key=lambda a: a.l2g_score if a.l2g_score is not None else float("-inf"),
-        reverse=True,
-    )
-
-    if not gwas_associations and not qtl_associations:
-        return None
-    return model.OpenTargetsAssociation(
-        gwas_associations=gwas_associations,
-        qtl_associations=qtl_associations,
-    )
 
 
 def _spec_annotations(
@@ -711,20 +165,13 @@ def _get_alt_allele_details(
 ) -> model.AlternativeVariantAllele:
     """Creates  AlternativeVariantAllele based on
     target alt allele and CSQ entires"""
-    frequency = None
     consequences = []
     allele_type = _get_variant_type(ref, alt)
     # Allele-level annotations are identical across all of this allele's CSQ
-    # rows, so capture them once (from the first matching row).
-    frequencies = None
+    # rows, so capture them once (from the first matching row). They are also
+    # the only annotations available for intergenic variants (no transcript
+    # rows).
     colocated_variants: list[str] = []
-    phenotype_data = None
-    open_targets = None
-    spdi = None
-    hgvsg = None
-    cadd_phred = None
-    cadd_raw = None
-    clinvar = None
     allele_annotations: list[model.Annotation] = []
     allele_level_captured = False
 
@@ -734,27 +181,10 @@ def _get_alt_allele_details(
         if csq_values[index_map["Allele"]] != alt:
             continue
 
-        frequency = get_csq_value(csq_values, "AF", frequency, index_map)
-
         if not allele_level_captured:
-            frequencies = _parse_frequencies(csq_values, index_map)
             colocated_variants = split_amp(
                 get_csq_value(csq_values, "Existing_variation", None, index_map)
             )
-            phenotype_data = _parse_phenotype_data(csq_values, index_map)
-            open_targets = _parse_open_targets(csq_values, index_map)
-            # Variant-level representations / genome-wide scores. These are the
-            # same across an allele's transcripts and are the only annotations
-            # available for intergenic variants (which have no transcript rows).
-            spdi = get_csq_value(csq_values, "SPDI", None, index_map)
-            hgvsg = get_csq_value(csq_values, "HGVSg", None, index_map)
-            cadd_phred = to_float(
-                get_csq_value(csq_values, "CADD_PHRED", None, index_map)
-            )
-            cadd_raw = to_float(
-                get_csq_value(csq_values, "CADD_RAW", None, index_map)
-            )
-            clinvar = _parse_clinvar(csq_values, index_map)
             allele_annotations = _spec_annotations(
                 csq_values, index_map, spec, "allele"
             )
@@ -812,26 +242,13 @@ def _get_alt_allele_details(
                     ),
                     uniprot=_parse_uniprot(csq_values, index_map),
                     protein_matches=_parse_protein_matches(csq_values, index_map),
-                    protvar=_parse_protvar(csq_values, index_map),
-                    intact=_parse_intact(csq_values, index_map),
-                    mutfunc=_parse_mutfunc(csq_values, index_map),
-                    mavedb=_parse_mavedb(csq_values, index_map),
-                    # Variant representations
-                    spdi=get_csq_value(csq_values, "SPDI", None, index_map),
-                    # HGVS, pathogenicity, gene constraint
-                    hgvs=_parse_hgvs(csq_values, index_map),
-                    pathogenicity=_parse_pathogenicity(csq_values, index_map),
-                    loeuf=to_float(
-                        get_csq_value(csq_values, "LOEUF", None, index_map)
+                    sift=_parse_prediction(
+                        get_csq_value(csq_values, "SIFT", None, index_map)
                     ),
-                    dosage_sensitivity=_parse_dosage_sensitivity(
-                        csq_values, index_map
+                    polyphen=_parse_prediction(
+                        get_csq_value(csq_values, "PolyPhen", None, index_map)
                     ),
-                    # Transcript-level predictions
-                    utr_annotation=_parse_utr_annotation(csq_values, index_map),
-                    riboseq_orfs=_parse_riboseq_orfs(csq_values, index_map),
-                    go_terms=_parse_go(csq_values, index_map),
-                    # Generic spec-driven annotations (additive to the above).
+                    # Generic spec-driven annotations: everything else.
                     annotations=_spec_annotations(
                         csq_values, index_map, spec, "transcript"
                     ),
@@ -848,16 +265,7 @@ def _get_alt_allele_details(
     return model.AlternativeVariantAllele(
         allele_sequence=("" if alt=="copy_number_variation" else alt),
         allele_type=allele_type,
-        representative_population_allele_frequency=frequency,
-        spdi=spdi,
-        hgvsg=hgvsg,
-        cadd_phred=cadd_phred,
-        cadd_raw=cadd_raw,
-        frequencies=frequencies,
         colocated_variants=colocated_variants,
-        phenotype_data=phenotype_data,
-        open_targets=open_targets,
-        clinvar=clinvar,
         annotations=allele_annotations,
         predicted_molecular_consequences=consequences,
     )
@@ -977,15 +385,13 @@ def _get_filtered_results(
 def _load_pinned_spec(vcf_path: FilePath) -> ParsingSpec | None:
     """The parsing spec pinned to this job at submission, loaded defensively.
 
-    Piece 2 of the annotation-spec cutover: the spec is loaded and logged at
-    results time so the seam is real and exercised end to end, but the response
-    is still built by the hand-written `_parse_*` bank. Their equivalence to the
-    interpreter over real pipeline output is held by test_spec_real_vcfs.py;
-    piece 3 replaces the hand-written parsers with spec_interpreter.apply_plugin_spec
-    driven by this spec.
+    Since the go-flat cutover this spec is the sole source of annotation data:
+    every plugin payload on the response comes from driving it through
+    spec_interpreter.apply_plugin_spec.
 
-    Never raises: an output with no sidecar (pre-dating the pin) or an unreadable
-    one must still parse exactly as before, so both fall back to None.
+    Never raises: an output with no sidecar (pre-dating the pin) or an
+    unreadable one still parses, just with no annotations, so both fall back to
+    None.
 
     The pinned sidecar is now the whole merged document; the parsing half is what
     the results path needs, so that is what this returns.
@@ -999,7 +405,7 @@ def _load_pinned_spec(vcf_path: FilePath) -> ParsingSpec | None:
         return None
     if merged is None:
         logging.debug(
-            "No spec sidecar for %s; using hand-written parsers", vcf_path
+            "No spec sidecar for %s; no annotations will be emitted", vcf_path
         )
         return None
     spec = merged.parsing
@@ -1069,10 +475,9 @@ def get_results_from_path(
     Slices the input VCF file to a smaller one
     and converts it to stream for get_results_from_stream"""
 
-    # Load the spec pinned to this job at submission. The page is still parsed by
-    # the hand-written parsers, but the spec now also drives the generic
-    # `annotations` emitted alongside the typed fields (threaded down to
-    # _get_alt_allele_details). A missing or unreadable pin -> None -> no generic
+    # Load the spec pinned to this job at submission. It drives the generic
+    # `annotations` on every allele and transcript consequence (threaded down to
+    # _get_alt_allele_details). A missing or unreadable pin -> None -> no
     # annotations, never failing results.
     spec = _load_pinned_spec(vcf_path)
     # Runtime missing-expected-field check: warn if the pipeline output is missing

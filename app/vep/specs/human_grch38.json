@@ -20,7 +20,8 @@
         "id": "hgvsg",
         "order": 11,
         "parsed_as": [
-          "hgvs"
+          "hgvs",
+          "hgvsg"
         ],
         "config": {
           "emit": "flag",
@@ -30,7 +31,9 @@
       {
         "id": "spdi",
         "order": 12,
-        "parsed_as": [],
+        "parsed_as": [
+          "spdi"
+        ],
         "config": {
           "emit": "flag",
           "keyword": "spdi"
@@ -340,7 +343,9 @@
       {
         "id": "loeuf",
         "order": 43,
-        "parsed_as": [],
+        "parsed_as": [
+          "loeuf"
+        ],
         "config": {
           "emit": "plugin",
           "name": "LOEUF",
@@ -1702,6 +1707,63 @@
           {
             "field": "existing_outofframe_oorfs",
             "from": "Existing_OutOfFrame_oORFs",
+            "transform": "scalar",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "plugin": "loeuf",
+        "scope": "transcript",
+        "output": "loeuf",
+        "csq_fields": [
+          "LOEUF"
+        ],
+        "require_any_output": [
+          "score"
+        ],
+        "targets": [
+          {
+            "field": "score",
+            "from": "LOEUF",
+            "transform": "scalar",
+            "type": "float"
+          }
+        ]
+      },
+      {
+        "plugin": "spdi",
+        "scope": "allele",
+        "output": "spdi",
+        "csq_fields": [
+          "SPDI"
+        ],
+        "require_any_output": [
+          "spdi"
+        ],
+        "targets": [
+          {
+            "field": "spdi",
+            "from": "SPDI",
+            "transform": "scalar",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "plugin": "hgvsg",
+        "scope": "allele",
+        "output": "hgvsg",
+        "csq_fields": [
+          "HGVSg"
+        ],
+        "require_any_output": [
+          "genomic"
+        ],
+        "targets": [
+          {
+            "field": "genomic",
+            "from": "HGVSg",
             "transform": "scalar",
             "type": "string"
           }

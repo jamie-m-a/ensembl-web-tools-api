@@ -1,11 +1,14 @@
-"""Differential tests: spec-driven parsing vs the hand-written `_parse_*` bank.
+"""Tests for the spec-driven parsing interpreter (`apply_plugin_spec`) against
+the parsing half of `specs/human_grch38.json`.
 
-The hand-written parsers are the oracle. For the same CSQ entry, the interpreter
-driven by the parsing half of `specs/human_grch38.json` must produce exactly what
-the corresponding `_parse_*` produces (compared as plain data, via model_dump).
+These began life as differential tests: every case compared the interpreter's
+output to the corresponding hand-written `_parse_*` function, which was the
+oracle that proved the spec vocabulary sufficient before anything was rewired.
+The go-flat cutover deleted that bank, so the expected values below are the
+frozen outputs from the last run in which both paths agreed — the equivalence
+proof is now a set of pinned literals rather than a live comparison.
 
-This is what proves the spec vocabulary is sufficient before anything is
-rewired, so the fixtures are deliberately shared with test_csq_parsers.
+The fixtures are deliberately shared with test_csq_parsers.
 """
 
 import pytest
@@ -15,47 +18,8 @@ from app.vep.models.parsing_spec_model import ParsingSpec, TargetSpec
 from app.vep.utils.csq import get_prediction_index_map
 from app.vep.utils.spec_interpreter import apply_plugin_spec
 from app.vep.utils.spec_loader import load_merged_spec
-from app.vep.utils.vcf_results import (
-    _parse_clinvar,
-    _parse_utr_annotation,
-    _parse_pathogenicity,
-    _parse_dosage_sensitivity,
-    _parse_hgvs,
-    _parse_intact,
-    _parse_phenotype_data,
-    _parse_popeve,
-    _parse_go,
-    _parse_spliceai,
-    _parse_open_targets,
-    _parse_protvar,
-    _parse_protvar_pocket,
-    _parse_frequencies,
-    _parse_mavedb,
-    _parse_mutfunc,
-    _parse_population_frequencies,
-)
 
 SPEC: ParsingSpec = load_merged_spec("human_grch38").parsing
-
-
-def dump(model):
-    """A parser's output as plain data, or None."""
-    return model.model_dump() if model is not None else None
-
-
-def dump_frequencies(model):
-    """A gnomAD PopulationFrequencies as plain data.
-
-    `max_subpopulation` is dropped: it is an All of Us concept (the label column
-    AoU_gvs_max_subpop), so the gnomAD specs do not produce the key at all,
-    while the shared pydantic model always carries it as None. The AoU tests
-    compare against _parse_frequencies instead and do not use this helper.
-    """
-    if model is None:
-        return None
-    data = model.model_dump()
-    data.pop("max_subpopulation", None)
-    return data
 
 
 def index_map_for(*columns: str) -> dict[str, int]:
@@ -84,6 +48,9 @@ def test_bundled_spec_validates():
         "spliceai",
         "riboseq_orfs",
         "hgvs",
+        "hgvsg",
+        "spdi",
+        "loeuf",
         "phenotype_data",
         "dosage_sensitivity",
         "intact",
@@ -133,19 +100,28 @@ MUTFUNC_SCORES = dict(
 )
 
 
-def test_mutfunc_matches_hand_written_parser():
-    csq = row_list(**MUTFUNC_SCORES)
-    assert run("mutfunc", csq) == dump(_parse_mutfunc(csq, INDEX_MAP))
+def test_mutfunc_all_four_scores():
+    assert run("mutfunc", row_list(**MUTFUNC_SCORES)) == {
+        "linear_motifs": 0.1,
+        "protein_interactions": 0.2,
+        "protein_structure": 0.3,
+        "protein_structure_experimental": 0.4,
+    }
 
 
-def test_mutfunc_empty_matches():
-    assert run("mutfunc", EMPTY) == dump(_parse_mutfunc(EMPTY, INDEX_MAP)) == None
+def test_mutfunc_empty_is_none():
+    assert run("mutfunc", EMPTY) is None
 
 
-def test_mutfunc_partial_matches():
+def test_mutfunc_partial_keeps_absent_scores_as_null():
     """Only some scores present: the rest must come back None, not be dropped."""
     csq = row_list(mutfunc_motif="0.1", mutfunc_exp="0.4")
-    assert run("mutfunc", csq) == dump(_parse_mutfunc(csq, INDEX_MAP))
+    assert run("mutfunc", csq) == {
+        "linear_motifs": 0.1,
+        "protein_interactions": None,
+        "protein_structure": None,
+        "protein_structure_experimental": 0.4,
+    }
 
 
 # --- MaveDB: positional zip, the hard case -----------------------------------
@@ -159,13 +135,7 @@ MAVEDB_MULTI = dict(
 )
 
 
-def test_mavedb_multi_assay_matches_hand_written_parser():
-    csq = row_list(**MAVEDB_MULTI)
-    assert run("mavedb", csq) == dump(_parse_mavedb(csq, INDEX_MAP))
-
-
 def test_mavedb_multi_assay_shape_is_as_expected():
-    """Pin the actual expected values, so a bug in *both* paths can't pass."""
     result = run("mavedb", row_list(**MAVEDB_MULTI))
     assert result["protein_variant"] == "p.Lys1Arg"
     assert [(a["urn"], a["score"]) for a in result["assays"]] == [
@@ -175,40 +145,40 @@ def test_mavedb_multi_assay_shape_is_as_expected():
     ]
 
 
-def test_mavedb_empty_matches():
-    assert run("mavedb", EMPTY) == dump(_parse_mavedb(EMPTY, INDEX_MAP)) == None
+def test_mavedb_empty_is_none():
+    assert run("mavedb", EMPTY) is None
 
 
-def test_mavedb_uneven_columns_match():
+def test_mavedb_uneven_columns_pad_rather_than_truncate():
     """Fewer scores than urns: `align: max` must pad, not truncate."""
     csq = row_list(MaveDB_score="1.5", MaveDB_urn="urn:1&urn:2")
-    assert run("mavedb", csq) == dump(_parse_mavedb(csq, INDEX_MAP))
+    assert run("mavedb", csq) == {
+        "protein_variant": None,
+        "assays": [
+            {"score": 1.5, "urn": "urn:1"},
+            {"score": None, "urn": "urn:2"},
+        ],
+    }
 
 
 def test_mavedb_protein_variant_only_is_none():
     """pro present but no score/urn -> no assays -> whole annotation is None
-    (require_any_output), matching the hand-written parser."""
-    csq = row_list(MaveDB_pro="p.Lys1Arg")
-    assert run("mavedb", csq) == dump(_parse_mavedb(csq, INDEX_MAP)) == None
+    (require_any_output)."""
+    assert run("mavedb", row_list(MaveDB_pro="p.Lys1Arg")) is None
 
 
 def test_mavedb_all_na_assay_dropped():
     """A position where both score and urn are NA is dropped entirely."""
     csq = row_list(MaveDB_score="1.5&NA", MaveDB_urn="urn:1&NA")
-    assert run("mavedb", csq) == dump(_parse_mavedb(csq, INDEX_MAP))
+    assert run("mavedb", csq) == {
+        "protein_variant": None,
+        "assays": [{"score": 1.5, "urn": "urn:1"}],
+    }
 
 
 # --- ClinVar: the `when` conditional -----------------------------------------
 
 CONFLICTING = "Conflicting_classifications_of_pathogenicity"
-
-
-def test_clinvar_conflicting_reads_breakdown():
-    csq = row_list(
-        ClinVar_CLNSIG=CONFLICTING,
-        ClinVar_CLNSIGCONF="Likely_pathogenic_(6)&Benign_(2)",
-    )
-    assert run("clinvar", csq) == dump(_parse_clinvar(csq, INDEX_MAP))
 
 
 def test_clinvar_conflicting_breakdown_shape():
@@ -233,9 +203,10 @@ def test_clinvar_non_conflicting_ignores_breakdown():
         ClinVar_CLNSIG="Pathogenic",
         ClinVar_CLNSIGCONF="Likely_pathogenic_(6)",
     )
-    result = run("clinvar", csq)
-    assert result == dump(_parse_clinvar(csq, INDEX_MAP))
-    assert result["conflicting_breakdown"] == []
+    assert run("clinvar", csq) == {
+        "significance": ["Pathogenic"],
+        "conflicting_breakdown": [],
+    }
 
 
 def test_clinvar_when_matches_list_membership_not_substring():
@@ -245,9 +216,10 @@ def test_clinvar_when_matches_list_membership_not_substring():
         ClinVar_CLNSIG="Not_" + CONFLICTING,
         ClinVar_CLNSIGCONF="Benign_(2)",
     )
-    result = run("clinvar", csq)
-    assert result == dump(_parse_clinvar(csq, INDEX_MAP))
-    assert result["conflicting_breakdown"] == []
+    assert run("clinvar", csq) == {
+        "significance": ["Not_" + CONFLICTING],
+        "conflicting_breakdown": [],
+    }
 
 
 def test_clinvar_unparseable_breakdown_token_skipped():
@@ -256,46 +228,32 @@ def test_clinvar_unparseable_breakdown_token_skipped():
         ClinVar_CLNSIGCONF="Benign_(2)&garbage_no_count",
     )
     result = run("clinvar", csq)
-    assert result == dump(_parse_clinvar(csq, INDEX_MAP))
     assert [b["significance"] for b in result["conflicting_breakdown"]] == ["Benign"]
 
 
-def test_clinvar_empty_matches():
-    assert run("clinvar", EMPTY) == dump(_parse_clinvar(EMPTY, INDEX_MAP)) == None
+def test_clinvar_empty_is_none():
+    assert run("clinvar", EMPTY) is None
 
 
 # --- gnomAD / All of Us: pattern_map -----------------------------------------
 
 
-def test_gnomad_exomes_pattern_map_matches():
-    columns = ["gnomAD_exomes_AF", "gnomAD_exomes_AF_afr", "gnomAD_exomes_AF_nfe_XX"]
-    index_map = index_map_for(*columns)
-    values = ["0.01", "0.02", "0.03"]
-
-    result = run("gnomad_exomes", values, index_map)
-    oracle = _parse_population_frequencies(
-        values, index_map, "gnomAD_exomes_AF", "gnomAD_exomes_AF_{}"
+def test_gnomad_exomes_pattern_map():
+    index_map = index_map_for(
+        "gnomAD_exomes_AF", "gnomAD_exomes_AF_afr", "gnomAD_exomes_AF_nfe_XX"
     )
-    assert result == dump_frequencies(oracle)
+    result = run("gnomad_exomes", ["0.01", "0.02", "0.03"], index_map)
+    assert result["overall"] == 0.01
     # ancestry columns discovered from the header, not named in the spec
     assert result["populations"] == {"afr": 0.02, "nfe_XX": 0.03}
-    assert result["overall"] == 0.01
 
 
 def test_gnomad_exomes_zero_overall_is_kept():
     """A 0.0 frequency is a real value. require_any_output must not treat it as
     absent (plain truthiness would drop the whole annotation)."""
-    columns = ["gnomAD_exomes_AF"]
-    index_map = index_map_for(*columns)
-    values = ["0.0"]
-
-    result = run("gnomad_exomes", values, index_map)
-    oracle = _parse_population_frequencies(
-        values, index_map, "gnomAD_exomes_AF", "gnomAD_exomes_AF_{}"
-    )
-    assert result == dump_frequencies(oracle)
-    assert result is not None
-    assert result["overall"] == 0.0
+    index_map = index_map_for("gnomAD_exomes_AF")
+    result = run("gnomad_exomes", ["0.0"], index_map)
+    assert result == {"overall": 0.0, "populations": {}}
 
 
 def test_gnomad_exomes_absent_matches():
@@ -305,39 +263,27 @@ def test_gnomad_exomes_absent_matches():
 
 def test_gnomad_exomes_legacy_prefix_ignored():
     """The old gnomADe_ prefix must not match the pattern."""
-    columns = ["gnomADe_AF", "gnomADe_afr_AF"]
-    index_map = index_map_for(*columns)
+    index_map = index_map_for("gnomADe_AF", "gnomADe_afr_AF")
     assert run("gnomad_exomes", ["0.1", "0.2"], index_map) is None
 
 
-def test_gnomad_genomes_pattern_map_matches():
-    columns = ["gnomAD_genomes_AF", "gnomAD_genomes_AF_ami", "gnomAD_genomes_AF_grpmax"]
-    index_map = index_map_for(*columns)
-    values = ["0.10", "0.20", "0.30"]
-
-    result = run("gnomad_genomes", values, index_map)
-    oracle = _parse_population_frequencies(
-        values, index_map, "gnomAD_genomes_AF", "gnomAD_genomes_AF_{}"
+def test_gnomad_genomes_pattern_map():
+    index_map = index_map_for(
+        "gnomAD_genomes_AF", "gnomAD_genomes_AF_ami", "gnomAD_genomes_AF_grpmax"
     )
-    assert result == dump_frequencies(oracle)
+    result = run("gnomad_genomes", ["0.10", "0.20", "0.30"], index_map)
+    assert result["overall"] == 0.1
     assert result["populations"] == {"ami": 0.20, "grpmax": 0.30}
 
 
-def test_all_of_us_pattern_map_with_suffix_matches():
-    """AoU's pattern has a suffix (AoU_gvs_{pop}_af), unlike gnomAD's.
-
-    The oracle is _parse_frequencies (the composer), not
-    _parse_population_frequencies, because max_subpopulation is attached during
-    composition — reproducing that attach is exactly what the spec's
-    max_subpopulation target has to do.
-    """
-    columns = ["AoU_gvs_all_af", "AoU_gvs_afr_af", "AoU_gvs_max_af", "AoU_gvs_max_subpop"]
-    index_map = index_map_for(*columns)
-    values = ["0.10", "0.20", "0.30", "eur"]
-
-    result = run("all_of_us", values, index_map)
-    oracle = _parse_frequencies(values, index_map).all_of_us
-    assert result == oracle.model_dump()
+def test_all_of_us_pattern_map_with_suffix():
+    """AoU's pattern has a suffix (AoU_gvs_{pop}_af), unlike gnomAD's, plus a
+    label column (AoU_gvs_max_subpop) naming which subpopulation the max
+    frequency came from."""
+    index_map = index_map_for(
+        "AoU_gvs_all_af", "AoU_gvs_afr_af", "AoU_gvs_max_af", "AoU_gvs_max_subpop"
+    )
+    result = run("all_of_us", ["0.10", "0.20", "0.30", "eur"], index_map)
     assert result["overall"] == 0.10
     assert result["populations"] == {"afr": 0.20, "max": 0.30}
     assert result["max_subpopulation"] == "eur"
@@ -349,30 +295,16 @@ def test_all_of_us_label_without_frequencies_is_none():
     """A max_subpop label with no frequencies is not an annotation — which is
     why max_subpopulation is deliberately absent from require_any_output."""
     index_map = index_map_for("AoU_gvs_all_af", "AoU_gvs_max_subpop")
-    values = ["", "eur"]
-
-    assert run("all_of_us", values, index_map) is None
-    assert _parse_frequencies(values, index_map) is None
+    assert run("all_of_us", ["", "eur"], index_map) is None
 
 
 # --- ProtVar: chunk + positional ---------------------------------------------
-#
-# The happy path matches the hand-written parser exactly. The edge cases below
-# do NOT, deliberately: _parse_protvar_pocket collects only the parts that parse
-# as a float and then assigns them in order, so one unparseable item silently
-# shifts every later value into the wrong field. `positional` assigns strictly by
-# index instead. Those tests document the divergence rather than enshrine it.
 
 PROTVAR_FULL = dict(
     ProtVar_stability="0.42",
     ProtVar_pocket="POCKET1&-5.2&0.3&0.8&0.6&12.5&RES",
     ProtVar_int="PARTNER1&0.9&PARTNER2&0.8",
 )
-
-
-def test_protvar_well_formed_matches_hand_written_parser():
-    csq = row_list(**PROTVAR_FULL)
-    assert run("protvar", csq) == dump(_parse_protvar(csq, INDEX_MAP))
 
 
 def test_protvar_shape_is_as_expected():
@@ -394,46 +326,37 @@ def test_protvar_shape_is_as_expected():
     assert result["interaction_interfaces"][0]["raw"] == "PARTNER1&0.9"
 
 
-def test_protvar_odd_interaction_token_count_matches():
+def test_protvar_odd_interaction_token_count():
     """A trailing partner with no score: still one interface, score null."""
-    csq = row_list(ProtVar_int="PARTNER1&0.9&PARTNER3")
-    assert run("protvar", csq) == dump(_parse_protvar(csq, INDEX_MAP))
+    result = run("protvar", row_list(ProtVar_int="PARTNER1&0.9&PARTNER3"))
+    assert result["interaction_interfaces"] == [
+        {"partner": "PARTNER1", "score": 0.9, "raw": "PARTNER1&0.9"},
+        {"partner": "PARTNER3", "score": None, "raw": "PARTNER3"},
+    ]
 
 
-def test_protvar_empty_matches():
-    assert run("protvar", EMPTY) == dump(_parse_protvar(EMPTY, INDEX_MAP)) == None
+def test_protvar_empty_is_none():
+    assert run("protvar", EMPTY) is None
 
 
 def test_protvar_pocket_missing_middle_value_does_not_shift():
-    """An unparseable score empties only its own field, in both paths.
-
-    This used to be a deliberate divergence: `positional` assigned by index
-    while the parser compacted, mislabelling score as energy_per_volume and so
-    on. The parser has since been fixed, so the two now agree.
-    """
+    """An unparseable score empties only its own field: `positional` assigns
+    strictly by index, so a bad item cannot pull the later values forward and
+    have them silently reported under the wrong names."""
     raw = "POCKET1&-5.2&NA&0.8&0.6&12.5&RES"
-    spec_pocket = run("protvar", row_list(ProtVar_pocket=raw))["pockets"][0]
+    pocket = run("protvar", row_list(ProtVar_pocket=raw))["pockets"][0]
 
-    assert spec_pocket["energy"] == -5.2
-    assert spec_pocket["energy_per_volume"] is None
-    assert spec_pocket["score"] == 0.8
-    assert spec_pocket["buriedness"] == 0.6
-    assert spec_pocket["radius_of_gyration"] == 12.5
-
-    assert spec_pocket == _parse_protvar_pocket(raw).model_dump()
+    assert pocket["energy"] == -5.2
+    assert pocket["energy_per_volume"] is None
+    assert pocket["score"] == 0.8
+    assert pocket["buriedness"] == 0.6
+    assert pocket["radius_of_gyration"] == 12.5
 
 
 def test_protvar_interaction_na_partner_is_nulled():
-    """DIVERGENCE (spec is more consistent).
-
-    The spec treats 'NA' as absent everywhere. The hand-written parser nulls
-    'NA' for MaveDB urns but passes it through verbatim as a ProtVar partner.
-    """
+    """'NA' means absent everywhere in the spec, including as a partner id."""
     interfaces = run("protvar", row_list(ProtVar_int="NA&0.9"))["interaction_interfaces"]
     assert interfaces[0]["partner"] is None
-
-    parser = _parse_protvar(row_list(ProtVar_int="NA&0.9"), INDEX_MAP)
-    assert parser.interaction_interfaces[0].partner == "NA"
 
 
 # --- OpenTargets: align:min + dedup + sort -----------------------------------
@@ -454,18 +377,12 @@ def run_ot(**kwargs):
     return run("opentargets", ot_row(**kwargs), OT_INDEX)
 
 
-def parse_ot(**kwargs):
-    return dump(_parse_open_targets(ot_row(**kwargs), OT_INDEX))
-
-
-def test_opentargets_sorts_strongest_first_and_matches_parser():
-    args = dict(
+def test_opentargets_sorts_strongest_first():
+    result = run_ot(
         diseases="EFO_1&EFO_2&EFO_3",
         genes="ENSG1&ENSG2&ENSG3",
         l2g="0.1&0.9&NA",
     )
-    result = run_ot(**args)
-    assert result == parse_ot(**args)
     # descending by score; the unscored association goes last
     assert [(a["disease"], a["l2g_score"]) for a in result["gwas_associations"]] == [
         ("EFO_2", 0.9),
@@ -476,42 +393,36 @@ def test_opentargets_sorts_strongest_first_and_matches_parser():
 
 def test_opentargets_dedups_repeated_rows():
     """The plugin emits duplicate rows -- dedup fires on 93% of real records."""
-    args = dict(diseases="EFO_1&EFO_1", genes="ENSG1&ENSG1", l2g="0.5&0.5")
-    result = run_ot(**args)
-    assert result == parse_ot(**args)
-    assert len(result["gwas_associations"]) == 1
+    result = run_ot(diseases="EFO_1&EFO_1", genes="ENSG1&ENSG1", l2g="0.5&0.5")
+    assert result["gwas_associations"] == [
+        {"disease": "EFO_1", "gene_id": "ENSG1", "l2g_score": 0.5}
+    ]
 
 
 def test_opentargets_drops_row_without_disease():
-    args = dict(diseases="NA&EFO_2", genes="ENSG1&ENSG2", l2g="0.1&0.9")
-    result = run_ot(**args)
-    assert result == parse_ot(**args)
+    result = run_ot(diseases="NA&EFO_2", genes="ENSG1&ENSG2", l2g="0.1&0.9")
     assert [a["disease"] for a in result["gwas_associations"]] == ["EFO_2"]
 
 
 def test_opentargets_misaligned_columns_truncate():
     """align:min. Real data contains ragged columns (3 diseases, 2 genes), so
-    the plugin's positional alignment is not guaranteed; zip drops the excess.
-    Faithful to the parser -- with ragged input the true pairing is unknowable.
+    the plugin's positional alignment is not guaranteed; zip drops the excess --
+    with ragged input the true pairing is unknowable.
     """
-    args = dict(diseases="EFO_1&EFO_2&EFO_3", genes="ENSG1&ENSG2", l2g="0.1&0.9")
-    result = run_ot(**args)
-    assert result == parse_ot(**args)
+    result = run_ot(diseases="EFO_1&EFO_2&EFO_3", genes="ENSG1&ENSG2", l2g="0.1&0.9")
     assert len(result["gwas_associations"]) == 2  # EFO_3 dropped
 
 
 def test_opentargets_qtl_dedups_and_nulls_na_biosample():
-    args = dict(qtl_genes="ENSG1&ENSG1&ENSG2", qtl_biosamples="liver&liver&NA")
-    result = run_ot(**args)
-    assert result == parse_ot(**args)
+    result = run_ot(qtl_genes="ENSG1&ENSG1&ENSG2", qtl_biosamples="liver&liver&NA")
     assert result["qtl_associations"] == [
         {"gene_id": "ENSG1", "biosample": "liver"},
         {"gene_id": "ENSG2", "biosample": None},
     ]
 
 
-def test_opentargets_empty_matches():
-    assert run_ot() == parse_ot() == None
+def test_opentargets_empty_is_none():
+    assert run_ot() is None
 
 
 def test_opentargets_absent_columns_is_none():
@@ -523,38 +434,26 @@ def test_opentargets_absent_columns_is_none():
 GO_INDEX = index_map_for("GO")
 
 
-def test_go_terms_match_hand_written_parser():
+def test_go_terms_split_id_from_name():
     values = ["GO:0001558:regulation_of_cell_growth&GO:0005509:calcium_ion_binding"]
-    result = run("go", values, GO_INDEX)
-    assert result["go_terms"] == [t.model_dump() for t in _parse_go(values, GO_INDEX)]
-    assert result["go_terms"] == [
+    assert run("go", values, GO_INDEX)["go_terms"] == [
         {"id": "GO:0001558", "name": "regulation of cell growth"},
         {"id": "GO:0005509", "name": "calcium ion binding"},
     ]
 
 
 def test_go_entry_without_a_term_name_is_null_not_empty_string():
-    """DIVERGENCE (deliberate).
-
-    Real data carries ids with no name at all (38 of 368 distinct GO ids in
-    dev-data/output.vcf.gz, e.g. "GO:0050911:"). The parser reports name "";
-    the spec reports null, consistently with how it treats every other absent
-    value. This is the only difference between the two paths across 182,786
-    real GO annotations.
-    """
-    values = ["GO:0050911:"]
-    spec_terms = run("go", values, GO_INDEX)["go_terms"]
-    assert spec_terms == [{"id": "GO:0050911", "name": None}]
-    assert [t.model_dump() for t in _parse_go(values, GO_INDEX)] == [
-        {"id": "GO:0050911", "name": ""}
+    """Real data carries ids with no name at all (38 of 368 distinct GO ids in
+    dev-data/output.vcf.gz, e.g. "GO:0050911:"). An absent name is null, as
+    everywhere else in the spec."""
+    assert run("go", ["GO:0050911:"], GO_INDEX)["go_terms"] == [
+        {"id": "GO:0050911", "name": None}
     ]
 
 
 def test_go_entry_without_a_name_part_is_skipped():
-    """Fewer than three ':'-parts is not a term, in either path."""
-    values = ["GO:0001558"]
-    assert run("go", values, GO_INDEX) is None
-    assert _parse_go(values, GO_INDEX) == []
+    """Fewer than three ':'-parts is not a term."""
+    assert run("go", ["GO:0001558"], GO_INDEX) is None
 
 
 def test_go_absent_is_none():
@@ -571,13 +470,19 @@ SPLICEAI_COLS = [
 SPLICEAI_INDEX = index_map_for(*SPLICEAI_COLS)
 
 
-def test_spliceai_matches_hand_written_parser():
+def test_spliceai_all_scores():
     values = ["BRCA1", "0.01", "0.02", "0.03", "0.04", "-5", "10", "-20", "30"]
-    result = run("spliceai", values, SPLICEAI_INDEX)
-    assert result == dump(_parse_spliceai(values, SPLICEAI_INDEX))
-    assert result["symbol"] == "BRCA1"
-    assert result["ds_acceptor_gain"] == 0.01
-    assert result["dp_donor_loss"] == 30
+    assert run("spliceai", values, SPLICEAI_INDEX) == {
+        "symbol": "BRCA1",
+        "ds_acceptor_gain": 0.01,
+        "ds_acceptor_loss": 0.02,
+        "ds_donor_gain": 0.03,
+        "ds_donor_loss": 0.04,
+        "dp_acceptor_gain": -5,
+        "dp_acceptor_loss": 10,
+        "dp_donor_gain": -20,
+        "dp_donor_loss": 30,
+    }
 
 
 def test_spliceai_zero_scores_are_kept():
@@ -585,15 +490,14 @@ def test_spliceai_zero_scores_are_kept():
     absence. require_any_output must not discard it."""
     values = ["BRCA1", "0.00", "", "", "", "", "", "", ""]
     result = run("spliceai", values, SPLICEAI_INDEX)
-    assert result == dump(_parse_spliceai(values, SPLICEAI_INDEX))
     assert result is not None
     assert result["ds_acceptor_gain"] == 0.0
+    assert result["ds_acceptor_loss"] is None
 
 
 def test_spliceai_symbol_alone_is_not_an_annotation():
     values = ["BRCA1", "", "", "", "", "", "", "", ""]
     assert run("spliceai", values, SPLICEAI_INDEX) is None
-    assert _parse_spliceai(values, SPLICEAI_INDEX) is None
 
 
 # --- plain scalar/list plugins -----------------------------------------------
@@ -603,21 +507,24 @@ def test_spliceai_symbol_alone_is_not_an_annotation():
 # intact 25 / popeve 96,953 CSQ entries).
 
 
-def test_hgvs_matches_hand_written_parser():
+def test_hgvs_three_notations():
     index_map = index_map_for("HGVSg", "HGVSc", "HGVSp")
     values = ["NC_1:g.100A>G", "ENST1:c.50A>G", "ENSP1:p.Lys1Arg"]
-    result = run("hgvs", values, index_map)
-    assert result == dump(_parse_hgvs(values, index_map))
-    assert result["transcript"] == "ENST1:c.50A>G"
+    assert run("hgvs", values, index_map) == {
+        "genomic": "NC_1:g.100A>G",
+        "transcript": "ENST1:c.50A>G",
+        "protein": "ENSP1:p.Lys1Arg",
+    }
 
 
-def test_hgvs_partial_matches():
+def test_hgvs_partial():
     """This run emits HGVSc/HGVSp but no HGVSg -- the absent one is null."""
     index_map = index_map_for("HGVSc", "HGVSp")
-    values = ["ENST1:c.50A>G", ""]
-    result = run("hgvs", values, index_map)
-    assert result == dump(_parse_hgvs(values, index_map))
-    assert result["genomic"] is None
+    assert run("hgvs", ["ENST1:c.50A>G", ""], index_map) == {
+        "genomic": None,
+        "transcript": "ENST1:c.50A>G",
+        "protein": None,
+    }
 
 
 def test_hgvs_empty_is_none():
@@ -625,13 +532,14 @@ def test_hgvs_empty_is_none():
     assert run("hgvs", ["", "", ""], index_map) is None
 
 
-def test_phenotype_data_matches_hand_written_parser():
+def test_phenotype_data_splits_and_drops_na():
     index_map = index_map_for("PHENOTYPES", "CLIN_SIG", "PUBMED")
     values = ["cancer&diabetes", "pathogenic&NA", "123&456"]
-    result = run("phenotype_data", values, index_map)
-    assert result == dump(_parse_phenotype_data(values, index_map))
-    assert result["phenotypes"] == ["cancer", "diabetes"]
-    assert result["clinical_significance"] == ["pathogenic"]  # NA dropped
+    assert run("phenotype_data", values, index_map) == {
+        "phenotypes": ["cancer", "diabetes"],
+        "clinical_significance": ["pathogenic"],  # NA dropped
+        "pubmed_ids": ["123", "456"],
+    }
 
 
 def test_phenotype_data_empty_is_none():
@@ -639,46 +547,56 @@ def test_phenotype_data_empty_is_none():
     assert run("phenotype_data", ["", "", ""], index_map) is None
 
 
-def test_dosage_sensitivity_matches_hand_written_parser():
+def test_dosage_sensitivity_probabilities():
     index_map = index_map_for("pHaplo", "pTriplo")
-    values = ["0.98", "0.12"]
-    result = run("dosage_sensitivity", values, index_map)
-    assert result == dump(_parse_dosage_sensitivity(values, index_map))
-    assert result == {"phaplo": 0.98, "ptriplo": 0.12}
+    assert run("dosage_sensitivity", ["0.98", "0.12"], index_map) == {
+        "phaplo": 0.98, "ptriplo": 0.12
+    }
 
 
 def test_dosage_sensitivity_zero_is_kept():
     """0.0 is a real probability, not absence."""
     index_map = index_map_for("pHaplo", "pTriplo")
-    values = ["0.0", ""]
-    result = run("dosage_sensitivity", values, index_map)
-    assert result == dump(_parse_dosage_sensitivity(values, index_map))
-    assert result["phaplo"] == 0.0
+    assert run("dosage_sensitivity", ["0.0", ""], index_map) == {
+        "phaplo": 0.0, "ptriplo": None
+    }
 
 
-def test_intact_matches_hand_written_parser():
+def test_intact_unselected_sub_options_are_null():
     """This run emits only three of IntAct's columns; the unselected
     sub-options are absent and come back null."""
     index_map = index_map_for(
         "IntAct_feature_type", "IntAct_interaction_ac", "IntAct_feature_ac"
     )
-    values = ["mutation", "EBI-123", "EBI-ac"]
-    result = run("intact", values, index_map)
-    assert result == dump(_parse_intact(values, index_map))
-    assert result["feature_type"] == "mutation"
-    assert result["pmid"] is None
+    assert run("intact", ["mutation", "EBI-123", "EBI-ac"], index_map) == {
+        "feature_type": "mutation",
+        "interaction_ac": "EBI-123",
+        "feature_ac": "EBI-ac",
+        "feature_short_label": None,
+        "feature_annotation": None,
+        "ap_ac": None,
+        "interaction_participants": None,
+        "pmid": None,
+    }
 
 
-def test_popeve_matches_hand_written_parser():
+def test_popeve_scores():
     index_map = index_map_for(
         "popEVE_SCORE", "popEVE_EVE", "popEVE_ESM1v", "popEVE_gene",
         "popEVE_mutant", "popEVE_gap_frequency",
     )
     values = ["-0.5", "-1.2", "-3.4", "BRCA1", "K1R", "0.02"]
-    result = run("popeve", values, index_map)
-    assert result == dump(_parse_popeve(values, index_map))
-    assert result["score"] == -0.5
-    assert result["gene"] == "BRCA1"
+    assert run("popeve", values, index_map) == {
+        "score": -0.5,
+        "eve": -1.2,
+        "esm1v": -3.4,
+        "pop_adjusted_eve": None,
+        "pop_adjusted_esm1v": None,
+        "gene": "BRCA1",
+        "protein": None,
+        "mutant": "K1R",
+        "gap_frequency": 0.02,
+    }
 
 
 def test_popeve_empty_is_none():
@@ -688,12 +606,12 @@ def test_popeve_empty_is_none():
 
 # --- pathogenicity, dissolved ------------------------------------------------
 #
-# _parse_pathogenicity groups several unrelated predictors into one object and
-# nests spliceai/popeve (themselves standalone plugins) inside it. The grouping
-# is not what the flat annotation payload wants, so the spec models each member
-# as its own plugin. These tests prove the flat set reproduces the nested object
-# field for field -- verified on real data too (revel 11,290 / alphamissense
-# 62,384 / cadd 419,210 / eve 14,968 CSQ entries, zero mismatches).
+# The deleted `_parse_pathogenicity` grouped several unrelated predictors into
+# one object and nested spliceai/popeve (themselves standalone plugins) inside
+# it. The grouping is not what the flat annotation payload wants, so the spec
+# models each member as its own plugin. Verified on real data at cutover time
+# (revel 11,290 / alphamissense 62,384 / cadd 419,210 / eve 14,968 CSQ entries,
+# zero mismatches against the nested object).
 
 PATH_COLS = ["REVEL", "am_class", "am_pathogenicity", "CADD_PHRED", "CADD_RAW",
              "EVE_CLASS", "EVE_SCORE"]
@@ -701,24 +619,22 @@ PATH_INDEX = index_map_for(*PATH_COLS)
 PATH_VALUES = ["0.7", "likely_pathogenic", "0.9", "25.1", "3.2", "Pathogenic", "0.85"]
 
 
-def test_flat_plugins_reproduce_the_nested_pathogenicity_object():
-    nested = _parse_pathogenicity(PATH_VALUES, PATH_INDEX)
-
-    assert run("revel", PATH_VALUES, PATH_INDEX)["score"] == nested.revel
-    alphamissense = run("alphamissense", PATH_VALUES, PATH_INDEX)
-    assert alphamissense["classification"] == nested.alphamissense_class
-    assert alphamissense["score"] == nested.alphamissense_score
-    cadd = run("cadd", PATH_VALUES, PATH_INDEX)
-    assert (cadd["phred"], cadd["raw"]) == (nested.cadd_phred, nested.cadd_raw)
-    eve = run("eve", PATH_VALUES, PATH_INDEX)
-    assert (eve["classification"], eve["score"]) == (nested.eve_class, nested.eve_score)
+def test_flat_plugins_carry_the_former_pathogenicity_members():
+    assert run("revel", PATH_VALUES, PATH_INDEX) == {"score": 0.7}
+    assert run("alphamissense", PATH_VALUES, PATH_INDEX) == {
+        "classification": "likely_pathogenic", "score": 0.9
+    }
+    assert run("cadd", PATH_VALUES, PATH_INDEX) == {"phred": 25.1, "raw": 3.2}
+    assert run("eve", PATH_VALUES, PATH_INDEX) == {
+        "classification": "Pathogenic", "score": 0.85
+    }
 
 
 def test_flat_pathogenicity_members_are_independent():
     """Only REVEL present: revel is an annotation, the others are absent.
 
-    The nested object cannot express this -- it returns one object carrying a
-    revel score and six nulls.
+    The old nested object could not express this -- it returned one object
+    carrying a revel score and six nulls.
     """
     values = ["0.7", "", "", "", "", "", ""]
     assert run("revel", values, PATH_INDEX) == {"score": 0.7}
@@ -731,12 +647,37 @@ def test_flat_pathogenicity_members_absent_are_none():
     values = ["", "", "", "", "", "", ""]
     for plugin in ("revel", "alphamissense", "cadd", "eve"):
         assert run(plugin, values, PATH_INDEX) is None
-    assert _parse_pathogenicity(values, PATH_INDEX) is None
 
 
 def test_cadd_zero_is_kept():
     values = ["", "", "", "0.0", "0.0", "", ""]
     assert run("cadd", values, PATH_INDEX) == {"phred": 0.0, "raw": 0.0}
+
+
+# --- the plugins added by the go-flat cutover --------------------------------
+
+
+def test_loeuf_is_a_transcript_scoped_score():
+    spec = SPEC.plugin("loeuf")
+    assert spec.scope == "transcript"
+    index_map = index_map_for("LOEUF")
+    assert run("loeuf", ["0.15"], index_map) == {"score": 0.15}
+    assert run("loeuf", [""], index_map) is None
+
+
+def test_spdi_and_hgvsg_are_allele_scoped():
+    """Both are allele-scoped because intergenic variants have no transcript
+    rows and must still carry their variant representations."""
+    assert SPEC.plugin("spdi").scope == "allele"
+    assert SPEC.plugin("hgvsg").scope == "allele"
+
+    spdi_map = index_map_for("SPDI")
+    assert run("spdi", ["1:79106:T:C"], spdi_map) == {"spdi": "1:79106:T:C"}
+    assert run("spdi", [""], spdi_map) is None
+
+    hgvsg_map = index_map_for("HGVSg")
+    assert run("hgvsg", ["1:g.79107T>C"], hgvsg_map) == {"genomic": "1:g.79107T>C"}
+    assert run("hgvsg", [""], hgvsg_map) is None
 
 
 # --- UTRAnnotator ------------------------------------------------------------
@@ -752,24 +693,15 @@ UTR_ANNOTATION = (
 UTR_VALUES = ["5_prime_UTR_uORF_frameshift_variant", UTR_ANNOTATION, "5", "0", "0"]
 
 
-def test_utr_annotation_matches_hand_written_parser_except_the_annotation_field():
-    """DIVERGENCE (deliberate, and the point of this transform).
-
-    Every other field matches the parser exactly. `annotation` does not: the
-    parser copies the raw ':'-delimited string verbatim, while the spec parses
-    it into a dict via `key_value`. Compare everything else field for field,
-    and the two annotation representations separately below.
-    """
+def test_utr_annotation_parses_the_detail_string_into_a_dict():
+    """The deleted parser copied `annotation` verbatim as a ':'-delimited
+    string; the spec parses it into a dict via `key_value`, which is the point
+    of the transform (see the ordering test below)."""
     result = run("utr_annotation", UTR_VALUES, UTR_INDEX)
-    parser = dump(_parse_utr_annotation(UTR_VALUES, UTR_INDEX))
-
-    other_fields = {"consequence", "existing_uorfs", "existing_inframe_oorfs",
-                     "existing_outofframe_oorfs"}
-    assert {k: result[k] for k in other_fields} == {k: parser[k] for k in other_fields}
     assert result["consequence"] == "5_prime_UTR_uORF_frameshift_variant"
     assert result["existing_uorfs"] == "5"
-
-    assert parser["annotation"] == UTR_ANNOTATION  # raw string, verbatim
+    assert result["existing_inframe_oorfs"] == "0"
+    assert result["existing_outofframe_oorfs"] == "0"
     assert result["annotation"] == {
         "alt_type": "uORF",
         "ref_StartDistanceToCDS": "324",

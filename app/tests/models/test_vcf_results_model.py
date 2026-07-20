@@ -2,6 +2,7 @@ import unittest
 from pydantic import ValidationError
 
 from vep.models.vcf_results_model import (
+    Annotation,
     PaginationMetadata,
     PredictedIntergenicConsequence,
     PredictedTranscriptConsequence,
@@ -52,22 +53,28 @@ class TestVCFResultModel(unittest.TestCase):
         alternative_allele = AlternativeVariantAllele(
             allele_sequence="A",
             allele_type="insertion",
-            representative_population_allele_frequency=None,
+            colocated_variants=["rs123"],
+            annotations=[
+                Annotation(plugin="spdi", scope="allele", data={"spdi": "1:1:A:T"})
+            ],
             predicted_molecular_consequences=[
                 PredictedIntergenicConsequence()
             ],
         )
-        self.assertIsNone(alternative_allele.representative_population_allele_frequency)
+        self.assertEqual(alternative_allele.colocated_variants, ["rs123"])
+        self.assertEqual(alternative_allele.annotations[0].plugin, "spdi")
 
-        # Valid instance without explicitly setting representative_population_allele_frequency (default=None)
-        alternative_allele_no_freq = AlternativeVariantAllele(
+        # Valid instance without the optional annotation fields (both default
+        # to empty lists)
+        alternative_allele_bare = AlternativeVariantAllele(
             allele_sequence="A",
             allele_type="insertion",
             predicted_molecular_consequences=[
                 PredictedIntergenicConsequence()
             ],
         )
-        self.assertIsNone(alternative_allele_no_freq.representative_population_allele_frequency)
+        self.assertEqual(alternative_allele_bare.colocated_variants, [])
+        self.assertEqual(alternative_allele_bare.annotations, [])
 
     def test_variant(self):
         variant = Variant(

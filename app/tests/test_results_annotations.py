@@ -3,8 +3,9 @@ consequences (the additive go-flat wire format).
 
 Checks the *wiring*: that _get_alt_allele_details drives the pinned parsing
 spec's plugins through apply_plugin_spec and attaches the results at the right
-scope, additively (the typed fields stay). apply_plugin_spec's own correctness
-(== the hand-written _parse_* bank) is proven separately by test_spec_real_vcfs.
+scope. Since the go-flat cutover these are the only annotation data on the
+response; apply_plugin_spec's own correctness is covered by
+test_spec_interpreter.
 """
 
 from app.vep.utils.spec_interpreter import apply_plugin_spec
@@ -57,11 +58,13 @@ def test_transcript_scope_annotations_attached():
     assert by_plugin["revel"].data == _expected("revel")
 
 
-def test_emit_is_additive_typed_fields_remain():
+def test_annotations_are_the_only_annotation_data():
     allele = _get_alt_allele_details("A", "T", [ROW], INDEX_MAP, SPEC)
-    # The typed fields are still populated beside the generic annotations.
-    assert allele.clinvar is not None
-    assert allele.frequencies is not None
+    # What used to be the typed `clinvar` / `frequencies` fields now arrives
+    # only as generic annotations, at allele scope.
+    by_plugin = {a.plugin: a.data for a in allele.annotations}
+    assert by_plugin["clinvar"]["significance"] == ["Pathogenic"]
+    assert by_plugin["gnomad_exomes"]["overall"] == 0.01
     assert allele.predicted_molecular_consequences[0].annotations  # non-empty
 
 
@@ -69,5 +72,6 @@ def test_no_spec_means_no_generic_annotations():
     allele = _get_alt_allele_details("A", "T", [ROW], INDEX_MAP, None)
     assert allele.annotations == []
     assert allele.predicted_molecular_consequences[0].annotations == []
-    # typed fields unaffected by the absence of a spec
-    assert allele.clinvar is not None
+    # the envelope is unaffected by the absence of a spec
+    assert allele.allele_sequence == "T"
+    assert allele.predicted_molecular_consequences[0].gene_symbol == "BRCA2"
