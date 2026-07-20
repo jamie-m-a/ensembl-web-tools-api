@@ -26,8 +26,11 @@ from vep.utils.spec_loader import (
     load_display_panels_sidecar,
     load_expected_columns_sidecar,
     load_spec_sidecar,
+    resolve_merged_spec,
 )
 from vep.models.display_panels_model import DisplayPanel
+from vep.models.display_spec_model import DisplayPayload
+from vep.models.merged_spec_model import MergedSpec
 from vep.utils.spec_interpreter import apply_plugin_spec
 from vep.models.parsing_spec_model import ParsingSpec
 
@@ -387,6 +390,26 @@ def _get_filtered_results(
     return response
 
 
+def _load_pinned_merged_spec(vcf_path: FilePath) -> MergedSpec | None:
+    """The whole merged spec document pinned to this job, loaded defensively.
+
+    Never raises: an output with no sidecar (pre-dating the pin) or an
+    unreadable one returns None.
+    """
+    try:
+        merged = load_spec_sidecar(vcf_path)
+    except Exception as exc:
+        logging.warning(
+            "Ignoring unreadable spec sidecar for %s: %s", vcf_path, exc
+        )
+        return None
+    if merged is None:
+        logging.debug(
+            "No spec sidecar for %s; no annotations will be emitted", vcf_path
+        )
+    return merged
+
+
 def _load_pinned_spec(vcf_path: FilePath) -> ParsingSpec | None:
     """The parsing spec pinned to this job at submission, loaded defensively.
 
@@ -401,17 +424,8 @@ def _load_pinned_spec(vcf_path: FilePath) -> ParsingSpec | None:
     The pinned sidecar is now the whole merged document; the parsing half is what
     the results path needs, so that is what this returns.
     """
-    try:
-        merged = load_spec_sidecar(vcf_path)
-    except Exception as exc:
-        logging.warning(
-            "Ignoring unreadable spec sidecar for %s: %s", vcf_path, exc
-        )
-        return None
+    merged = _load_pinned_merged_spec(vcf_path)
     if merged is None:
-        logging.debug(
-            "No spec sidecar for %s; no annotations will be emitted", vcf_path
-        )
         return None
     spec = merged.parsing
     logging.info("Loaded pinned parsing spec %s for %s", spec.spec_version, vcf_path)
@@ -497,12 +511,57 @@ def _load_pinned_display_panels(vcf_path: FilePath) -> list[DisplayPanel] | None
     return panels
 
 
+def _resolve_display_payload(spec: MergedSpec | None) -> DisplayPayload | None:
+    """The display layout to render this job's annotations with.
+
+    Normally the job's *pinned* spec owns it, like everything else about the
+    job. But every job submitted before the display section existed has a pinned
+    spec with no `display` key, and would otherwise render its twelve
+    spec-driven options blank. For those — and only those — fall back to the
+    current genome's display spec, resolved from the pinned spec's own genome.
+
+    This deliberately reintroduces a little staleness, narrowly: only for
+    pre-display-section jobs, and only for labels/formats. *Which* options ran,
+    and how their columns were parsed, still come from the pin.
+    """
+    if spec is None:
+        return None
+    payload = spec.display_payload()
+    if payload is not None:
+        return payload
+    assembly = (spec.genome or {}).get("assembly", "")
+    try:
+        current = resolve_merged_spec(assembly)
+    except Exception as exc:
+        logging.warning(
+            "No current spec to supply a display section for a pinned spec "
+            "without one (assembly %r): %s", assembly, exc
+        )
+        return None
+    logging.debug(
+        "Pinned spec has no display section; using the current %r display spec",
+        assembly,
+    )
+    current_payload = current.display_payload()
+    if current_payload is None:
+        return None
+    # The scopes must still describe the *pinned* parsers, since those are what
+    # produced this job's annotations; only the layout comes from the current
+    # spec.
+    return DisplayPayload(
+        options=current_payload.options, plugin_scopes=spec.plugin_scopes()
+    )
+
+
 def _with_display_panels(
-    response: model.VepResultsResponse, panels: list[DisplayPanel] | None
+    response: model.VepResultsResponse,
+    panels: list[DisplayPanel] | None,
+    display: DisplayPayload | None = None,
 ) -> model.VepResultsResponse:
-    """Attach the pinned panels to a response built by the parsing path (which
-    knows nothing about them). None leaves the field absent."""
+    """Attach the pinned panels and display layout to a response built by the
+    parsing path (which knows about neither). None leaves the field absent."""
     response.metadata.display_panels = panels
+    response.metadata.display = display
     return response
 
 
@@ -520,12 +579,16 @@ def get_results_from_path(
     # `annotations` on every allele and transcript consequence (threaded down to
     # _get_alt_allele_details). A missing or unreadable pin -> None -> no
     # annotations, never failing results.
+    merged = _load_pinned_merged_spec(vcf_path)
     spec = _load_pinned_spec(vcf_path)
     # Runtime missing-expected-field check: warn if the pipeline output is missing
     # a CSQ column the submitted options required. Non-fatal (dev warns only).
     _check_expected_columns(vcf_path)
     # The option panels this job was submitted against (None for older jobs).
     display_panels = _load_pinned_display_panels(vcf_path)
+    # How those options lay out, from the pin (or the current spec for jobs
+    # pinned before the display section existed).
+    display = _resolve_display_payload(merged)
 
     # Filtered requests can't use the page index (filtering shifts record
     # positions), so they take a dedicated scan-and-filter path.
@@ -533,6 +596,7 @@ def get_results_from_path(
         return _with_display_panels(
             _get_filtered_results(page_size, page, vcf_path, filters, spec),
             display_panels,
+            display,
         )
 
     # Fast path: if the pipeline emitted a page-index sidecar, seek to the page
@@ -549,7 +613,7 @@ def get_results_from_path(
             StringIO(header_text + rows_text),
             presliced=True,
             spec=spec,
-        ), display_panels)
+        ), display_panels, display)
 
     # Fallback (no sidecar): scan the file from the top through page*page_size
     # records and shell out to bcftools for the counts. `head` short-circuits so
@@ -576,6 +640,7 @@ def get_results_from_path(
     return _with_display_panels(
         get_results_from_stream(page_size, page, total, vcf_stream, spec=spec),
         display_panels,
+        display,
     )
 
 

@@ -28,6 +28,7 @@ from vep.models.config_spec_model import (
     LiteralFields,
     PluginEmitter,
 )
+from vep.models.display_spec_model import DisplayPayload, DisplaySpec
 from vep.models.parsing_spec_model import ParsingSpec, PluginSpec
 from vep.utils.config_interpreter import build_fields
 
@@ -55,9 +56,33 @@ class MergedSpec(BaseModel):
     genome: dict | None = None
     config: ConfigSpec
     parsing: ParsingSpec
+    # How the parsed annotations are laid out in the results detail. Optional,
+    # and the default matters: every spec pinned to a job before this section
+    # existed has no `display` key and must still load (the results path then
+    # falls back to the current genome's display spec).
+    display: DisplaySpec | None = None
 
     def config_entries(self) -> list[ConfigEntry]:
         return self.config.entries
+
+    def plugin_scopes(self) -> dict[str, str]:
+        """plugin id -> "allele" | "transcript", derived from `parsing`.
+
+        The display spec's rows name a plugin but deliberately do not say which
+        entity it hangs off; that is a property of the parser and is stated
+        exactly once, here. Authoring it a second time in `display` would create
+        precisely the hand-synced seam the merged document exists to remove.
+        """
+        return {plugin.plugin: plugin.scope for plugin in self.parsing.plugins}
+
+    def display_payload(self) -> DisplayPayload | None:
+        """The display spec plus its derived scopes, as served on the results
+        response. None when this document has no display section."""
+        if self.display is None:
+            return None
+        return DisplayPayload(
+            options=self.display.options, plugin_scopes=self.plugin_scopes()
+        )
 
     def parse_plugins(self) -> list[PluginSpec]:
         return self.parsing.plugins
@@ -108,7 +133,11 @@ class MergedSpec(BaseModel):
         - `plugin`/`flag` emitters are presence-checked only, since VEP derives
           their CSQ column names internally and the config line never states them;
         - a parse plugin that no config entry points at is a soft warning (it can
-          never run), not a failure.
+          never run), not a failure;
+        - every display row's `from`/`compose` field reference must resolve to a
+          real parse plugin and one of its declared target fields (error) — the
+          display-side analogue of the above, and the main guard against the
+          laid-out labels drifting from what the parsers actually produce.
         """
         parse_ids = {p.plugin for p in self.parsing.plugins}
         referenced: set[str] = set()
@@ -125,6 +154,8 @@ class MergedSpec(BaseModel):
             if isinstance(entry.config, CustomEmitter) and entry.parsed_as:
                 errors += self._check_custom_columns(entry, entry.config)
 
+        errors += self._check_display_refs()
+
         if errors:
             raise ValueError("config/parsing inconsistency: " + "; ".join(errors))
 
@@ -135,6 +166,38 @@ class MergedSpec(BaseModel):
                 sorted(orphans),
             )
         return self
+
+    def _check_display_refs(self) -> list[str]:
+        """Display↔parsing consistency: resolve every `<plugin>.<field>` a
+        display row reads, plus every block's `requires`, against the parsing
+        plugins and their declared target fields."""
+        if self.display is None:
+            return []
+
+        fields_by_plugin = {
+            plugin.plugin: {target.field for target in plugin.targets}
+            for plugin in self.parsing.plugins
+        }
+        errors: list[str] = []
+        for option in self.display.options:
+            for block in option.blocks:
+                if block.requires and block.requires not in fields_by_plugin:
+                    errors.append(
+                        f"display option {option.option_id!r} requires unknown "
+                        f"parse plugin {block.requires!r}"
+                    )
+            for plugin, field in option.field_refs():
+                if plugin not in fields_by_plugin:
+                    errors.append(
+                        f"display option {option.option_id!r} references unknown "
+                        f"parse plugin {plugin!r}"
+                    )
+                elif field not in fields_by_plugin[plugin]:
+                    errors.append(
+                        f"display option {option.option_id!r} references field "
+                        f"{field!r} that parse plugin {plugin!r} does not produce"
+                    )
+        return errors
 
     def _check_custom_columns(
         self, entry: ConfigEntry, emitter: CustomEmitter

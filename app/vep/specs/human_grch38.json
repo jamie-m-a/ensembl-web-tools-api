@@ -1770,5 +1770,323 @@
         ]
       }
     ]
+  },
+  "display": {
+    "options": [
+      {
+        "option_id": "hgvs",
+        "blocks": [
+          {
+            "kind": "rows",
+            "heading": "HGVS",
+            "rows": [
+              {
+                "key": "c",
+                "label": "HGVSc",
+                "from": "hgvs.transcript",
+                "mono": true
+              },
+              {
+                "key": "p",
+                "label": "HGVSp",
+                "from": "hgvs.protein",
+                "mono": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "hgvsg",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "HGVSg",
+                "from": "hgvsg.genomic",
+                "mono": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "spdi",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "SPDI",
+                "from": "spdi.spdi",
+                "mono": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "alphamissense",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "AlphaMissense",
+                "compose": {
+                  "format": "with_score",
+                  "classification": "alphamissense.classification",
+                  "score": "alphamissense.score"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "revel",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "REVEL",
+                "from": "revel.score",
+                "format": "num"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "cadd",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "CADD (PHRED)",
+                "from": "cadd.phred",
+                "format": "num"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "spliceai",
+        "blocks": [
+          {
+            "kind": "rows",
+            "heading": "SpliceAI",
+            "requires": "spliceai",
+            "rows": [
+              {
+                "key": "symbol",
+                "label": "Gene",
+                "from": "spliceai.symbol"
+              },
+              {
+                "key": "ΔS acceptor gain",
+                "label": "ΔS acceptor gain",
+                "from": "spliceai.ds_acceptor_gain",
+                "format": "num",
+                "placeholder": "—"
+              },
+              {
+                "key": "ΔS acceptor loss",
+                "label": "ΔS acceptor loss",
+                "from": "spliceai.ds_acceptor_loss",
+                "format": "num",
+                "placeholder": "—"
+              },
+              {
+                "key": "ΔS donor gain",
+                "label": "ΔS donor gain",
+                "from": "spliceai.ds_donor_gain",
+                "format": "num",
+                "placeholder": "—"
+              },
+              {
+                "key": "ΔS donor loss",
+                "label": "ΔS donor loss",
+                "from": "spliceai.ds_donor_loss",
+                "format": "num",
+                "placeholder": "—"
+              },
+              {
+                "key": "ΔP acceptor gain",
+                "label": "ΔP acceptor gain",
+                "from": "spliceai.dp_acceptor_gain",
+                "format": "num",
+                "placeholder": "—"
+              },
+              {
+                "key": "ΔP acceptor loss",
+                "label": "ΔP acceptor loss",
+                "from": "spliceai.dp_acceptor_loss",
+                "format": "num",
+                "placeholder": "—"
+              },
+              {
+                "key": "ΔP donor gain",
+                "label": "ΔP donor gain",
+                "from": "spliceai.dp_donor_gain",
+                "format": "num",
+                "placeholder": "—"
+              },
+              {
+                "key": "ΔP donor loss",
+                "label": "ΔP donor loss",
+                "from": "spliceai.dp_donor_loss",
+                "format": "num",
+                "placeholder": "—"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "eve",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "key": "eve",
+                "label": "EVE",
+                "compose": {
+                  "format": "with_score",
+                  "classification": "eve.classification",
+                  "score": "eve.score"
+                }
+              }
+            ]
+          },
+          {
+            "kind": "rows",
+            "heading": "popEVE",
+            "rows": [
+              {
+                "key": "score",
+                "label": "Score",
+                "from": "popeve.score",
+                "format": "num"
+              },
+              {
+                "key": "pop",
+                "label": "Population-adjusted EVE",
+                "from": "popeve.pop_adjusted_eve",
+                "format": "num"
+              },
+              {
+                "key": "gap",
+                "label": "Gap frequency",
+                "from": "popeve.gap_frequency",
+                "format": "num",
+                "help": "Authors recommend filtering if > 0.5"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "loeuf",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "LOEUF",
+                "from": "loeuf.score",
+                "format": "num"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "dosage_sensitivity",
+        "blocks": [
+          {
+            "kind": "rows",
+            "heading": "Dosage sensitivity",
+            "rows": [
+              {
+                "key": "ph",
+                "label": "pHaplo",
+                "from": "dosage_sensitivity.phaplo",
+                "format": "num"
+              },
+              {
+                "key": "pt",
+                "label": "pTriplo",
+                "from": "dosage_sensitivity.ptriplo",
+                "format": "num"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "utrannotator",
+        "blocks": [
+          {
+            "kind": "rows",
+            "heading": "UTRAnnotator",
+            "rows": [
+              {
+                "key": "cons",
+                "label": "Consequence",
+                "from": "utr_annotation.consequence"
+              },
+              {
+                "key": "uorf",
+                "label": "Existing uORFs",
+                "from": "utr_annotation.existing_uorfs"
+              },
+              {
+                "key": "inf",
+                "label": "In-frame oORFs",
+                "from": "utr_annotation.existing_inframe_oorfs"
+              },
+              {
+                "key": "oof",
+                "label": "Out-of-frame oORFs",
+                "from": "utr_annotation.existing_outofframe_oorfs"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "riboseqorfs",
+        "blocks": [
+          {
+            "kind": "rows",
+            "heading": "RiboSeqORFs",
+            "rows": [
+              {
+                "key": "id",
+                "label": "ORF",
+                "from": "riboseq_orfs.orf_id"
+              },
+              {
+                "key": "cons",
+                "label": "Consequences",
+                "from": "riboseq_orfs.consequences",
+                "format": "join"
+              },
+              {
+                "key": "imp",
+                "label": "Impact",
+                "from": "riboseq_orfs.impact"
+              }
+            ]
+          }
+        ]
+      }
+    ]
   }
 }
