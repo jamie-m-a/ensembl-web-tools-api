@@ -304,6 +304,13 @@ class ConfigIniParams(BaseModel):
     # Assembly name (from the selected species, e.g. "GRCh38"/"GRCh37"); used to
     # pick assembly-specific plugin data files. Defaults to GRCh38.
     assembly_name: str = ""
+    # Species taxonomy id of the selected species (e.g. "9606" for human). Sent
+    # by the client alongside `assembly_name`, and used only to compute the
+    # option panels pinned to this job — the same species/assembly predicates
+    # /form_config uses (form_panels.is_human_grch37_or_38 / is_human_grch38).
+    # Without it every human-specific panel would be silently dropped from the
+    # pin. It emits no config.ini line.
+    species_taxonomy_id: str = ""
     gff: str = ""
     fasta: str = ""
 

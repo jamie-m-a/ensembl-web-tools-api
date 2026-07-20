@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from vep.models.display_panels_model import DisplayPanel
+
 class VcfMetadata(BaseModel):
     variant_count: int = Field(
         description="Total number of variant records in the VCF file"
@@ -156,6 +158,10 @@ class Metadata(BaseModel):
     # AF columns present in this result set (the AF options chosen at input),
     # so the frontend can populate the allele-frequency filter.
     available_af_sources: list[AfSource] = []
+    # The option panels this job was submitted against, pinned at submission.
+    # None for jobs that predate the pin — the results view then falls back to
+    # the live form-config panels, as it did before.
+    display_panels: list[DisplayPanel] | None = None
 
 
 class AlternativeVariantAllele(BaseModel):
