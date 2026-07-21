@@ -246,6 +246,54 @@ def test_apply_filter_pipeline_wrapper_keeps_every_survivor():
     assert stats[0].removed == 1
 
 
+# --- raw-line pre-filter (fast reject before splitting the CSQ) ---------------
+
+
+def test_membership_filters_carry_a_line_prefilter_gene_symbol_does_not():
+    cases = [
+        (_consequence_filter("missense_variant"), True),
+        (_transcript_filter("ENST00000341065"), True),
+        (rf.ResultsFilter(field=rf.GENE_ID_FIELD, operator=rf.OPERATOR_IN, values=["ENSG001"]), True),
+        # Gene symbol matching is case-insensitive, so a case-sensitive substring
+        # test could false-negative — no prefilter.
+        (rf.ResultsFilter(field=rf.GENE_SYMBOL_FIELD, operator=rf.OPERATOR_IN, values=["BRCA1"]), False),
+    ]
+    for filt, has_prefilter in cases:
+        (cf,) = rf.compile_filters([filt], INDEX_MAP)
+        assert (cf.line_prefilter is not None) is has_prefilter
+
+
+def test_prefilter_substring_false_positive_is_still_excluded_by_exact_check():
+    # The selected term appears in the line only as the SYMBOL, not as a
+    # Consequence: the cheap substring prefilter admits the line, but the exact
+    # per-entry check must still drop it (the prefilter is necessary, not sufficient).
+    line = (
+        "chr1\t100\tv\tC\tT\t.\t.\t"
+        "CSQ=T|synonymous_variant|MODERATE|missense_variant|ENSG|Transcript|ENST|protein_coding\n"
+    )
+    compiled = rf.compile_filters([_consequence_filter("missense_variant")], INDEX_MAP)
+
+    assert compiled[0].line_prefilter(line) is True  # prefilter alone would admit it
+    outcome = rf.filter_records([line], compiled)
+    assert outcome.matched_total == 0  # ...but the exact check drops it
+    assert outcome.stats[0].removed == 1
+
+
+def test_prefilter_rejects_without_error_when_no_token_present():
+    lines = [_record(1, ["synonymous_variant"]), _record(2, ["intron_variant"])]
+    compiled = rf.compile_filters([_consequence_filter("missense_variant")], INDEX_MAP)
+    outcome = rf.filter_records(lines, compiled)
+    assert outcome.matched_total == 0
+    assert outcome.scanned_total == 2
+    assert outcome.stats[0].removed == 2
+
+
+def test_transcript_group_filter_has_no_prefilter():
+    # Transcript-group tests read CANONICAL/MANE columns, not literal values.
+    (cf,) = rf.compile_filters([_transcript_group_filter("canonical")], GROUP_INDEX_MAP)
+    assert cf.line_prefilter is None
+
+
 def test_transcript_filter_matches_ignoring_version():
     lines = [
         _transcript_record(
