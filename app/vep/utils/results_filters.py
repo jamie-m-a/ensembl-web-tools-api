@@ -78,10 +78,18 @@ class FilterError(ValueError):
 @dataclass
 class CompiledFilter:
     """A ready-to-run predicate for one condition. `keep_entry` takes a single
-    CSQ entry (already split on '|') and returns whether that entry matches."""
+    CSQ entry (already split on '|') and returns whether that entry matches.
+
+    `line_prefilter`, when set, is a cheap *necessary condition* on the raw,
+    unsplit data line: if it returns False the record cannot possibly match, so
+    it is dropped without splitting the (large, many-column) CSQ. It must never
+    reject a record that would match — false positives are fine (they fall
+    through to the exact `keep_entry` check), false negatives are not. Only
+    literal-substring membership filters can supply one (see `_membership_prefilter`)."""
 
     field: str
     keep_entry: Callable[[list[str]], bool]
+    line_prefilter: Callable[[str], bool] | None = None
 
 
 @dataclass
@@ -178,6 +186,18 @@ def _require_operator(f: "ResultsFilter", *allowed: str) -> None:
         )
 
 
+def _membership_prefilter(tokens: set[str]) -> Callable[[str], bool] | None:
+    """A raw-line necessary-condition test for a literal-membership filter: the
+    line must contain at least one selected token as a substring, since a matching
+    CSQ entry carries that token verbatim in the line. A cheap C-level `in` run
+    before the record is split — it rejects the (usually vast) majority that can't
+    match without touching the many-column CSQ. None for an empty token set."""
+    if not tokens:
+        return None
+    values = tuple(tokens)
+    return lambda line: any(token in line for token in values)
+
+
 def _compile_consequence(f: ResultsFilter, index_map: dict[str, int]) -> CompiledFilter | None:
     """A CSQ entry matches if its Consequence carries one of the selected terms.
     VEP '&'-joins co-occurring terms within an entry."""
@@ -194,7 +214,11 @@ def _compile_consequence(f: ResultsFilter, index_map: dict[str, int]) -> Compile
             return False
         return bool(selected.intersection(entry[consequence_index].split("&")))
 
-    return CompiledFilter(field=CONSEQUENCE_FIELD, keep_entry=keep_entry)
+    return CompiledFilter(
+        field=CONSEQUENCE_FIELD,
+        keep_entry=keep_entry,
+        line_prefilter=_membership_prefilter(selected),
+    )
 
 
 def _compile_transcript(f: ResultsFilter, index_map: dict[str, int]) -> CompiledFilter | None:
@@ -217,7 +241,14 @@ def _compile_transcript(f: ResultsFilter, index_map: dict[str, int]) -> Compiled
             return False
         return _strip_version(feature) in selected
 
-    return CompiledFilter(field=TRANSCRIPT_FIELD, keep_entry=keep_entry)
+    # The stripped id is a substring of the versioned id as it appears in the line
+    # (e.g. "ENST00000012345" within "ENST00000012345.7"), so it is a valid
+    # necessary-condition token.
+    return CompiledFilter(
+        field=TRANSCRIPT_FIELD,
+        keep_entry=keep_entry,
+        line_prefilter=_membership_prefilter(selected),
+    )
 
 
 def _compile_gene_symbol(f: ResultsFilter, index_map: dict[str, int]) -> CompiledFilter | None:
@@ -257,7 +288,11 @@ def _compile_gene_id(f: ResultsFilter, index_map: dict[str, int]) -> CompiledFil
         gene = entry[gene_index]
         return bool(gene) and _strip_version(gene) in selected
 
-    return CompiledFilter(field=GENE_ID_FIELD, keep_entry=keep_entry)
+    return CompiledFilter(
+        field=GENE_ID_FIELD,
+        keep_entry=keep_entry,
+        line_prefilter=_membership_prefilter(selected),
+    )
 
 
 def _entry_value(entry: list[str], name: str, index_map: dict[str, int]) -> str | None:
@@ -419,12 +454,28 @@ def compile_filters(
     return compiled
 
 
-def _apply_to_record(
+# What a surviving record carries forward so its line can be rebuilt lazily (only
+# the page slice is ever rebuilt): the split columns, the CSQ part index, the
+# surviving entries, and whether the line had a trailing newline.
+_Survivor = tuple[list[str], int, list[list[str]], bool]
+
+
+def _evaluate_record(
     line: str, compiled: list[CompiledFilter], removed: list[int]
-) -> str | None:
-    """Run the ordered pipeline over one record. Returns the rebuilt line (its CSQ
-    narrowed to surviving entries) if it is kept, or None if a filter dropped it —
-    crediting the removal to that filter in `removed` (mutated in place)."""
+) -> _Survivor | None:
+    """Run the ordered pipeline over one record. Returns what's needed to rebuild
+    the kept line (its CSQ narrowed to surviving entries), or None if a filter
+    dropped it — crediting the removal to that filter in `removed`.
+
+    Rebuilding is left to the caller so only the requested page slice pays for it.
+    Each filter's cheap `line_prefilter` runs first, on the raw unsplit line, so a
+    record that can't match is rejected before the expensive CSQ split."""
+    # Necessary-condition rejection on the raw line, before any splitting.
+    for i, cf in enumerate(compiled):
+        if cf.line_prefilter is not None and not cf.line_prefilter(line):
+            removed[i] += 1
+            return None
+
     columns, has_newline = _split_line(line)
     found = _find_csq(columns)
     if found is None:
@@ -441,7 +492,7 @@ def _apply_to_record(
             return None
         entries = survivors
 
-    return _rebuild_line(columns, csq_part_index, entries, has_newline)
+    return columns, csq_part_index, entries, has_newline
 
 
 def filter_records(
@@ -472,11 +523,13 @@ def filter_records(
     stop = None if count is None else start + count
     for line in data_lines:
         scanned += 1
-        rebuilt = _apply_to_record(line, compiled, removed)
-        if rebuilt is None:
+        survivor = _evaluate_record(line, compiled, removed)
+        if survivor is None:
             continue
+        # Rebuild only the survivors that fall in the requested window; the rest
+        # are counted but never reassembled.
         if matched >= start and (stop is None or matched < stop):
-            page.append(rebuilt)
+            page.append(_rebuild_line(*survivor))
         matched += 1
 
     stats = [
