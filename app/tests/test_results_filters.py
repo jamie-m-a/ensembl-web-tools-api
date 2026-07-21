@@ -187,6 +187,65 @@ def test_pipeline_prunes_nonmatching_entries():
     assert stats[0].removed == 1
 
 
+# --- filter_records (streaming, page-bounded) --------------------------------
+
+
+def test_filter_records_retains_only_the_page_window():
+    lines = [_record(i, ["missense_variant"]) for i in range(1, 8)]  # 7 matches
+    compiled = rf.compile_filters([_consequence_filter("missense_variant")], INDEX_MAP)
+
+    outcome = rf.filter_records(lines, compiled, start=2, count=3)
+
+    # Full counts are tallied regardless of which window is asked for...
+    assert outcome.scanned_total == 7
+    assert outcome.matched_total == 7
+    # ...but only the [2, 5) slice of survivors is materialised.
+    assert outcome.page == [lines[2], lines[3], lines[4]]
+    assert outcome.stats[0].removed == 0
+
+
+def test_filter_records_counts_all_scanned_including_dropped():
+    lines = [
+        _record(1, ["missense_variant"]),
+        _record(2, ["synonymous_variant"]),  # dropped
+        _record(3, ["missense_variant"]),
+    ]
+    compiled = rf.compile_filters([_consequence_filter("missense_variant")], INDEX_MAP)
+
+    outcome = rf.filter_records(lines, compiled, start=0, count=10)
+
+    assert outcome.scanned_total == 3
+    assert outcome.matched_total == 2
+    assert outcome.page == [lines[0], lines[2]]
+    assert outcome.stats[0].removed == 1
+
+
+def test_filter_records_page_stays_bounded_below_match_count():
+    # 100 matches but a page of 5: only 5 lines are ever held, and a lazy
+    # iterator source is consumed without materialising the input.
+    lines = [_record(i, ["missense_variant"]) for i in range(1, 101)]
+    compiled = rf.compile_filters([_consequence_filter("missense_variant")], INDEX_MAP)
+
+    outcome = rf.filter_records(iter(lines), compiled, start=0, count=5)
+
+    assert outcome.matched_total == 100
+    assert len(outcome.page) == 5
+
+
+def test_apply_filter_pipeline_wrapper_keeps_every_survivor():
+    lines = [
+        _record(1, ["missense_variant"]),
+        _record(2, ["intron_variant"]),
+        _record(3, ["missense_variant"]),
+    ]
+    compiled = rf.compile_filters([_consequence_filter("missense_variant")], INDEX_MAP)
+
+    kept, stats = rf.apply_filter_pipeline(lines, compiled)
+
+    assert kept == [lines[0], lines[2]]
+    assert stats[0].removed == 1
+
+
 def test_transcript_filter_matches_ignoring_version():
     lines = [
         _transcript_record(

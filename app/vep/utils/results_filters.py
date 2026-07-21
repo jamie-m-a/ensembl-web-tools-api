@@ -92,6 +92,20 @@ class FilterStat:
     removed: int
 
 
+@dataclass
+class FilterOutcome:
+    """The result of one streaming filter pass over a record source.
+
+    `page` holds only the survivors in the requested `[start, start+count)` slice
+    (so memory is bounded by the page, not the file); `matched_total` and
+    `scanned_total` are the full counts needed for pagination and metadata."""
+
+    page: list[str]
+    matched_total: int
+    scanned_total: int
+    stats: list[FilterStat]
+
+
 def parse_filters(raw: str | None) -> list[ResultsFilter]:
     """Parse the `filters` query param (a JSON array of conditions) into models.
 
@@ -405,44 +419,84 @@ def compile_filters(
     return compiled
 
 
-def apply_filter_pipeline(
-    data_lines: Iterable[str], compiled: list[CompiledFilter]
-) -> tuple[list[str], list[FilterStat]]:
-    """Run the ordered filter pipeline over raw VCF data lines.
+def _apply_to_record(
+    line: str, compiled: list[CompiledFilter], removed: list[int]
+) -> str | None:
+    """Run the ordered pipeline over one record. Returns the rebuilt line (its CSQ
+    narrowed to surviving entries) if it is kept, or None if a filter dropped it —
+    crediting the removal to that filter in `removed` (mutated in place)."""
+    columns, has_newline = _split_line(line)
+    found = _find_csq(columns)
+    if found is None:
+        # No CSQ to match against — a consequence-style filter can't keep it.
+        if compiled:
+            removed[0] += 1
+        return None
+    csq_part_index, _, entries = found
+
+    for i, cf in enumerate(compiled):
+        survivors = [entry for entry in entries if cf.keep_entry(entry)]
+        if not survivors:
+            removed[i] += 1
+            return None
+        entries = survivors
+
+    return _rebuild_line(columns, csq_part_index, entries, has_newline)
+
+
+def filter_records(
+    data_lines: Iterable[str],
+    compiled: list[CompiledFilter],
+    *,
+    start: int = 0,
+    count: int | None = None,
+) -> FilterOutcome:
+    """Stream the ordered filter pipeline over raw VCF data lines in a single pass.
 
     For each record the CSQ entry set is narrowed by each filter in turn; a filter
     that leaves no surviving entry drops the record (and is credited with the
-    removal). Kept records are rebuilt with only their surviving entries, so
-    downstream parsing sees just the matching transcripts.
+    removal). Kept records are rebuilt with only their surviving entries.
 
-    Returns the kept (rebuilt) lines in order, and per filter how many records it
-    removed among those that reached it."""
+    Only the survivors in the half-open `[start, start+count)` slice are retained
+    (rebuilt) — so a page can be served from a huge result set without holding
+    every match in memory. `count=None` keeps every survivor (small callers /
+    tests). The full `matched_total` / `scanned_total` counts are always tallied,
+    since pagination needs the total regardless of which page is asked for.
+
+    `data_lines` may be a lazy iterator (e.g. a gzip line stream), so the whole
+    file need never be materialised."""
     removed = [0] * len(compiled)
-    kept: list[str] = []
+    scanned = 0
+    matched = 0
+    page: list[str] = []
+    stop = None if count is None else start + count
     for line in data_lines:
-        columns, has_newline = _split_line(line)
-        found = _find_csq(columns)
-        if found is None:
-            # No CSQ to match against — a consequence-style filter can't keep it.
-            if compiled:
-                removed[0] += 1
+        scanned += 1
+        rebuilt = _apply_to_record(line, compiled, removed)
+        if rebuilt is None:
             continue
-        csq_part_index, _, entries = found
-
-        dropped = False
-        for i, cf in enumerate(compiled):
-            survivors = [entry for entry in entries if cf.keep_entry(entry)]
-            if not survivors:
-                removed[i] += 1
-                dropped = True
-                break
-            entries = survivors
-
-        if not dropped:
-            kept.append(_rebuild_line(columns, csq_part_index, entries, has_newline))
+        if matched >= start and (stop is None or matched < stop):
+            page.append(rebuilt)
+        matched += 1
 
     stats = [
         FilterStat(field=cf.field, removed=removed[i])
         for i, cf in enumerate(compiled)
     ]
-    return kept, stats
+    return FilterOutcome(
+        page=page, matched_total=matched, scanned_total=scanned, stats=stats
+    )
+
+
+def apply_filter_pipeline(
+    data_lines: Iterable[str], compiled: list[CompiledFilter]
+) -> tuple[list[str], list[FilterStat]]:
+    """Run the ordered filter pipeline over raw VCF data lines, returning every
+    kept (rebuilt) line in order plus per-filter removal counts.
+
+    A thin wrapper over `filter_records` that keeps all survivors — retained for
+    callers and tests that want the full kept list. The paginated results path
+    uses `filter_records` directly with a `start`/`count` window so it never holds
+    the whole match set in memory."""
+    outcome = filter_records(data_lines, compiled)
+    return outcome.page, outcome.stats

@@ -25,6 +25,7 @@ from fastapi import Request, status, APIRouter
 from pydantic import FilePath
 from requests import HTTPError
 from starlette.responses import JSONResponse, FileResponse, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from core.config import DUMP_INI, DUMP_INI_DIR, LOCAL_RESULTS_VCF
 from core.error_response import response_error_handler
@@ -290,7 +291,11 @@ async def fetch_results(
         # Temporary local-results mode: parse a VEP output VCF on disk directly,
         # bypassing the Seqera status lookup. Enabled by setting LOCAL_RESULTS_VCF.
         if LOCAL_RESULTS_VCF:
-            return get_results_from_path(
+            # Reading + (for a filtered request) scanning the results VCF is a
+            # blocking, CPU-bound job; run it in a worker thread so a large
+            # filtered scan doesn't stall the event loop for every other request.
+            return await run_in_threadpool(
+                get_results_from_path,
                 vcf_path=FilePath(LOCAL_RESULTS_VCF),
                 page=page,
                 page_size=per_page,
@@ -304,7 +309,8 @@ async def fetch_results(
             input_vcf_file = workflow_status["workflow"]["params"]["input"]
             results_file_path = get_vep_results_file_path(input_vcf_file)
             if results_file_path.exists():
-                return get_results_from_path(
+                return await run_in_threadpool(
+                    get_results_from_path,
                     vcf_path=results_file_path,
                     page=page,
                     page_size=per_page,
