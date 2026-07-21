@@ -467,7 +467,21 @@ def _read_csq_columns(vcf_path: FilePath) -> set[str] | None:
     return set(index_map) or None
 
 
-def _check_expected_columns(vcf_path: FilePath) -> None:
+def _load_expected_columns(vcf_path: FilePath) -> set[str] | None:
+    """The CSQ columns this job's submitted options require, pinned at submission
+    (`expected_columns.json`). Defensive: a job predating the pin (no sidecar) or
+    an unreadable one returns None. Shared by the missing-column check and the
+    AF-source gating, so the sidecar is read once."""
+    try:
+        return load_expected_columns_sidecar(vcf_path)
+    except Exception as exc:
+        logging.warning(
+            "Ignoring unreadable expected-columns sidecar for %s: %s", vcf_path, exc
+        )
+        return None
+
+
+def _check_expected_columns(vcf_path: FilePath, expected: set[str] | None) -> None:
     """Warn if any CSQ column the submitted options require is missing from the
     output header (the runtime missing-expected-field check, design §6.2). A
     missing expected column is a real contract breach — a plugin the user enabled
@@ -478,13 +492,6 @@ def _check_expected_columns(vcf_path: FilePath) -> None:
     regenerate the headers, capped at 3 retries (decision 15); that path needs
     the real pipeline and is not wired into this dev loop.
     """
-    try:
-        expected = load_expected_columns_sidecar(vcf_path)
-    except Exception as exc:
-        logging.warning(
-            "Ignoring unreadable expected-columns sidecar for %s: %s", vcf_path, exc
-        )
-        return
     if not expected:
         return
     actual = _read_csq_columns(vcf_path)
@@ -574,11 +581,27 @@ def _with_display_panels(
     response: model.VepResultsResponse,
     panels: list[DisplayPanel] | None,
     display: DisplayPayload | None = None,
+    *,
+    expected_columns: set[str] | None = None,
 ) -> model.VepResultsResponse:
     """Attach the pinned panels and display layout to a response built by the
-    parsing path (which knows about neither). None leaves the field absent."""
+    parsing path (which knows about neither). None leaves the field absent.
+
+    Also gate `available_af_sources` — which drives the allele-frequency filter's
+    availability — to the AF columns the submission actually *selected* (the
+    pinned expected columns), not merely whatever AF columns the output VCF
+    happens to carry. Their keys are CSQ column names, the same space as the
+    expected set. Without a pin (older jobs) they are left as the VCF reported
+    them.
+    """
     response.metadata.display_panels = panels
     response.metadata.display = display
+    if expected_columns is not None:
+        response.metadata.available_af_sources = [
+            source
+            for source in response.metadata.available_af_sources
+            if source.key in expected_columns
+        ]
     return response
 
 
@@ -598,9 +621,14 @@ def get_results_from_path(
     # annotations, never failing results.
     merged = _load_pinned_merged_spec(vcf_path)
     spec = _load_pinned_spec(vcf_path)
+    # The CSQ columns this job's submitted options require (pinned at submission).
+    # Drives the missing-column check below and gates which AF sources the filter
+    # UI is offered — so an AF filter is only available when AF was actually
+    # selected, not merely present in the output VCF.
+    expected_columns = _load_expected_columns(vcf_path)
     # Runtime missing-expected-field check: warn if the pipeline output is missing
     # a CSQ column the submitted options required. Non-fatal (dev warns only).
-    _check_expected_columns(vcf_path)
+    _check_expected_columns(vcf_path, expected_columns)
     # The option panels this job was submitted against (None for older jobs).
     display_panels = _load_pinned_display_panels(vcf_path)
     # How those options lay out, from the pin (or the current spec for jobs
@@ -614,6 +642,7 @@ def get_results_from_path(
             _get_filtered_results(page_size, page, vcf_path, filters, spec),
             display_panels,
             display,
+            expected_columns=expected_columns,
         )
 
     # Fast path: if the pipeline emitted a page-index sidecar, seek to the page
@@ -623,14 +652,19 @@ def get_results_from_path(
         page = max(page, 1)
         page_size = max(page_size, 0)
         header_text, rows_text = _read_indexed_page(vcf_path, index, page, page_size)
-        return _with_display_panels(get_results_from_stream(
-            page_size,
-            page,
-            index["total_records"],
-            StringIO(header_text + rows_text),
-            presliced=True,
-            spec=spec,
-        ), display_panels, display)
+        return _with_display_panels(
+            get_results_from_stream(
+                page_size,
+                page,
+                index["total_records"],
+                StringIO(header_text + rows_text),
+                presliced=True,
+                spec=spec,
+            ),
+            display_panels,
+            display,
+            expected_columns=expected_columns,
+        )
 
     # Fallback (no sidecar): scan the file from the top through page*page_size
     # records and shell out to bcftools for the counts. `head` short-circuits so
@@ -658,6 +692,7 @@ def get_results_from_path(
         get_results_from_stream(page_size, page, total, vcf_stream, spec=spec),
         display_panels,
         display,
+        expected_columns=expected_columns,
     )
 
 
