@@ -1339,29 +1339,15 @@
         "scope": "allele",
         "output": "phenotype_data",
         "csq_fields": [
-          "PHENOTYPES",
-          "CLIN_SIG",
-          "PUBMED"
+          "PHENOTYPES"
         ],
         "require_any_output": [
-          "phenotypes",
-          "clinical_significance",
-          "pubmed_ids"
+          "phenotypes"
         ],
         "targets": [
           {
             "field": "phenotypes",
             "from": "PHENOTYPES",
-            "transform": "list"
-          },
-          {
-            "field": "clinical_significance",
-            "from": "CLIN_SIG",
-            "transform": "list"
-          },
-          {
-            "field": "pubmed_ids",
-            "from": "PUBMED",
             "transform": "list"
           }
         ]
