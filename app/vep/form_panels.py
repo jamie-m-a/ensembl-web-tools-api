@@ -18,10 +18,10 @@ _ALWAYS_VISIBLE_PANELS: list[dict] = [
         "label": "Variant representations",
         "options": [
             # HGVS renders as a single control with linked HGVSc/HGVSp (the
-            # `hgvs` param, on by default) and a separate HGVSg (the `hgvsg`
-            # param, off by default). The frontend builds the linked UI; the
-            # panel just carries the `hgvs` option (default on).
-            {"id": "hgvs", "label": "HGVS", "type": "boolean", "default": True},
+            # `hgvs` param) and a separate HGVSg (the `hgvsg` param), both off by
+            # default. The frontend builds the linked UI; the panel just carries
+            # the `hgvs` option (default off).
+            {"id": "hgvs", "label": "HGVS", "type": "boolean", "default": False},
             {"id": "spdi", "label": "SPDI", "type": "boolean", "default": False},
         ],
     },
