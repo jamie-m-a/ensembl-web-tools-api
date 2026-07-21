@@ -533,18 +533,17 @@ def test_hgvs_empty_is_none():
 
 
 def test_phenotype_data_splits_and_drops_na():
-    index_map = index_map_for("PHENOTYPES", "CLIN_SIG", "PUBMED")
-    values = ["cancer&diabetes", "pathogenic&NA", "123&456"]
-    assert run("phenotype_data", values, index_map) == {
-        "phenotypes": ["cancer", "diabetes"],
-        "clinical_significance": ["pathogenic"],  # NA dropped
-        "pubmed_ids": ["123", "456"],
+    # The Phenotypes plugin produces a single PHENOTYPES column; CLIN_SIG / PUBMED
+    # are co-located-variant fields from unrelated options, not Phenotypes output.
+    index_map = index_map_for("PHENOTYPES")
+    assert run("phenotype_data", ["cancer&NA&diabetes"], index_map) == {
+        "phenotypes": ["cancer", "diabetes"],  # NA dropped
     }
 
 
 def test_phenotype_data_empty_is_none():
-    index_map = index_map_for("PHENOTYPES", "CLIN_SIG", "PUBMED")
-    assert run("phenotype_data", ["", "", ""], index_map) is None
+    index_map = index_map_for("PHENOTYPES")
+    assert run("phenotype_data", [""], index_map) is None
 
 
 def test_dosage_sensitivity_probabilities():
