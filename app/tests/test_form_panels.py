@@ -92,9 +92,19 @@ def test_human_grch38_category_labels():
         "Missense",
         "Splicing",
         "Genome wide",
-        "Non-coding",
     }
     assert categories(panels, "protein_and_functional") == {"Protein", "Functional"}
+
+
+def test_maxentscan_and_enformer_are_not_offered():
+    # Removed entirely: enabled but never parsed/displayed, so dropped from the
+    # human GRCh37/38 pathogenicity panel.
+    for assembly in ("GRCh38.p14", "GRCh37.p13"):
+        opts = option_ids(
+            get_visible_panels(species_taxonomy_id=HUMAN, assembly_name=assembly)
+        )
+        assert "maxentscan" not in opts
+        assert "enformer" not in opts
 
 
 # --- 2. human GRCh37 ---------------------------------------------------------
