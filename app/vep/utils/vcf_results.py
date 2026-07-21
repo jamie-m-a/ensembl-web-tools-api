@@ -3,6 +3,7 @@ object as defined in APISpecification"""
 
 from io import StringIO
 import gzip
+import itertools
 import json
 import logging
 import re
@@ -344,47 +345,63 @@ def _get_filtered_results(
     filters: list[results_filters.ResultsFilter],
     spec: ParsingSpec | None = None,
 ) -> model.VepResultsResponse:
-    """Scan the whole results VCF applying the filter pipeline, then paginate the
-    filtered records. The page-index fast path can't be used once records are
-    filtered (positions shift), so this is a full sequential pass. Attaches
+    """Stream the results VCF applying the filter pipeline, retaining only the
+    requested page of survivors. The page-index fast path can't be used once
+    records are filtered (positions shift), so this is a full sequential pass —
+    but the file is read as a lazy line stream and only the page slice is held, so
+    memory is bounded by `page_size` rather than the (multi-GB) file. Attaches
     per-filter removed counts to the response metadata and logs them.
 
-    Note: this loads the kept records into memory and rescans per request. Fine
-    for current result sizes; a filtered-index cache keyed by the filter set
-    would remove the rescan later (see pagination-design.md)."""
-    header_lines: list[str] = []
-    data_lines: list[str] = []
-    with gzip.open(vcf_path, "rt") as handle:
-        for line in handle:
-            (header_lines if line.startswith("#") else data_lines).append(line)
-
-    index_map = csq_index_map_from_header(header_lines)
-    compiled = results_filters.compile_filters(filters, index_map)
-    kept, stats = results_filters.apply_filter_pipeline(data_lines, compiled)
-
-    filtered_total = len(kept)
+    Note: pagination needs the total match count, so every page still scans the
+    whole file. A filtered-index cache keyed by the filter set would remove the
+    rescan for later pages (see pagination-design.md); memory is no longer the
+    constraint it was."""
     page = max(page, 1)
     page_size = max(page_size, 0)
     start = (page - 1) * page_size
-    page_rows = kept[start : start + page_size] if page_size > 0 else []
 
-    stream = StringIO("".join(header_lines) + "".join(page_rows))
+    header_lines: list[str] = []
+    with gzip.open(vcf_path, "rt") as handle:
+        # The header is every '#' line, and all of them precede the data records;
+        # stop at (and keep) the first data line, then stream the rest lazily so
+        # the whole file is never materialised.
+        first_data_line: str | None = None
+        for line in handle:
+            if line.startswith("#"):
+                header_lines.append(line)
+            else:
+                first_data_line = line
+                break
+
+        index_map = csq_index_map_from_header(header_lines)
+        compiled = results_filters.compile_filters(filters, index_map)
+
+        data_lines = (
+            handle
+            if first_data_line is None
+            else itertools.chain((first_data_line,), handle)
+        )
+        outcome = results_filters.filter_records(
+            data_lines, compiled, start=start, count=page_size
+        )
+
+    stream = StringIO("".join(header_lines) + "".join(outcome.page))
     response = get_results_from_stream(
-        page_size, page, filtered_total, stream, presliced=True, spec=spec
+        page_size, page, outcome.matched_total, stream, presliced=True, spec=spec
     )
     response.metadata.filters = model.FilterMetadata(
-        unfiltered_total=len(data_lines),
-        filtered_total=filtered_total,
+        unfiltered_total=outcome.scanned_total,
+        filtered_total=outcome.matched_total,
         stats=[
             model.FilterStat(field=stat.field, removed=stat.removed)
-            for stat in stats
+            for stat in outcome.stats
         ],
     )
     logging.info(
         "VEP results filtered: %d -> %d records (%s)",
-        len(data_lines),
-        filtered_total,
-        ", ".join(f"{stat.field} removed {stat.removed}" for stat in stats)
+        outcome.scanned_total,
+        outcome.matched_total,
+        ", ".join(f"{stat.field} removed {stat.removed}" for stat in outcome.stats)
         or "no active filters",
     )
     return response
