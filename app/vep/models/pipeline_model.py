@@ -140,7 +140,7 @@ class ConfigIniParams(BaseModel):
     canonical: int = 1
     # HGVS notations (client-selectable). `hgvs` implies HGVSc + HGVSp; `hgvsg`
     # is the genomic notation and is selected independently.
-    hgvs: bool = True  # HGVSc + HGVSp (linked); on by default
+    hgvs: bool = False  # HGVSc + HGVSp (linked); off by default
     hgvsg: bool = False
     # Annotation plugins (client-selectable); each enabled flag appends its
     # `plugin ...` line via the config spec (config_specs → config_interpreter).
