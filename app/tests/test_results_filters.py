@@ -12,7 +12,9 @@ import pytest
 from pydantic import FilePath
 
 from app.vep.utils import results_filters as rf
+from app.vep.utils import vcf_results
 from app.vep.utils.vcf_results import get_results_from_path
+from app.vep.models import vcf_results_model as model
 
 CSQ_DESC = (
     "Consequence annotations from Ensembl VEP. Format: "
@@ -600,3 +602,46 @@ def test_get_results_filtered_pagination_slices(tmp_path):
     assert page1.metadata.pagination.total == 7
     assert len(page1.variants) == 5
     assert len(page2.variants) == 2  # remainder of the 7 filtered records
+
+
+# --- available_af_sources gated to what the submission selected --------------
+
+
+def _response_with_af_sources() -> model.VepResultsResponse:
+    return model.VepResultsResponse(
+        metadata=model.Metadata(
+            pagination=model.PaginationMetadata(page=1, per_page=10, total=0),
+            available_af_sources=[
+                model.AfSource(key="gnomAD_exomes_AF", source="gnomad_exomes", population=""),
+                model.AfSource(key="gnomAD_genomes_AF", source="gnomad_genomes", population=""),
+            ],
+        ),
+        variants=[],
+    )
+
+
+def test_af_sources_gated_to_the_expected_columns():
+    # The output VCF carries both, but only exomes was selected (in the pin).
+    gated = vcf_results._with_display_panels(
+        _response_with_af_sources(), None, None,
+        expected_columns={"gnomAD_exomes_AF", "CADD_PHRED"},
+    )
+    assert [s.key for s in gated.metadata.available_af_sources] == ["gnomAD_exomes_AF"]
+
+
+def test_af_sources_all_dropped_when_no_af_was_selected():
+    # AF columns are in the VCF but none is in the pinned expected set -> the AF
+    # filter is offered nothing (so the frontend hides it).
+    gated = vcf_results._with_display_panels(
+        _response_with_af_sources(), None, None,
+        expected_columns={"CADD_PHRED", "CLIN_SIG"},
+    )
+    assert gated.metadata.available_af_sources == []
+
+
+def test_af_sources_untouched_without_a_pin():
+    # Older jobs (no expected-columns sidecar) keep the VCF-reported sources.
+    gated = vcf_results._with_display_panels(
+        _response_with_af_sources(), None, None, expected_columns=None
+    )
+    assert len(gated.metadata.available_af_sources) == 2
