@@ -1,12 +1,22 @@
 # Merged annotation spec — design
 
-Status: **draft for review** (2026-07-18). Covers both VEP repos:
-`ensembl-web-tools-api` (backend) and `standalone-web-vep` (frontend).
+> **Status: IMPLEMENTED & MERGED (2026-07-21).** This started as a design draft
+> (2026-07-18); everything it proposes has since shipped to `main` in both VEP
+> repos across a series of merged PRs — the config→JSON migration, the go-flat
+> results cutover, the display DSL (results-panel pinning + the per-option
+> display spec), and the popup-link templates. It is kept as the original design
+> rationale; where it and the shipped code disagree, **the code is
+> authoritative**. A few forward-looking sections below (notably §9) have been
+> refreshed in place. Genuinely-open follow-ups that remain: the AF
+> `kind: "allele_frequency"` marker, and converting the still-unspecced
+> SIFT/PolyPhen / uniprot / protein-matches tail (blocked on sample data).
+
+Covers both VEP repos: `ensembl-web-tools-api` (backend) and `standalone-web-vep`
+(frontend).
 
 This document is the design for collapsing the drift-prone, hand-synced chain
-that today spans four places into a single data-driven document served by the
-new annotation API. It is the plan for the next slices of work; nothing here is
-implemented yet.
+that spanned four places into a single data-driven document served by the new
+annotation API.
 
 ---
 
@@ -418,15 +428,18 @@ mechanism change — the merge is why Q1 ("join them") is the less brittle choic
 3. **Display DSL** — the generic renderer primitives (§7.2) + the popup-template
    work (§7.3) + the small override registry.
 
-**Awaiting user input:**
-- The **link-construction templates** for the four popups (both link builders).
-- The future **ProtVar template** that retires `buildProtvarUrl`.
+**Resolved (were awaiting user input):**
+- The **link-construction templates** for the four popups — supplied and
+  **shipped**; both link builders now emit templated `beta.ensembl.org` URLs.
+- The future **ProtVar template** that would retire `buildProtvarUrl` — still
+  pending upstream; `buildProtvarUrl` stays algorithmic for now.
 
 **Parked (lack of data / out of scope for now):**
-- SIFT/PolyPhen (still inside `_parse_pathogenicity`), uniprot, protein
-  matches/DOMAINS — unspecced; `_parse_pathogenicity` to be dropped at the flat
-  cutover.
-- AF `kind: "allele_frequency"` marker on `PluginSpec` (not yet added).
+- SIFT/PolyPhen (relocated to typed consequence fields at the go-flat cutover —
+  no longer inside a `_parse_pathogenicity`, which was deleted), uniprot,
+  protein matches/DOMAINS — still unspecced for lack of a sample VCF carrying
+  the columns.
+- AF `kind: "allele_frequency"` marker on `PluginSpec` (still not added).
 
 **Cross-repo layout:** backend owns the merged JSON, its model/interpreter, the
 two checks, and the always-on base; frontend owns the renderer primitives +
