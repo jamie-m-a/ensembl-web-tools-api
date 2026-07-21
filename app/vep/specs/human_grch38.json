@@ -107,18 +107,6 @@
         }
       },
       {
-        "id": "maxentscan",
-        "order": 24,
-        "parsed_as": [],
-        "config": {
-          "emit": "plugin",
-          "name": "MaxEntScan",
-          "params": {
-            "file": "{path}/"
-          }
-        }
-      },
-      {
         "id": "gnomad_mt",
         "order": 25,
         "parsed_as": [],
@@ -378,23 +366,6 @@
         }
       },
       {
-        "id": "enformer",
-        "order": 45,
-        "parsed_as": [],
-        "config": {
-          "emit": "plugin",
-          "name": "Enformer",
-          "params": {
-            "file": {
-              "by_assembly": {
-                "GRCh38": "{path}/enformer_grch38.vcf.gz",
-                "GRCh37": "{path}/enformer_grch37.vcf.gz"
-              }
-            }
-          }
-        }
-      },
-      {
         "id": "spliceai",
         "order": 46,
         "parsed_as": [
@@ -519,7 +490,8 @@
           "params": {
             "file": "{path}/gnomad.exomes.v4.1.sites.chr###CHR###.vcf.bgz",
             "short_name": "gnomAD_exomes",
-            "format": "vcf"
+            "format": "vcf",
+            "type": "exact"
           },
           "fields": {
             "builder": "gnomad_ancestry_sex",
@@ -588,7 +560,8 @@
           "params": {
             "file": "{path}/gnomad.genomes.v4.1.sites.chr###CHR###.vcf.bgz",
             "short_name": "gnomAD_genomes",
-            "format": "vcf"
+            "format": "vcf",
+            "type": "exact"
           },
           "fields": {
             "builder": "gnomad_ancestry_sex",
@@ -669,7 +642,8 @@
           "params": {
             "file": "{path}/AllOfUs_chr###CHR###.vcf.gz",
             "short_name": "AoU",
-            "format": "vcf"
+            "format": "vcf",
+            "type": "exact"
           },
           "fields": {
             "builder": "allofus_populations",

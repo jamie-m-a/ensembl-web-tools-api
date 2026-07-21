@@ -248,7 +248,7 @@ class ConfigEntry(BaseModel):
     # The parse-plugin id(s) this option's output is parsed by — the explicit
     # config→parsing link the consistency check uses (merged_spec_model.py).
     # Empty for config-only options (flags like spdi/protein, and loeuf,
-    # geno2mp, enformer, maxentscan, gnomad_mt, the nearest-* plugins). The
+    # geno2mp, gnomad_mt, the nearest-* plugins). The
     # relation is not 1:1: one config may feed several parse entries
     # (eve → eve + popeve) and several configs may feed one ({hgvs, hgvsg} →
     # hgvs). Kept on the config side so the parsing specs stay untouched; it is

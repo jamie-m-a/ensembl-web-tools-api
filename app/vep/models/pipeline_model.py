@@ -95,8 +95,9 @@ def base_config_lines(
     See docs/design/merged-annotation-spec.md §4.5.
 
     Assembly gating mirrors ConfigIniParams' own prefix checks:
-      mane 1     — human GRCh38 and the mouse reference (GRCm39) only
-      assembly   — the human reference assemblies (GRCh38 / GRCh37)
+      mane 1                 — human GRCh38 and the mouse reference (GRCm39) only
+      assembly               — the human reference assemblies (GRCh38 / GRCh37)
+      flag_gencode_primary 1 — human GRCh38 only
     """
     is_human_grch38 = assembly_name.startswith("GRCh38")
     is_human_grch37 = assembly_name.startswith("GRCh37")
@@ -113,11 +114,14 @@ def base_config_lines(
     # VEP assembly name, always on for the human reference assemblies.
     if is_human_grch38:
         lines.append("assembly GRCh38")
+        # GENCODE primary annotation flag — human GRCh38 only.
+        lines.append("flag_gencode_primary 1")
     elif is_human_grch37:
         lines.append("assembly GRCh37")
     lines += [
         "symbol 1",
         "biotype 1",
+        "gene_version 1",
         f"transcript_version {transcript_version}",
         f"canonical {canonical}",
         # Disable VEP's database connection (cache/plugin-file mode only). A new
@@ -171,12 +175,8 @@ class ConfigIniParams(BaseModel):
     nearest_exon_jb: bool = False
     nearest_exon_jb_max_range: int = 10000  # max search range (bp)
     nearest_exon_jb_intronic: bool = False
-    # MaxEntScan splicing (MaxEntScan plugin).
-    maxentscan: bool = False
     # Geno2MP variant associations (assembly-specific; see *_BY_ASSEMBLY).
     geno2mp: bool = False
-    # Enformer non-coding predictions (assembly-specific; see *_BY_ASSEMBLY).
-    enformer: bool = False
     # UTRAnnotator 5' UTR variants (assembly-specific; see *_BY_ASSEMBLY).
     utrannotator: bool = False
     # Dosage sensitivity (DosageSensitivity plugin); `cover` sub-flag.

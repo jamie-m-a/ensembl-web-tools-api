@@ -61,6 +61,7 @@ def test_always_on_defaults(monkeypatch, tmp_path):
         "numbers 1",
         "symbol 1",
         "biotype 1",
+        "gene_version 1",
         "transcript_version 1",
         "canonical 1",
         "database 0",
@@ -68,6 +69,29 @@ def test_always_on_defaults(monkeypatch, tmp_path):
         f"fasta {FASTA}",
     ]:
         assert expected in lines
+
+
+@pytest.mark.parametrize(
+    "assembly", ["GRCh38.p14", "GRCh37.p13", "GRCm39", "ARS-UCD1.2"]
+)
+def test_gene_version_always_on_for_every_species(monkeypatch, tmp_path, assembly):
+    assert "gene_version 1" in build_lines(monkeypatch, tmp_path, assembly=assembly)
+
+
+@pytest.mark.parametrize(
+    "assembly,expected",
+    [
+        ("GRCh38.p14", True),  # human GRCh38 only
+        ("GRCh37.p13", False),
+        ("GRCm39", False),
+        ("ARS-UCD1.2", False),
+    ],
+)
+def test_flag_gencode_primary_is_grch38_only(
+    monkeypatch, tmp_path, assembly, expected
+):
+    lines = build_lines(monkeypatch, tmp_path, assembly=assembly)
+    assert ("flag_gencode_primary 1" in lines) is expected
 
 
 # --- 2. flag options ---------------------------------------------------------
@@ -131,7 +155,6 @@ ASSEMBLY_PLUGIN_MARKERS = {
     "revel": ("revel_grch38", "revel_grch37"),
     "loeuf": ("loeuf_dataset_grch38", "loeuf_dataset_grch37"),
     "geno2mp": ("Geno2MP.variants_GRCh38", "Geno2MP.variants_GRCh37"),
-    "enformer": ("enformer_grch38", "enformer_grch37"),
     "utrannotator": ("GRCh38_PUBLIC", "GRCh37_PUBLIC"),
 }
 
@@ -177,7 +200,6 @@ def test_spliceai_grch37_omits_snv_ensembl(monkeypatch, tmp_path):
         ("eve", "plugin EVE,"),
         ("phenotypes", "plugin Phenotypes,"),
         ("gnomad_mt", "plugin gnomADMt,"),
-        ("maxentscan", "plugin MaxEntScan,"),
         ("riboseqorfs", "plugin RiboseqORFs,"),
     ],
 )
@@ -376,7 +398,7 @@ def test_gnomad_exomes_default_is_all_both_ukb_included(monkeypatch, tmp_path):
         f"file={PLUGIN_PATH}/gnomad.exomes.v4.1.sites.chr###CHR###.vcf.bgz" in line
     )
     assert "short_name=gnomAD_exomes" in line
-    assert line.endswith("format=vcf")
+    assert line.endswith("format=vcf,type=exact")
     assert "fields=AF," in line
 
 
@@ -467,7 +489,7 @@ def test_gnomad_genomes_default_line(monkeypatch, tmp_path):
         f"file={PLUGIN_PATH}/gnomad.genomes.v4.1.sites.chr###CHR###.vcf.bgz" in line
     )
     assert "short_name=gnomAD_genomes" in line
-    assert line.endswith("format=vcf")
+    assert line.endswith("format=vcf,type=exact")
     assert "fields=AF," in line  # default: All + Both
 
 
@@ -538,7 +560,7 @@ def test_allofus_default_line(monkeypatch, tmp_path):
     assert line is not None
     assert f"file={PLUGIN_PATH}/AllOfUs_chr###CHR###.vcf.gz" in line
     assert "short_name=AoU" in line
-    assert line.endswith("format=vcf")
+    assert line.endswith("format=vcf,type=exact")
     assert "fields=gvs_all_af," in line  # default: All
 
 

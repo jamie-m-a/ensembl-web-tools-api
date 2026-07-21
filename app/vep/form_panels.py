@@ -108,9 +108,7 @@ _HUMAN_37_38_PANELS: list[dict] = [
             {"id": "alphamissense", "label": "AlphaMissense", "type": "boolean", "default": False, "category": "Missense"},
             {"id": "revel", "label": "Revel", "type": "boolean", "default": False, "category": "Missense"},
             {"id": "spliceai", "label": "SpliceAI", "type": "boolean", "default": False, "category": "Splicing"},
-            {"id": "maxentscan", "label": "MaxEntScan", "type": "boolean", "default": False, "category": "Splicing"},
             {"id": "cadd", "label": "CADD", "type": "boolean", "default": False, "category": "Genome wide"},
-            {"id": "enformer", "label": "Enformer", "type": "boolean", "default": False, "category": "Non-coding"},
         ],
     },
     {
