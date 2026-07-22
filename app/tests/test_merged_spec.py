@@ -228,7 +228,7 @@ def test_parse_plugin_with_no_config_is_a_soft_warning(caplog):
 
 
 def test_defaults_expect_nothing():
-    # Only the hgvs flag is on by default, and flags are excluded.
+    # No annotation option is on by default, so nothing is required.
     assert _expected() == set()
 
 
@@ -270,9 +270,17 @@ def test_sub_flagged_plugin_is_excluded():
     assert _expected(mutfunc=True) == set()
 
 
-def test_flags_are_excluded():
-    # hgvs/hgvsg/spdi/protein are flags — VEP-internal columns, excluded.
-    assert _expected(hgvsg=True, spdi=True, protein=True) == set()
+def test_flags_require_only_their_allele_scoped_columns():
+    # Flag columns are conditional in general and excluded — EXCEPT allele-scoped
+    # ones, which every variant carries: HGVSg (from --hgvsg) and SPDI (--spdi).
+    assert _expected(hgvsg=True) == {"HGVSg"}
+    assert _expected(spdi=True) == {"SPDI"}
+    # protein is a flag with no parse plugin; hgvs (c/p) is transcript-scoped and
+    # conditional, so neither requires anything.
+    assert _expected(protein=True) == set()
+    assert _expected(hgvs=True) == set()
+    # combined
+    assert _expected(hgvsg=True, spdi=True, protein=True) == {"HGVSg", "SPDI"}
 
 
 def test_disabled_option_contributes_nothing():

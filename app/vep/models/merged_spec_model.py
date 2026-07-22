@@ -24,6 +24,7 @@ from vep.models.config_spec_model import (
     ConfigEntry,
     ConfigSpec,
     CustomEmitter,
+    FlagEmitter,
     FromOption,
     LiteralFields,
     PluginEmitter,
@@ -96,12 +97,19 @@ class MergedSpec(BaseModel):
             (`<short_name>_<field>`), including the combinatorial gnomAD/AoU set,
             derived from the *same* `build_fields` that wrote the config line;
           * simple plugin emitters (no column-gating sub-flags) → their mapped
-            parse plugins' `csq_fields`.
+            parse plugins' `csq_fields`;
+          * flag emitters → only the *allele-scoped* mapped parse plugins'
+            `csq_fields`. A flag can emit conditional columns (HGVSc/HGVSp exist
+            only where a variant has transcript context), so transcript-scoped
+            flag columns are not required; but an allele-scoped one is present for
+            every variant (HGVSg whenever `--hgvsg` is on, SPDI whenever `--spdi`
+            is), so it is safe to require.
 
-        Sub-flagged plugins and the hgvs/hgvsg flags are deliberately excluded —
-        a sub-option can legitimately drop one of their columns (see
-        `_is_simple_plugin`). Extras are never required. gnomAD/AoU with nothing
-        selected emit no line and so contribute nothing, matching the config.
+        Sub-flagged plugins and transcript-scoped flag columns are deliberately
+        excluded — a sub-option (or the absence of a transcript) can legitimately
+        drop one of their columns (see `_is_simple_plugin`). Extras are never
+        required. gnomAD/AoU with nothing selected emit no line and so contribute
+        nothing, matching the config.
         """
         by_plugin = {p.plugin: p for p in self.parsing.plugins}
         expected: set[str] = set()
@@ -118,6 +126,11 @@ class MergedSpec(BaseModel):
                 for parse_id in entry.parsed_as:
                     plugin = by_plugin.get(parse_id)
                     if plugin is not None:
+                        expected.update(plugin.csq_fields)
+            elif isinstance(emitter, FlagEmitter):
+                for parse_id in entry.parsed_as:
+                    plugin = by_plugin.get(parse_id)
+                    if plugin is not None and plugin.scope == "allele":
                         expected.update(plugin.csq_fields)
         return expected
 
