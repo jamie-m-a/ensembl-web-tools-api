@@ -52,6 +52,24 @@ class ComposeSpec(BaseModel):
         return [self.classification, self.score]
 
 
+class SubOption(BaseModel):
+    """The form sub-option a row's value comes from.
+
+    Lets "Show all" list a sub-option that ran but produced nothing as a dash
+    (the default view drops the empty row instead). `default` mirrors the form
+    default: a sub-option left at a default-on value isn't written to the
+    submitted parameters, so the frontend treats "absent" as its default (see
+    `subOptionRan`). The id is a form option id — the hand-synced seam with
+    `form_panels`, like the top-level `option_id`; not a `plugin.field` ref, so
+    the display↔parsing check does not touch it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    default: bool = False
+
+
 class DisplayRow(BaseModel):
     """One label/value row.
 
@@ -79,6 +97,10 @@ class DisplayRow(BaseModel):
     # Help text for a (?) button beside the label. The text is data; the button
     # is a frontend primitive.
     help: str | None = None
+    # The sub-option this row's value comes from. Only affects "Show all": a
+    # selected-but-empty sub-option shows a dash there; the default view still
+    # drops it. Rows without one behave exactly as before.
+    sub_option: SubOption | None = None
 
     @model_validator(mode="after")
     def _exactly_one_source(self) -> "DisplayRow":

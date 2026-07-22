@@ -2127,6 +2127,53 @@
             }
           }
         ]
+      },
+      {
+        "option_id": "mutfunc",
+        "blocks": [
+          {
+            "kind": "rows",
+            "heading": "mutfunc",
+            "rows": [
+              {
+                "key": "motif",
+                "label": "Linear motifs",
+                "from": "mutfunc.linear_motifs",
+                "format": "num",
+                "sub_option": {
+                  "id": "mutfunc_motif"
+                }
+              },
+              {
+                "key": "int",
+                "label": "Protein interactions",
+                "from": "mutfunc.protein_interactions",
+                "format": "num",
+                "sub_option": {
+                  "id": "mutfunc_int"
+                }
+              },
+              {
+                "key": "mod",
+                "label": "Protein structure",
+                "from": "mutfunc.protein_structure",
+                "format": "num",
+                "sub_option": {
+                  "id": "mutfunc_mod"
+                }
+              },
+              {
+                "key": "exp",
+                "label": "Protein structure (exp.)",
+                "from": "mutfunc.protein_structure_experimental",
+                "format": "num",
+                "sub_option": {
+                  "id": "mutfunc_exp"
+                }
+              }
+            ]
+          }
+        ]
       }
     ]
   }

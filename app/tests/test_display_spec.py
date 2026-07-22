@@ -39,6 +39,8 @@ SPEC_DRIVEN_OPTIONS = {
     "loeuf", "dosage_sensitivity", "utrannotator", "riboseqorfs", "eve",
     # `list`-block options (repeat + truncate, migrated off frontend overrides)
     "phenotypes", "go", "mavedb",
+    # sub-option rows (Show-all enumeration)
+    "mutfunc",
 }
 
 
