@@ -31,7 +31,6 @@ GRCH38_ONLY_OPTION_IDS = {
     "opentargets",
     "protvar",
     "riboseqorfs",
-    "gnomad_mt",
 }
 
 

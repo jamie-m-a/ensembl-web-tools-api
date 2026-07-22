@@ -196,8 +196,6 @@ class ConfigIniParams(BaseModel):
     mutfunc_int: bool = False
     mutfunc_mod: bool = False
     mutfunc_exp: bool = False
-    # gnomAD mitochondrial frequencies (human GRCh38).
-    gnomad_mt: bool = False
     # gnomAD exomes v4.1 frequencies (human GRCh38). Rendered as a VEP `custom`
     # line whose `fields` list is built from the selected genetic-ancestry groups
     # x sexes (and whether UK Biobank samples are included). Field grammar:

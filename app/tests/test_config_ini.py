@@ -199,7 +199,6 @@ def test_spliceai_grch37_omits_snv_ensembl(monkeypatch, tmp_path):
         ("opentargets", "plugin OpenTargets,"),
         ("eve", "plugin EVE,"),
         ("phenotypes", "plugin Phenotypes,"),
-        ("gnomad_mt", "plugin gnomADMt,"),
         ("riboseqorfs", "plugin RiboseqORFs,"),
     ],
 )
