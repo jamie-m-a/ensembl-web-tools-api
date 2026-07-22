@@ -1087,6 +1087,11 @@
                 "desc": true,
                 "nulls": "last"
               }
+            ],
+            "item_fields": [
+              "disease",
+              "gene_id",
+              "l2g_score"
             ]
           },
           {
@@ -1114,6 +1119,10 @@
               {
                 "op": "dedup"
               }
+            ],
+            "item_fields": [
+              "gene_id",
+              "biosample"
             ]
           }
         ]
@@ -2172,6 +2181,65 @@
                 }
               }
             ]
+          }
+        ]
+      },
+      {
+        "option_id": "opentargets",
+        "heading": "OpenTargets",
+        "blocks": [
+          {
+            "kind": "list",
+            "heading": "GWAS gene associations",
+            "from": "opentargets.gwas_associations",
+            "truncate": {
+              "visible_count": 3
+            },
+            "item": {
+              "cells": [
+                {
+                  "from": "disease",
+                  "mono": true,
+                  "link": {
+                    "kind": "external",
+                    "template": "https://platform.opentargets.org/disease/{disease}"
+                  }
+                },
+                {
+                  "from": "gene_id",
+                  "mono": true,
+                  "link": {
+                    "kind": "external",
+                    "template": "https://platform.opentargets.org/target/{gene_id}"
+                  }
+                },
+                {
+                  "label": "L2G",
+                  "from": "l2g_score",
+                  "format": "num"
+                }
+              ]
+            }
+          },
+          {
+            "kind": "list",
+            "heading": "QTL gene associations",
+            "from": "opentargets.qtl_associations",
+            "item": {
+              "cells": [
+                {
+                  "from": "gene_id",
+                  "mono": true,
+                  "link": {
+                    "kind": "external",
+                    "template": "https://platform.opentargets.org/target/{gene_id}"
+                  }
+                },
+                {
+                  "from": "biosample"
+                }
+              ]
+            }
           }
         ]
       }

@@ -41,6 +41,8 @@ SPEC_DRIVEN_OPTIONS = {
     "phenotypes", "go", "mavedb",
     # sub-option rows (Show-all enumeration)
     "mutfunc",
+    # multi-cell list items under an option heading (GWAS + QTL groups)
+    "opentargets",
 }
 
 
