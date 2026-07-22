@@ -49,6 +49,8 @@ SPEC_DRIVEN_OPTIONS = {
     "opentargets",
     # conditional (`when`) + group + list-as-rows breakdown
     "clinvar",
+    # view gating (default vs Show all) + row/item link builder + count
+    "protvar",
 }
 
 

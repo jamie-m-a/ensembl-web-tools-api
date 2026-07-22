@@ -27,10 +27,19 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 # The value formats the frontend's `formatValue` understands. `text` is the
 # default (stringify as-is); the rest are the existing formatter functions.
 # `humanize_join` humanises each element of a list then joins them — ClinVar's
-# significance terms, shown as one comma-separated value.
+# significance terms, shown as one comma-separated value. `count` renders the
+# size of a list, or of a `&`-delimited string (IntAct's packed columns), and is
+# absent (drops / dashes) when the count is zero — ProtVar's Show-all pockets /
+# interfaces counts.
 RowFormat = Literal[
-    "text", "num", "humanize", "phenotype", "join", "humanize_join"
+    "text", "num", "humanize", "phenotype", "join", "humanize_join", "count"
 ]
+
+# Which view a block belongs to: the default annotation view or "Show all". A
+# block without `view` renders in both (the common case). ProtVar uses it to
+# show detailed pocket / interface rows by default but sub-option counts in Show
+# all; IntAct, its single-row default vs a breakdown block in Show all.
+BlockView = Literal["default", "show_all"]
 
 # `{field}` placeholders in a link template — the item fields interpolated into
 # the URL (e.g. ".../term/{id}").
@@ -101,6 +110,41 @@ class WhenSpec(BaseModel):
         return self.present or self.empty  # type: ignore[return-value]
 
 
+class LinkSpec(BaseModel):
+    """How to turn a value into a link.
+
+    `external` -> a plain anchor (`target=_blank`). `template` is a full URL with
+    `{field}` placeholders filled from the item's fields (e.g. a GO term or
+    MaveDB URN); `builder` names a frontend link builder for URLs that aren't a
+    simple template (ProtVar's algorithmic URL). `app_popup` -> an in-app
+    "View in" popup, which is always a named `builder` (it needs the job's genome
+    and the consequence, not just the annotation field) — e.g. the protein id.
+
+    On a `CellSpec` the link wraps that cell's value; on a `DisplayRow` or a
+    `DisplayItemSpec` it is a trailing link on the row's value (ProtVar's icon).
+    A `template` only makes sense where item fields exist to fill it (cells);
+    row/item-level links use a `builder`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["external", "app_popup"]
+    template: str | None = None
+    builder: str | None = None
+
+    @model_validator(mode="after")
+    def _template_xor_builder(self) -> "LinkSpec":
+        if bool(self.template) == bool(self.builder):
+            raise ValueError("link needs exactly one of `template` or `builder`")
+        if self.kind == "app_popup" and not self.builder:
+            raise ValueError("an app_popup link must use a `builder`")
+        return self
+
+    def template_fields(self) -> list[str]:
+        """The item field names a `template` interpolates; empty for a builder."""
+        return _TEMPLATE_FIELD.findall(self.template) if self.template else []
+
+
 class DisplayRow(BaseModel):
     """One label/value row.
 
@@ -132,6 +176,9 @@ class DisplayRow(BaseModel):
     # selected-but-empty sub-option shows a dash there; the default view still
     # drops it. Rows without one behave exactly as before.
     sub_option: SubOption | None = None
+    # A trailing link on the value (a named `builder` — ProtVar's link icon on
+    # each row). Builder links contribute no field refs.
+    link: LinkSpec | None = None
 
     @model_validator(mode="after")
     def _exactly_one_source(self) -> "DisplayRow":
@@ -141,36 +188,6 @@ class DisplayRow(BaseModel):
 
     def field_refs(self) -> list[str]:
         return [self.source] if self.source else self.compose.field_refs()
-
-
-class LinkSpec(BaseModel):
-    """How to turn a cell value into a link.
-
-    `external` -> a plain anchor (`target=_blank`). `template` is a full URL with
-    `{field}` placeholders filled from the item's fields (e.g. a GO term or
-    MaveDB URN); `builder` names a frontend link builder for URLs that aren't a
-    simple template (ProtVar's algorithmic URL). `app_popup` -> an in-app
-    "View in" popup, which is always a named `builder` (it needs the job's genome
-    and the consequence, not just the annotation field) — e.g. the protein id.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    kind: Literal["external", "app_popup"]
-    template: str | None = None
-    builder: str | None = None
-
-    @model_validator(mode="after")
-    def _template_xor_builder(self) -> "LinkSpec":
-        if bool(self.template) == bool(self.builder):
-            raise ValueError("link needs exactly one of `template` or `builder`")
-        if self.kind == "app_popup" and not self.builder:
-            raise ValueError("an app_popup link must use a `builder`")
-        return self
-
-    def template_fields(self) -> list[str]:
-        """The item field names a `template` interpolates; empty for a builder."""
-        return _TEMPLATE_FIELD.findall(self.template) if self.template else []
 
 
 class CellSpec(BaseModel):
@@ -253,6 +270,9 @@ class DisplayItemSpec(BaseModel):
 
     label: DisplayItemLabel | None = None
     cells: list[CellSpec] = Field(min_length=1)
+    # A trailing link on a label/value item's value (ProtVar's per-pocket icon).
+    # Only meaningful with `label` (the row layout); a named builder, no refs.
+    link: LinkSpec | None = None
 
     def item_field_refs(self) -> Iterator[str]:
         """Every item field this element reads, across its label and cells."""
@@ -283,6 +303,8 @@ class DisplayRowsBlock(BaseModel):
     # A data condition on top of `requires`: render this block only when the
     # named field is present / empty (ClinVar's bare vs headed shapes).
     when: WhenSpec | None = None
+    # Restrict this block to the default view or "Show all" (ProtVar / IntAct).
+    view: BlockView | None = None
     rows: list[DisplayRow]
 
 
@@ -303,6 +325,7 @@ class DisplayListBlock(BaseModel):
     heading: str | None = None
     requires: str | None = None
     when: WhenSpec | None = None
+    view: BlockView | None = None
     source: str = Field(alias="from")
     truncate: TruncateSpec | None = None
     item: DisplayItemSpec
@@ -328,6 +351,7 @@ class DisplayGroupBlock(BaseModel):
     kind: Literal["group"] = "group"
     heading: str | None = None
     when: WhenSpec | None = None
+    view: BlockView | None = None
     blocks: list["DisplayBlock"]
 
 

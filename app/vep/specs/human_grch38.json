@@ -878,6 +878,10 @@
                 "field": "raw",
                 "type": "raw"
               }
+            ],
+            "item_fields": [
+              "pocket_id",
+              "score"
             ]
           },
           {
@@ -898,6 +902,10 @@
                 "field": "raw",
                 "type": "raw"
               }
+            ],
+            "item_fields": [
+              "partner",
+              "score"
             ]
           }
         ]
@@ -2293,6 +2301,112 @@
                       "from": "count"
                     }
                   ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "protvar",
+        "heading": "ProtVar",
+        "blocks": [
+          {
+            "kind": "rows",
+            "view": "default",
+            "rows": [
+              {
+                "label": "Stability",
+                "from": "protvar.structure_stability_score",
+                "format": "num",
+                "link": {
+                  "kind": "external",
+                  "builder": "protvar"
+                }
+              }
+            ]
+          },
+          {
+            "kind": "list",
+            "view": "default",
+            "from": "protvar.pockets",
+            "item": {
+              "label": {
+                "template": "Pocket {pocket_id}"
+              },
+              "cells": [
+                {
+                  "from": "score",
+                  "format": "num"
+                }
+              ],
+              "link": {
+                "kind": "external",
+                "builder": "protvar"
+              }
+            }
+          },
+          {
+            "kind": "list",
+            "view": "default",
+            "from": "protvar.interaction_interfaces",
+            "item": {
+              "label": {
+                "template": "Interface {partner}"
+              },
+              "cells": [
+                {
+                  "from": "score",
+                  "format": "num"
+                }
+              ],
+              "link": {
+                "kind": "external",
+                "builder": "protvar"
+              }
+            }
+          },
+          {
+            "kind": "rows",
+            "view": "show_all",
+            "rows": [
+              {
+                "label": "Protein Structure Stability",
+                "from": "protvar.structure_stability_score",
+                "format": "num",
+                "sub_option": {
+                  "id": "protvar_stability",
+                  "default": true
+                },
+                "link": {
+                  "kind": "external",
+                  "builder": "protvar"
+                }
+              },
+              {
+                "label": "Protein Pockets",
+                "from": "protvar.pockets",
+                "format": "count",
+                "sub_option": {
+                  "id": "protvar_pocket",
+                  "default": true
+                },
+                "link": {
+                  "kind": "external",
+                  "builder": "protvar"
+                }
+              },
+              {
+                "label": "Protein-Protein Interaction Interface",
+                "from": "protvar.interaction_interfaces",
+                "format": "count",
+                "sub_option": {
+                  "id": "protvar_int",
+                  "default": true
+                },
+                "link": {
+                  "kind": "external",
+                  "builder": "protvar"
                 }
               }
             ]
