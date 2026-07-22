@@ -2,6 +2,7 @@
 object as defined in APISpecification"""
 
 from io import StringIO
+from typing import Iterator
 import gzip
 import itertools
 import json
@@ -413,6 +414,46 @@ def _get_filtered_results(
         or "no active filters",
     )
     return response
+
+
+def stream_filtered_vcf_text(
+    vcf_path: FilePath,
+    filters: list[results_filters.ResultsFilter],
+) -> Iterator[str]:
+    """A lazy text-line stream of the results VCF reduced to just the CSQ entries
+    (and records) that pass `filters`: every header line unchanged, then each kept
+    record rebuilt with its CSQ narrowed to the surviving entries.
+
+    The download counterpart of `_get_filtered_results` — same compile-once,
+    stream-the-file pipeline, but yielding the whole matched set as VCF text
+    rather than parsing a single page into the response model. Feeds both the
+    filtered VCF download (gzip this directly) and the filtered TSV download
+    (flatten it first).
+
+    Filters are compiled eagerly against the file's CSQ header, so an invalid
+    filter raises `results_filters.FilterError` before any streaming begins (the
+    download endpoint maps that to a 400). Memory stays bounded: the file is read
+    as a lazy line stream and survivors are yielded one at a time, never
+    collected."""
+    header_lines: list[str] = []
+    with gzip.open(vcf_path, "rt") as handle:
+        # Every '#' line is header and all precede the data records; stop at the
+        # first data line (the header is tiny — a cheap eager read for compile).
+        for line in handle:
+            if line.startswith("#"):
+                header_lines.append(line)
+            else:
+                break
+    index_map = csq_index_map_from_header(header_lines)
+    compiled = results_filters.compile_filters(filters, index_map)
+
+    def generate() -> Iterator[str]:
+        yield from header_lines
+        with gzip.open(vcf_path, "rt") as handle:
+            data_lines = (line for line in handle if not line.startswith("#"))
+            yield from results_filters.stream_filtered_lines(data_lines, compiled)
+
+    return generate()
 
 
 def _load_pinned_merged_spec(vcf_path: FilePath) -> MergedSpec | None:
