@@ -107,18 +107,6 @@
         }
       },
       {
-        "id": "gnomad_mt",
-        "order": 25,
-        "parsed_as": [],
-        "config": {
-          "emit": "plugin",
-          "name": "gnomADMt",
-          "params": {
-            "file": "{path}/gnomad.genomes.v3.1.sites.chrM.vcf.bgz"
-          }
-        }
-      },
-      {
         "id": "protvar",
         "order": 26,
         "parsed_as": [

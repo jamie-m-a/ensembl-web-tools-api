@@ -359,7 +359,7 @@ def _add_human_grch38_options(panels: list[dict]) -> None:
             {"id": "phenotypes", "label": "Phenotypes", "type": "boolean", "default": False},
         ])
 
-    # Allele frequencies: gnomAD exomes/genomes v4.1, NIH All of Us, gnomAD mito.
+    # Allele frequencies: gnomAD exomes/genomes v4.1, NIH All of Us.
     panels.append({
         "id": "allele_frequencies",
         "label": "Allele frequencies",
@@ -367,7 +367,6 @@ def _add_human_grch38_options(panels: list[dict]) -> None:
             _gnomad_exomes_option(),
             _gnomad_genomes_option(),
             _allofus_option(),
-            {"id": "gnomad_mt", "label": "gnomAD mitochondrial", "type": "boolean", "default": False},
         ],
     })
 
