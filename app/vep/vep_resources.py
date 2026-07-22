@@ -41,9 +41,9 @@ from vep.models.submission_form import Dropdown, FormConfig
 from vep.models.upload_vcf_files import Streamer, MaxBodySizeException
 from vep.utils.nextflow import launch_workflow, get_workflow_status
 from vep.utils.dump_ini import dump_config_ini
-from vep.utils.vcf_results import get_results_from_path
-from vep.utils.tsv_export import stream_vep_tsv, gzip_text_stream
-from vep.utils.results_filters import parse_filters, FilterError
+from vep.utils.vcf_results import get_results_from_path, stream_filtered_vcf_text
+from vep.utils.tsv_export import stream_vep_tsv, flatten_vcf_lines, gzip_text_stream
+from vep.utils.results_filters import parse_filters, FilterError, ResultsFilter
 from vep.utils.web_metadata import get_genome_metadata
 from vep.utils.spec_loader import (
     resolve_merged_spec,
@@ -196,10 +196,40 @@ def get_vep_results_file_path(input_vcf_file: str) -> FilePath:
 
 
 # Build the download response for a resolved results VCF path. `format=vcf`
-# (default) serves the raw VCF; `format=tsv` streams the flattened, fully
-# expanded "columnar" table (spreadsheet-friendly), gzip-compressed.
-def _results_download_response(results_path: FilePath, output_format: str):
-    if output_format in ("tsv", "txt", "table"):
+# (default) serves the VCF; `format=tsv` streams the flattened, fully expanded
+# "columnar" table (spreadsheet-friendly), gzip-compressed. When `active_filters`
+# is non-empty the download is restricted to the CSQ entries (and records) passing
+# those filters — the same filters the results view applies — rather than the
+# whole file. Compiling the filters here (via stream_filtered_vcf_text) can raise
+# FilterError for an invalid filter; the caller maps that to a 400.
+def _results_download_response(
+    results_path: FilePath,
+    output_format: str,
+    active_filters: list[ResultsFilter] | None = None,
+):
+    is_table = output_format in ("tsv", "txt", "table")
+    if active_filters:
+        # A lazy stream of the results VCF narrowed to just the matching rows.
+        vcf_text = stream_filtered_vcf_text(results_path, active_filters)
+        if is_table:
+            base = re.sub(r"\.vcf(\.gz)?$", "", results_path.name) or "vep_results"
+            return StreamingResponse(
+                gzip_text_stream(flatten_vcf_lines(vcf_text)),
+                media_type="application/gzip",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{base}.txt.gz"'
+                },
+            )
+        # Filtered VCF: gzip the rebuilt VCF text (the unfiltered path can serve
+        # the file straight from disk, but a filtered VCF has to be assembled).
+        return StreamingResponse(
+            gzip_text_stream(vcf_text),
+            media_type="application/gzip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{results_path.name}"'
+            },
+        )
+    if is_table:
         base = re.sub(r"\.vcf(\.gz)?$", "", results_path.name) or "vep_results"
         # Compress the table before it's sent (plain gzip, for compatibility).
         # It's served as the payload (application/gzip, .txt.gz filename), not via
@@ -219,14 +249,30 @@ def _results_download_response(results_path: FilePath, output_format: str):
 
 @router.get("/submissions/{submission_id}/download", name="download_results")
 async def download_results(
-    request: Request, submission_id: str, format: str = "vcf"
+    request: Request,
+    submission_id: str,
+    format: str = "vcf",
+    filters: str | None = None,
 ):
+    # Optional server-side filtering: `filters` is the same JSON query-builder
+    # payload the results view sends to /results. When present, the download is
+    # restricted to the rows passing those filters. Malformed input is a client
+    # error (400), not a 500.
+    try:
+        active_filters = parse_filters(filters)
+    except FilterError as exc:
+        return JSONResponse(
+            content={"details": f"Invalid filters: {exc}"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
     try:
         # Temporary local-results mode: serve the VEP output VCF on disk directly,
         # bypassing the Seqera status lookup. Enabled by setting LOCAL_RESULTS_VCF
         # (the same file the results view parses). Discrete and easily removed.
         if LOCAL_RESULTS_VCF:
-            return _results_download_response(FilePath(LOCAL_RESULTS_VCF), format)
+            return _results_download_response(
+                FilePath(LOCAL_RESULTS_VCF), format, active_filters
+            )
         workflow_status = await get_workflow_status(submission_id)
         submission_status = PipelineStatus(
             submission_id=submission_id, status=workflow_status
@@ -235,7 +281,9 @@ async def download_results(
             input_vcf_file = workflow_status["workflow"]["params"]["input"]
             results_file_path = get_vep_results_file_path(input_vcf_file)
             if results_file_path.exists():
-                return _results_download_response(results_file_path, format)
+                return _results_download_response(
+                    results_file_path, format, active_filters
+                )
             else:
                 response_msg = {
                     "details": f"A submission with id {submission_id} succeeded but could not find output file",
@@ -251,6 +299,13 @@ async def download_results(
                 content=response_msg, status_code=status.HTTP_404_NOT_FOUND
             )
 
+    except FilterError as exc:
+        # Compiling the filters against the file's CSQ header failed (e.g. a filter
+        # references a column this output doesn't carry) — a client error.
+        return JSONResponse(
+            content={"details": f"Invalid filters: {exc}"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
     except HTTPError as e:
         if e.response.status_code in [403, 400]:
 

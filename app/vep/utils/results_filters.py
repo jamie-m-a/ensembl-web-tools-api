@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Iterator
 
 from pydantic import BaseModel
 
@@ -558,3 +558,19 @@ def apply_filter_pipeline(
     the whole match set in memory."""
     outcome = filter_records(data_lines, compiled)
     return outcome.page, outcome.stats
+
+
+def stream_filtered_lines(
+    data_lines: Iterable[str], compiled: list[CompiledFilter]
+) -> Iterator[str]:
+    """Lazily yield every kept (rebuilt) VCF data line in order — its CSQ narrowed
+    to the entries surviving all filters — dropping records with no survivor.
+
+    The streaming counterpart to `apply_filter_pipeline`: it accumulates nothing
+    and tallies no stats, yielding each survivor as it is found, so a filtered
+    download stays bounded in memory no matter how many records match."""
+    discard = [0] * len(compiled)
+    for line in data_lines:
+        survivor = _evaluate_record(line, compiled, discard)
+        if survivor is not None:
+            yield _rebuild_line(*survivor)
