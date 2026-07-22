@@ -38,7 +38,7 @@ SPEC_DRIVEN_OPTIONS = {
     "hgvs", "hgvsg", "spdi", "alphamissense", "revel", "cadd", "spliceai",
     "loeuf", "dosage_sensitivity", "utrannotator", "riboseqorfs", "eve",
     # `list`-block options (repeat + truncate, migrated off frontend overrides)
-    "phenotypes", "go",
+    "phenotypes", "go", "mavedb",
 }
 
 

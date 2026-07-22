@@ -815,7 +815,11 @@
             ],
             "drop_when": {
               "all_null": true
-            }
+            },
+            "item_fields": [
+              "score",
+              "urn"
+            ]
           }
         ]
       },
@@ -2080,6 +2084,44 @@
                 },
                 {
                   "from": "name"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "option_id": "mavedb",
+        "heading": "MaveDB",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "key": "variant",
+                "label": "Variant",
+                "from": "mavedb.protein_variant"
+              }
+            ]
+          },
+          {
+            "kind": "list",
+            "from": "mavedb.assays",
+            "truncate": {
+              "visible_count": 3
+            },
+            "item": {
+              "cells": [
+                {
+                  "from": "urn",
+                  "link": {
+                    "kind": "external",
+                    "template": "https://www.mavedb.org/score-sets/{urn}"
+                  }
+                },
+                {
+                  "from": "score",
+                  "format": "num"
                 }
               ]
             }

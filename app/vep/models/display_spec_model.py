@@ -228,6 +228,12 @@ class DisplayOptionSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     option_id: str
+    # An option-level heading wrapping *all* the option's blocks in one
+    # `OptionBlock`, shown whenever the option renders anything. For an option
+    # whose output spans more than one block under a single heading — MaveDB's
+    # "Variant" row plus its assays list — where a per-block heading can't reach
+    # across blocks. Distinct from a block's own `heading` (use one or the other).
+    heading: str | None = None
     blocks: list[DisplayBlock]
 
     def scalar_field_refs(self) -> Iterator[tuple[str, str]]:
