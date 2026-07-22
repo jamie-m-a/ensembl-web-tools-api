@@ -19,13 +19,18 @@ interactive or derived (ClinVar, OpenTargets, ProtVar, ...) are deliberately
 *not* expressible — they stay as frontend overrides.
 """
 
-from typing import Iterator, Literal
+import re
+from typing import Annotated, Iterator, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # The value formats the frontend's `formatValue` understands. `text` is the
 # default (stringify as-is); the rest are the existing formatter functions.
 RowFormat = Literal["text", "num", "humanize", "phenotype", "join"]
+
+# `{field}` placeholders in a link template — the item fields interpolated into
+# the URL (e.g. ".../term/{id}").
+_TEMPLATE_FIELD = re.compile(r"\{(\w+)\}")
 
 
 class ComposeSpec(BaseModel):
@@ -45,6 +50,24 @@ class ComposeSpec(BaseModel):
 
     def field_refs(self) -> list[str]:
         return [self.classification, self.score]
+
+
+class SubOption(BaseModel):
+    """The form sub-option a row's value comes from.
+
+    Lets "Show all" list a sub-option that ran but produced nothing as a dash
+    (the default view drops the empty row instead). `default` mirrors the form
+    default: a sub-option left at a default-on value isn't written to the
+    submitted parameters, so the frontend treats "absent" as its default (see
+    `subOptionRan`). The id is a form option id — the hand-synced seam with
+    `form_panels`, like the top-level `option_id`; not a `plugin.field` ref, so
+    the display↔parsing check does not touch it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    default: bool = False
 
 
 class DisplayRow(BaseModel):
@@ -74,6 +97,10 @@ class DisplayRow(BaseModel):
     # Help text for a (?) button beside the label. The text is data; the button
     # is a frontend primitive.
     help: str | None = None
+    # The sub-option this row's value comes from. Only affects "Show all": a
+    # selected-but-empty sub-option shows a dash there; the default view still
+    # drops it. Rows without one behave exactly as before.
+    sub_option: SubOption | None = None
 
     @model_validator(mode="after")
     def _exactly_one_source(self) -> "DisplayRow":
@@ -85,8 +112,82 @@ class DisplayRow(BaseModel):
         return [self.source] if self.source else self.compose.field_refs()
 
 
-class DisplayBlock(BaseModel):
-    """A run of rows, optionally under the option's own sub-heading.
+class LinkSpec(BaseModel):
+    """How to turn a cell value into a link.
+
+    `external` -> a plain anchor (`target=_blank`). `template` is a full URL with
+    `{field}` placeholders filled from the item's fields (e.g. a GO term or
+    MaveDB URN); `builder` names a frontend link builder for URLs that aren't a
+    simple template (ProtVar's algorithmic URL). `app_popup` -> an in-app
+    "View in" popup, which is always a named `builder` (it needs the job's genome
+    and the consequence, not just the annotation field) — e.g. the protein id.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["external", "app_popup"]
+    template: str | None = None
+    builder: str | None = None
+
+    @model_validator(mode="after")
+    def _template_xor_builder(self) -> "LinkSpec":
+        if bool(self.template) == bool(self.builder):
+            raise ValueError("link needs exactly one of `template` or `builder`")
+        if self.kind == "app_popup" and not self.builder:
+            raise ValueError("an app_popup link must use a `builder`")
+        return self
+
+    def template_fields(self) -> list[str]:
+        """The item field names a `template` interpolates; empty for a builder."""
+        return _TEMPLATE_FIELD.findall(self.template) if self.template else []
+
+
+class CellSpec(BaseModel):
+    """One cell of a repeated item (see `DisplayListBlock`).
+
+    `from` is a field *of the list element* (not `plugin.field`) — e.g. `score`
+    on a MaveDB assay. Omit it for a scalar list whose elements are the value
+    themselves (phenotype strings). `link` makes the cell an anchor.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    label: str | None = None
+    # `from` is a Python keyword, hence the alias.
+    source: str | None = Field(default=None, alias="from")
+    format: RowFormat | None = None
+    mono: bool = False
+    link: LinkSpec | None = None
+
+    def item_field_refs(self) -> Iterator[str]:
+        """Every item field this cell reads: its `from` plus any `{field}`
+        placeholders in a link template. Builder links contribute nothing (the
+        frontend builder owns its inputs)."""
+        if self.source:
+            yield self.source
+        if self.link:
+            yield from self.link.template_fields()
+
+
+class TruncateSpec(BaseModel):
+    """Show the first `visible_count` items with the rest behind a show-more
+    toggle (the frontend's `TruncatedList`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    visible_count: int = Field(gt=0)
+
+
+class DisplayItemSpec(BaseModel):
+    """How one element of a list renders: a row of one or more cells."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cells: list[CellSpec] = Field(min_length=1)
+
+
+class DisplayRowsBlock(BaseModel):
+    """A run of fixed rows, optionally under the option's own sub-heading.
 
     `heading` present -> the frontend's `renderRowBlock` (an `OptionBlock` whose
     heading only appears if a row survived); absent -> `renderRowGroup` (the
@@ -106,6 +207,39 @@ class DisplayBlock(BaseModel):
     rows: list[DisplayRow]
 
 
+class DisplayListBlock(BaseModel):
+    """A variable-length list: one item (a row of cells) per element of a
+    list-valued field, optionally truncated. Covers the options whose output is
+    a repeat rather than a fixed set of rows — phenotypes, GO terms, MaveDB
+    assays, ...
+
+    `from` is the `<plugin>.<listField>` the elements come from; that field must
+    be a parse-plugin target declaring the element's `item_fields`, which the
+    cells' `from`/link templates reference.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    kind: Literal["list"]
+    heading: str | None = None
+    requires: str | None = None
+    source: str = Field(alias="from")
+    truncate: TruncateSpec | None = None
+    item: DisplayItemSpec
+
+    def list_ref(self) -> tuple[str, str]:
+        """The `(plugin, listField)` this block iterates."""
+        plugin, _, field = self.source.partition(".")
+        return plugin, field
+
+
+# A block is either a fixed set of rows or a repeated list, discriminated on
+# `kind`.
+DisplayBlock = Annotated[
+    Union[DisplayRowsBlock, DisplayListBlock], Field(discriminator="kind")
+]
+
+
 class DisplayOptionSpec(BaseModel):
     """How one form option renders: a sequence of blocks.
 
@@ -116,17 +250,25 @@ class DisplayOptionSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     option_id: str
+    # An option-level heading wrapping *all* the option's blocks in one
+    # `OptionBlock`, shown whenever the option renders anything. For an option
+    # whose output spans more than one block under a single heading — MaveDB's
+    # "Variant" row plus its assays list — where a per-block heading can't reach
+    # across blocks. Distinct from a block's own `heading` (use one or the other).
+    heading: str | None = None
     blocks: list[DisplayBlock]
 
-    def field_refs(self) -> Iterator[tuple[str, str]]:
-        """Every `<plugin>.<field>` this option reads, split into its two parts.
+    def scalar_field_refs(self) -> Iterator[tuple[str, str]]:
+        """Every `<plugin>.<field>` a fixed row reads, split into its two parts.
         A reference that is not `plugin.field` shaped yields an empty field name,
-        which the consistency check reports."""
+        which the consistency check reports. List blocks are validated separately
+        (their cell refs are item-relative, not `plugin.field`)."""
         for block in self.blocks:
-            for row in block.rows:
-                for ref in row.field_refs():
-                    plugin, _, field = ref.partition(".")
-                    yield plugin, field
+            if isinstance(block, DisplayRowsBlock):
+                for row in block.rows:
+                    for ref in row.field_refs():
+                        plugin, _, field = ref.partition(".")
+                        yield plugin, field
 
 
 class DisplaySpec(BaseModel):

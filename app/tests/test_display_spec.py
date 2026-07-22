@@ -19,6 +19,7 @@ import json
 import pytest
 from pydantic import FilePath, ValidationError
 
+from app.vep.models.display_spec_model import DisplayListBlock
 from app.vep.models.merged_spec_model import MergedSpec
 from app.vep.utils.spec_loader import (
     SPEC_SIDECAR_FILE,
@@ -36,6 +37,10 @@ SPEC = load_merged_spec("human_grch38")
 SPEC_DRIVEN_OPTIONS = {
     "hgvs", "hgvsg", "spdi", "alphamissense", "revel", "cadd", "spliceai",
     "loeuf", "dosage_sensitivity", "utrannotator", "riboseqorfs", "eve",
+    # `list`-block options (repeat + truncate, migrated off frontend overrides)
+    "phenotypes", "go", "mavedb",
+    # sub-option rows (Show-all enumeration)
+    "mutfunc",
 }
 
 
@@ -86,14 +91,28 @@ def test_bundled_spec_has_a_display_section_for_the_moved_options():
 
 def test_bundled_display_references_resolve():
     """Belt and braces: load_merged_spec already runs the check, but state the
-    invariant the check enforces."""
-    fields = {
-        plugin.plugin: {target.field for target in plugin.targets}
+    invariant — every display ref (fixed-row `plugin.field`, a list block's
+    `plugin.listField`, and each list cell's item field) resolves."""
+    targets = {
+        plugin.plugin: {t.field: t for t in plugin.targets}
         for plugin in SPEC.parse_plugins()
     }
     for option in SPEC.display.options:
-        for plugin, field in option.field_refs():
-            assert field in fields[plugin], (option.option_id, plugin, field)
+        for plugin, field in option.scalar_field_refs():
+            assert field in targets[plugin], (option.option_id, plugin, field)
+        for block in option.blocks:
+            if not isinstance(block, DisplayListBlock):
+                continue
+            plugin, list_field = block.list_ref()
+            assert list_field in targets[plugin], (
+                option.option_id, plugin, list_field
+            )
+            item_fields = set(targets[plugin][list_field].item_fields or [])
+            for cell in block.item.cells:
+                for item_field in cell.item_field_refs():
+                    assert item_field in item_fields, (
+                        option.option_id, plugin, list_field, item_field
+                    )
 
 
 # --- the static reference check ---------------------------------------------
