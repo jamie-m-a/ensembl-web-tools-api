@@ -19,7 +19,11 @@ import json
 import pytest
 from pydantic import FilePath, ValidationError
 
-from app.vep.models.display_spec_model import DisplayListBlock
+from app.vep.models.display_spec_model import (
+    DisplayGroupBlock,
+    DisplayListBlock,
+    DisplayRowsBlock,
+)
 from app.vep.models.merged_spec_model import MergedSpec
 from app.vep.utils.spec_loader import (
     SPEC_SIDECAR_FILE,
@@ -43,6 +47,8 @@ SPEC_DRIVEN_OPTIONS = {
     "mutfunc",
     # multi-cell list items under an option heading (GWAS + QTL groups)
     "opentargets",
+    # conditional (`when`) + group + list-as-rows breakdown
+    "clinvar",
 }
 
 
@@ -93,28 +99,40 @@ def test_bundled_spec_has_a_display_section_for_the_moved_options():
 
 def test_bundled_display_references_resolve():
     """Belt and braces: load_merged_spec already runs the check, but state the
-    invariant — every display ref (fixed-row `plugin.field`, a list block's
-    `plugin.listField`, and each list cell's item field) resolves."""
+    invariant — every display ref resolves: a fixed row's `plugin.field`, a
+    block's `when` field, a list block's `plugin.listField`, and each list
+    element's item fields (label + cells). Groups are flattened by iter_blocks."""
     targets = {
         plugin.plugin: {t.field: t for t in plugin.targets}
         for plugin in SPEC.parse_plugins()
     }
+
+    def resolves(ref: str) -> bool:
+        plugin, _, field = ref.partition(".")
+        return plugin in targets and field in targets[plugin]
+
     for option in SPEC.display.options:
-        for plugin, field in option.scalar_field_refs():
-            assert field in targets[plugin], (option.option_id, plugin, field)
-        for block in option.blocks:
-            if not isinstance(block, DisplayListBlock):
+        for block in option.iter_blocks():
+            if block.when:
+                assert resolves(block.when.field_ref), (
+                    option.option_id, block.when
+                )
+            if isinstance(block, DisplayGroupBlock):
                 continue
-            plugin, list_field = block.list_ref()
-            assert list_field in targets[plugin], (
-                option.option_id, plugin, list_field
-            )
-            item_fields = set(targets[plugin][list_field].item_fields or [])
-            for cell in block.item.cells:
-                for item_field in cell.item_field_refs():
+            if isinstance(block, DisplayListBlock):
+                plugin, list_field = block.list_ref()
+                assert list_field in targets[plugin], (
+                    option.option_id, plugin, list_field
+                )
+                item_fields = set(targets[plugin][list_field].item_fields or [])
+                for item_field in block.item.item_field_refs():
                     assert item_field in item_fields, (
                         option.option_id, plugin, list_field, item_field
                     )
+            elif isinstance(block, DisplayRowsBlock):
+                for row in block.rows:
+                    for ref in row.field_refs():
+                        assert resolves(ref), (option.option_id, ref)
 
 
 # --- the static reference check ---------------------------------------------
@@ -156,6 +174,84 @@ def test_compose_field_references_are_checked_too():
 def test_unknown_requires_plugin_raises():
     doc = _doc(_display({"label": "REVEL", "from": "revel.score"}, requires="ghost"))
     with pytest.raises(ValidationError, match="requires unknown parse plugin 'ghost'"):
+        MergedSpec.model_validate(doc)
+
+
+def test_when_field_reference_is_checked():
+    """A block's `when` reads a field, so a bad ref there fails like a row's."""
+    doc = _doc(
+        _display(
+            {"label": "REVEL", "from": "revel.score"},
+            when={"present": "revel.nope"},
+        )
+    )
+    with pytest.raises(ValidationError, match="'nope'"):
+        MergedSpec.model_validate(doc)
+
+
+def test_group_subblock_references_are_checked():
+    """The check flattens groups, so a bad ref inside a group's block fails."""
+    doc = _doc(
+        {
+            "options": [
+                {
+                    "option_id": "revel",
+                    "blocks": [
+                        {
+                            "kind": "group",
+                            "heading": "Group",
+                            "blocks": [
+                                {
+                                    "kind": "rows",
+                                    "rows": [{"label": "R", "from": "revel.nope"}],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    with pytest.raises(ValidationError, match="'nope'"):
+        MergedSpec.model_validate(doc)
+
+
+def test_when_needs_exactly_one_of_present_or_empty():
+    doc = _doc(
+        _display(
+            {"label": "REVEL", "from": "revel.score"},
+            when={"present": "revel.score", "empty": "revel.score"},
+        )
+    )
+    with pytest.raises(
+        ValidationError, match="exactly one of `present` or `empty`"
+    ):
+        MergedSpec.model_validate(doc)
+
+
+def test_item_label_needs_exactly_one_of_from_or_template():
+    doc = _doc(
+        {
+            "options": [
+                {
+                    "option_id": "revel",
+                    "blocks": [
+                        {
+                            "kind": "list",
+                            "from": "revel.score",
+                            "item": {
+                                "label": {"from": "x", "template": "y"},
+                                "cells": [{"from": "x"}],
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    with pytest.raises(
+        ValidationError, match="exactly one of `from` or `template`"
+    ):
         MergedSpec.model_validate(doc)
 
 

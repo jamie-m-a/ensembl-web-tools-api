@@ -30,8 +30,10 @@ from vep.models.config_spec_model import (
     PluginEmitter,
 )
 from vep.models.display_spec_model import (
+    DisplayGroupBlock,
     DisplayListBlock,
     DisplayPayload,
+    DisplayRowsBlock,
     DisplaySpec,
 )
 from vep.models.parsing_spec_model import ParsingSpec, PluginSpec
@@ -187,9 +189,11 @@ class MergedSpec(BaseModel):
     def _check_display_refs(self) -> list[str]:
         """Display↔parsing consistency: resolve every field a display option
         reads against the parsing plugins and their declared targets — a fixed
-        row's `<plugin>.<field>`, a list block's `<plugin>.<listField>`, and each
-        list cell's item-relative field against that list target's `item_fields`
-        — plus every block's `requires`."""
+        row's `<plugin>.<field>`, a block's `when` field, a list block's
+        `<plugin>.<listField>`, and each list element's item-relative refs (label
+        and cells) against that list target's `item_fields` — plus every block's
+        `requires`. Groups are flattened by `iter_blocks`, so their sub-blocks and
+        their own `when` are checked the same way."""
         if self.display is None:
             return []
 
@@ -212,38 +216,50 @@ class MergedSpec(BaseModel):
                 )
             return None
 
+        def scalar_ref_error(option_id: str, ref: str) -> str | None:
+            plugin, _, field = ref.partition(".")
+            return field_error(option_id, plugin, field)
+
         for option in self.display.options:
             oid = option.option_id
-            for block in option.blocks:
+            for block in option.iter_blocks():
+                # `when` reads a scalar `<plugin>.<field>`, like a row's `from`.
+                if block.when:
+                    err = scalar_ref_error(oid, block.when.field_ref)
+                    if err:
+                        errors.append(err)
+                # A group only carries `when`; its children are visited too.
+                if isinstance(block, DisplayGroupBlock):
+                    continue
                 if block.requires and block.requires not in targets_by_plugin:
                     errors.append(
                         f"display option {oid!r} requires unknown parse plugin "
                         f"{block.requires!r}"
                     )
-                if not isinstance(block, DisplayListBlock):
-                    continue
-                # The list field itself must be a target; then each cell's
-                # item-relative refs must be in that target's item_fields.
-                plugin, list_field = block.list_ref()
-                err = field_error(oid, plugin, list_field)
-                if err:
-                    errors.append(err)
-                    continue
-                item_fields = set(
-                    targets_by_plugin[plugin][list_field].item_fields or []
-                )
-                for cell in block.item.cells:
-                    for item_field in cell.item_field_refs():
+                if isinstance(block, DisplayListBlock):
+                    # The list field itself must be a target; then each element's
+                    # item-relative refs must be in that target's item_fields.
+                    plugin, list_field = block.list_ref()
+                    err = field_error(oid, plugin, list_field)
+                    if err:
+                        errors.append(err)
+                        continue
+                    item_fields = set(
+                        targets_by_plugin[plugin][list_field].item_fields or []
+                    )
+                    for item_field in block.item.item_field_refs():
                         if item_field not in item_fields:
                             errors.append(
                                 f"display option {oid!r} list "
                                 f"{plugin}.{list_field} references item field "
                                 f"{item_field!r} not in its target's item_fields"
                             )
-            for plugin, field in option.scalar_field_refs():
-                err = field_error(oid, plugin, field)
-                if err:
-                    errors.append(err)
+                elif isinstance(block, DisplayRowsBlock):
+                    for row in block.rows:
+                        for ref in row.field_refs():
+                            err = scalar_ref_error(oid, ref)
+                            if err:
+                                errors.append(err)
         return errors
 
     def _check_custom_columns(

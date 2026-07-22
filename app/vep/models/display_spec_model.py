@@ -26,7 +26,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # The value formats the frontend's `formatValue` understands. `text` is the
 # default (stringify as-is); the rest are the existing formatter functions.
-RowFormat = Literal["text", "num", "humanize", "phenotype", "join"]
+# `humanize_join` humanises each element of a list then joins them — ClinVar's
+# significance terms, shown as one comma-separated value.
+RowFormat = Literal[
+    "text", "num", "humanize", "phenotype", "join", "humanize_join"
+]
 
 # `{field}` placeholders in a link template — the item fields interpolated into
 # the URL (e.g. ".../term/{id}").
@@ -68,6 +72,33 @@ class SubOption(BaseModel):
 
     id: str
     default: bool = False
+
+
+class WhenSpec(BaseModel):
+    """A condition gating whether a block renders, tested against one field.
+
+    `present` -> render only when the field has content; `empty` -> only when it
+    is absent (null / '' / empty list). ClinVar uses it to flip between a bare
+    "Clinical significance" row (no conflicting breakdown) and a headed block
+    (breakdown present). The field is a `<plugin>.<field>` reference like a row's
+    `from`, resolved against the parsing spec at load like the rest.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    present: str | None = None
+    empty: str | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> "WhenSpec":
+        if bool(self.present) == bool(self.empty):
+            raise ValueError("when needs exactly one of `present` or `empty`")
+        return self
+
+    @property
+    def field_ref(self) -> str:
+        # exactly one is set (validated above)
+        return self.present or self.empty  # type: ignore[return-value]
 
 
 class DisplayRow(BaseModel):
@@ -178,12 +209,57 @@ class TruncateSpec(BaseModel):
     visible_count: int = Field(gt=0)
 
 
+class DisplayItemLabel(BaseModel):
+    """The label of a list element rendered as a label/value row (see
+    `DisplayItemSpec.label`).
+
+    `from` reads one item field (ClinVar's per-class significance); `template`
+    interpolates item fields into text ("Pocket {pocket_id}"). `format` applies
+    to a `from` value (e.g. humanize).
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    source: str | None = Field(default=None, alias="from")
+    template: str | None = None
+    format: RowFormat | None = None
+
+    @model_validator(mode="after")
+    def _source_xor_template(self) -> "DisplayItemLabel":
+        if bool(self.source) == bool(self.template):
+            raise ValueError(
+                "item label needs exactly one of `from` or `template`"
+            )
+        return self
+
+    def item_field_refs(self) -> Iterator[str]:
+        """The item fields this label reads: its `from`, or the `{field}`
+        placeholders in its `template`."""
+        if self.source:
+            yield self.source
+        if self.template:
+            yield from _TEMPLATE_FIELD.findall(self.template)
+
+
 class DisplayItemSpec(BaseModel):
-    """How one element of a list renders: a row of one or more cells."""
+    """How one element of a list renders.
+
+    Without `label`, a row of one or more inline cells (a GO id + name). With
+    `label`, a label/value row instead: `label` is the row's label and the
+    `cells` render as its value — ClinVar's per-class counts, ProtVar's pockets.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
+    label: DisplayItemLabel | None = None
     cells: list[CellSpec] = Field(min_length=1)
+
+    def item_field_refs(self) -> Iterator[str]:
+        """Every item field this element reads, across its label and cells."""
+        if self.label:
+            yield from self.label.item_field_refs()
+        for cell in self.cells:
+            yield from cell.item_field_refs()
 
 
 class DisplayRowsBlock(BaseModel):
@@ -204,6 +280,9 @@ class DisplayRowsBlock(BaseModel):
     kind: Literal["rows"] = "rows"
     heading: str | None = None
     requires: str | None = None
+    # A data condition on top of `requires`: render this block only when the
+    # named field is present / empty (ClinVar's bare vs headed shapes).
+    when: WhenSpec | None = None
     rows: list[DisplayRow]
 
 
@@ -223,6 +302,7 @@ class DisplayListBlock(BaseModel):
     kind: Literal["list"]
     heading: str | None = None
     requires: str | None = None
+    when: WhenSpec | None = None
     source: str = Field(alias="from")
     truncate: TruncateSpec | None = None
     item: DisplayItemSpec
@@ -233,11 +313,33 @@ class DisplayListBlock(BaseModel):
         return plugin, field
 
 
-# A block is either a fixed set of rows or a repeated list, discriminated on
-# `kind`.
+class DisplayGroupBlock(BaseModel):
+    """A run of sub-blocks under one optional heading, gated as a whole by `when`.
+
+    Lets a heading span more than one block conditionally: ClinVar's conflicting
+    case is a "Classification" row plus a per-class breakdown list under one
+    "Clinical significance" heading, shown only when the breakdown is present.
+    Distinct from `DisplayOptionSpec.heading`, which spans *every* block of the
+    option unconditionally.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["group"] = "group"
+    heading: str | None = None
+    when: WhenSpec | None = None
+    blocks: list["DisplayBlock"]
+
+
+# A block is a fixed set of rows, a repeated list, or a group of sub-blocks,
+# discriminated on `kind`.
 DisplayBlock = Annotated[
-    Union[DisplayRowsBlock, DisplayListBlock], Field(discriminator="kind")
+    Union[DisplayRowsBlock, DisplayListBlock, DisplayGroupBlock],
+    Field(discriminator="kind"),
 ]
+
+# `DisplayGroupBlock.blocks` refers to the union defined just above it.
+DisplayGroupBlock.model_rebuild()
 
 
 class DisplayOptionSpec(BaseModel):
@@ -258,17 +360,18 @@ class DisplayOptionSpec(BaseModel):
     heading: str | None = None
     blocks: list[DisplayBlock]
 
-    def scalar_field_refs(self) -> Iterator[tuple[str, str]]:
-        """Every `<plugin>.<field>` a fixed row reads, split into its two parts.
-        A reference that is not `plugin.field` shaped yields an empty field name,
-        which the consistency check reports. List blocks are validated separately
-        (their cell refs are item-relative, not `plugin.field`)."""
-        for block in self.blocks:
-            if isinstance(block, DisplayRowsBlock):
-                for row in block.rows:
-                    for ref in row.field_refs():
-                        plugin, _, field = ref.partition(".")
-                        yield plugin, field
+    def iter_blocks(self) -> Iterator[DisplayBlock]:
+        """Every block in the option, groups flattened. The group block itself is
+        yielded (so its own `when` gets checked) as well as its children, so the
+        consistency check can treat the tree as a flat list of blocks."""
+
+        def walk(blocks: list[DisplayBlock]) -> Iterator[DisplayBlock]:
+            for block in blocks:
+                yield block
+                if isinstance(block, DisplayGroupBlock):
+                    yield from walk(block.blocks)
+
+        yield from walk(self.blocks)
 
 
 class DisplaySpec(BaseModel):
