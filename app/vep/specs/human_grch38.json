@@ -42,7 +42,9 @@
       {
         "id": "protein",
         "order": 13,
-        "parsed_as": [],
+        "parsed_as": [
+          "protein"
+        ],
         "config": {
           "emit": "flag",
           "keyword": "protein"
@@ -1728,6 +1730,25 @@
         ]
       },
       {
+        "plugin": "protein",
+        "scope": "transcript",
+        "output": "protein",
+        "csq_fields": [
+          "ENSP"
+        ],
+        "require_any_output": [
+          "ensembl_protein_id"
+        ],
+        "targets": [
+          {
+            "field": "ensembl_protein_id",
+            "from": "ENSP",
+            "transform": "scalar",
+            "type": "string"
+          }
+        ]
+      },
+      {
         "plugin": "hgvsg",
         "scope": "allele",
         "output": "hgvsg",
@@ -2407,6 +2428,25 @@
                 "link": {
                   "kind": "external",
                   "builder": "protvar"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "protein",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "Protein ID",
+                "from": "protein.ensembl_protein_id",
+                "mono": true,
+                "link": {
+                  "kind": "app_popup",
+                  "builder": "protein_popup"
                 }
               }
             ]

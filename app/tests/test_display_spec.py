@@ -51,6 +51,8 @@ SPEC_DRIVEN_OPTIONS = {
     "clinvar",
     # view gating (default vs Show all) + row/item link builder + count
     "protvar",
+    # ENSP parse plugin + a "Protein ID" row with an app_popup builder link
+    "protein",
 }
 
 

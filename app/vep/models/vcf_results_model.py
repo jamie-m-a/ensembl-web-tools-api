@@ -102,8 +102,9 @@ class PredictedTranscriptConsequence(BaseModel):
     # TODO: uniprot / protein_matches / sift / polyphen are the unspecced tail
     # of the go-flat cutover — deliberately left typed for now, still to be
     # converted to plugin specs. No sample data carries their columns, so no
-    # spec could be validated for them. Everything else moved to `annotations`.
-    ensembl_protein_id: str | None = None
+    # spec could be validated for them. (ensembl_protein_id was the last of this
+    # tail to convert — it is now the `protein` parse plugin.) Everything else
+    # moved to `annotations`.
     uniprot: UniprotIds | None = None
     protein_matches: list[ProteinMatch] = []
     sift: PredictionWithScore | None = None
