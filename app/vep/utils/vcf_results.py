@@ -2,7 +2,7 @@
 object as defined in APISpecification"""
 
 from io import StringIO
-from typing import Iterator
+from typing import Iterable, Iterator
 import gzip
 import itertools
 import json
@@ -33,7 +33,7 @@ from vep.utils.spec_loader import (
 from vep.models.display_panels_model import DisplayPanel
 from vep.models.display_spec_model import DisplayPayload
 from vep.models.merged_spec_model import MergedSpec
-from vep.utils.spec_interpreter import apply_plugin_spec
+from vep.utils.spec_interpreter import apply_plugin_spec, pattern_affixes
 from vep.models.parsing_spec_model import ParsingSpec
 
 # Taken from https://github.com/Ensembl/ensembl-hypsipyle
@@ -629,17 +629,18 @@ def _with_display_panels(
     panels: list[DisplayPanel] | None,
     display: DisplayPayload | None = None,
     *,
+    spec: ParsingSpec | None = None,
     expected_columns: set[str] | None = None,
 ) -> model.VepResultsResponse:
     """Attach the pinned panels and display layout to a response built by the
     parsing path (which knows about neither). None leaves the field absent.
 
-    Also gate `available_af_sources` — which drives the allele-frequency filter's
-    availability — to the AF columns the submission actually *selected* (the
-    pinned expected columns), not merely whatever AF columns the output VCF
-    happens to carry. Their keys are CSQ column names, the same space as the
-    expected set. Without a pin (older jobs) they are left as the VCF reported
-    them.
+    Also gate the allele-frequency data to the AF columns the submission actually
+    *selected* (the pinned expected columns), not merely whatever the output VCF
+    carries — two facets of the same full-cache leak: `available_af_sources`
+    (the filter's availability) and each AF annotation's populations
+    (`_gate_af_populations`). Without a pin (older jobs) both are left as the VCF
+    reported them.
     """
     response.metadata.display_panels = panels
     response.metadata.display = display
@@ -649,7 +650,75 @@ def _with_display_panels(
             for source in response.metadata.available_af_sources
             if source.key in expected_columns
         ]
+        # AF is allele-scoped, so its annotations hang off the alt alleles.
+        _gate_af_columns(
+            (
+                allele
+                for variant in response.variants
+                for allele in variant.alternative_alleles
+            ),
+            spec,
+            expected_columns,
+        )
     return response
+
+
+def _gate_af_columns(
+    alleles: Iterable[model.AlternativeVariantAllele],
+    spec: ParsingSpec | None,
+    expected_columns: set[str],
+) -> None:
+    """Drop allele-frequency values the submission didn't select.
+
+    An AF plugin reads a `pattern_map` of per-population columns plus scalar
+    columns (the overall AF, and All of Us's max-subpopulation), matching every
+    column *present in the VCF* — a full-cache dev output carries them all, so
+    without this the served annotation shows them even when only a few were
+    selected. (Production emits only the selected columns, so it never leaks
+    there.) An AF plugin is one with a `pattern_map` target; for those, keep a
+    population only when its `f"{prefix}{key}{suffix}"` column is in the pinned
+    expected set, and null a scalar field whose source column isn't. Every non-AF
+    plugin, and the frequency envelope itself, is untouched.
+    """
+    if spec is None:
+        return
+    # plugin id -> (population gates, scalar gates), for the AF plugins only (a
+    # `pattern_map` target marks one). A population key maps to its column as
+    # `f"{prefix}{key}{suffix}"`; a scalar field maps to its `from` column.
+    gates: dict[str, tuple[list, list]] = {}
+    for plugin in spec.plugins:
+        population_gates = [
+            (target.field, *pattern_affixes(target.from_pattern))
+            for target in plugin.targets
+            if target.transform == "pattern_map" and target.from_pattern
+        ]
+        if not population_gates:
+            continue
+        scalar_gates = [
+            (target.field, target.source)
+            for target in plugin.targets
+            if target.transform == "scalar" and target.source
+        ]
+        gates[plugin.plugin] = (population_gates, scalar_gates)
+    if not gates:
+        return
+    for allele in alleles:
+        for annotation in allele.annotations:
+            plugin_gates = gates.get(annotation.plugin)
+            if plugin_gates is None:
+                continue
+            population_gates, scalar_gates = plugin_gates
+            for field, prefix, suffix in population_gates:
+                populations = annotation.data.get(field)
+                if isinstance(populations, dict):
+                    annotation.data[field] = {
+                        key: value
+                        for key, value in populations.items()
+                        if f"{prefix}{key}{suffix}" in expected_columns
+                    }
+            for field, source in scalar_gates:
+                if source not in expected_columns:
+                    annotation.data[field] = None
 
 
 def get_results_from_path(
@@ -689,6 +758,7 @@ def get_results_from_path(
             _get_filtered_results(page_size, page, vcf_path, filters, spec),
             display_panels,
             display,
+            spec=spec,
             expected_columns=expected_columns,
         )
 
@@ -710,6 +780,7 @@ def get_results_from_path(
             ),
             display_panels,
             display,
+            spec=spec,
             expected_columns=expected_columns,
         )
 
@@ -739,6 +810,7 @@ def get_results_from_path(
         get_results_from_stream(page_size, page, total, vcf_stream, spec=spec),
         display_panels,
         display,
+        spec=spec,
         expected_columns=expected_columns,
     )
 

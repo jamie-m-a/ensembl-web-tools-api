@@ -10,7 +10,7 @@ test_spec_interpreter.
 
 from app.vep.utils.spec_interpreter import apply_plugin_spec
 from app.vep.utils.spec_loader import load_merged_spec
-from app.vep.utils.vcf_results import _get_alt_allele_details
+from app.vep.utils.vcf_results import _gate_af_columns, _get_alt_allele_details
 
 SPEC = load_merged_spec("human_grch38").parsing
 
@@ -75,3 +75,56 @@ def test_no_spec_means_no_generic_annotations():
     # the envelope is unaffected by the absence of a spec
     assert allele.allele_sequence == "T"
     assert allele.predicted_molecular_consequences[0].gene_symbol == "BRCA2"
+
+
+# --- AF-population emission gate ---------------------------------------------
+# A full-cache VCF carries every ancestry; a job that selected only some AF
+# populations must still show only those. The parser's pattern_map reads every
+# column present, so the gate (in _with_display_panels) trims the served
+# annotation to the pinned expected columns.
+
+_GATE_COLUMNS = [
+    "Allele", "Feature_type", "Consequence", "Feature", "Gene", "BIOTYPE",
+    "CANONICAL", "STRAND", "SYMBOL",
+    "gnomAD_exomes_AF",
+    "gnomAD_exomes_AF_nfe", "gnomAD_exomes_AF_eas", "gnomAD_exomes_AF_afr",
+]
+_GATE_INDEX = {column: i for i, column in enumerate(_GATE_COLUMNS)}
+_GATE_ROW = "|".join([
+    "T", "Transcript", "missense_variant", "ENST001", "ENSG001", "protein_coding",
+    "YES", "1", "BRCA2",
+    "0.01", "0.02", "0.03", "0.04",
+])
+
+
+def test_af_columns_gated_to_selected_populations_only():
+    allele = _get_alt_allele_details("A", "T", [_GATE_ROW], _GATE_INDEX, SPEC)
+    gnomad = {a.plugin: a for a in allele.annotations}["gnomad_exomes"]
+    # every ancestry in the (full-cache) VCF is parsed before gating
+    assert set(gnomad.data["populations"]) == {"nfe", "eas", "afr"}
+    assert gnomad.data["overall"] == 0.01
+
+    # the submission selected only the nfe population column — not the overall
+    _gate_af_columns([allele], SPEC, {"gnomAD_exomes_AF_nfe"})
+
+    assert gnomad.data["populations"] == {"nfe": 0.02}
+    # the overall's column wasn't selected, so it is gated too (no "All" row)
+    assert gnomad.data["overall"] is None
+
+
+def test_af_columns_keeps_the_overall_when_its_column_is_selected():
+    allele = _get_alt_allele_details("A", "T", [_GATE_ROW], _GATE_INDEX, SPEC)
+    gnomad = {a.plugin: a for a in allele.annotations}["gnomad_exomes"]
+    _gate_af_columns(
+        [allele], SPEC, {"gnomAD_exomes_AF", "gnomAD_exomes_AF_eas"}
+    )
+    assert gnomad.data["overall"] == 0.01
+    assert gnomad.data["populations"] == {"eas": 0.03}
+
+
+def test_af_columns_gate_is_a_no_op_without_a_spec():
+    allele = _get_alt_allele_details("A", "T", [_GATE_ROW], _GATE_INDEX, SPEC)
+    gnomad = {a.plugin: a for a in allele.annotations}["gnomad_exomes"]
+    _gate_af_columns([allele], None, {"gnomAD_exomes_AF_nfe"})
+    assert set(gnomad.data["populations"]) == {"nfe", "eas", "afr"}
+    assert gnomad.data["overall"] == 0.01
