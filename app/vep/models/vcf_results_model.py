@@ -93,6 +93,9 @@ class PredictedTranscriptConsequence(BaseModel):
     is_mane_select: bool = False
     is_mane_plus_clinical: bool = False
     mane_select_refseq_id: str | None = None
+    # GENCODE primary (human GRCh38 only): flags the GENCODE primary transcript,
+    # from the GENCODE_PRIMARY column produced by `flag_gencode_primary`.
+    is_gencode_primary: bool = False
     # Protein & functional annotations (optional; populated when the relevant
     # VEP options/plugins were enabled for the run).
     #

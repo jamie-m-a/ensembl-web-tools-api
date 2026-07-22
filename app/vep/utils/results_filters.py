@@ -317,13 +317,18 @@ _TRANSCRIPT_GROUP_TESTS: dict[str, Callable[[list[str], dict[str, int]], bool]] 
         _entry_value(entry, "MANE_PLUS_CLINICAL", index_map)
     )
     or _entry_value(entry, "MANE", index_map) == "MANE_Plus_Clinical",
+    "gencode_primary": lambda entry, index_map: _entry_value(
+        entry, "GENCODE_PRIMARY", index_map
+    )
+    == "1",
 }
 
 
 def _compile_transcript_group(f: ResultsFilter, index_map: dict[str, int]) -> CompiledFilter | None:
     """A CSQ entry matches if it belongs to any of the selected transcript groups
-    (canonical / MANE Select / MANE Plus Clinical). Which groups are offered is a
-    frontend, species-dependent concern; unknown group ids are rejected here."""
+    (canonical / MANE Select / MANE Plus Clinical / GENCODE primary). Which groups
+    are offered is a frontend, species-dependent concern; unknown group ids are
+    rejected here."""
     _require_operator(f, OPERATOR_IN)
     if not f.values:
         return None

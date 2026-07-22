@@ -28,7 +28,7 @@ ALL_COLS = [
     # core / allele-level
     "Allele", "AF", "Consequence", "Feature", "Feature_type", "BIOTYPE",
     "CANONICAL", "SYMBOL", "Gene", "STRAND", "ENSP", "Existing_variation",
-    "MANE", "MANE_SELECT", "MANE_PLUS_CLINICAL",
+    "MANE", "MANE_SELECT", "MANE_PLUS_CLINICAL", "GENCODE_PRIMARY",
     # the unspecced typed tail
     "SIFT", "PolyPhen", "SWISSPROT", "TREMBL", "UNIPARC", "UNIPROT_ISOFORM",
     "DOMAINS",
@@ -275,6 +275,44 @@ def test_get_alt_allele_details_intergenic_surfaces_allele_level_annotations():
     assert by_plugin["hgvsg"] == {"genomic": "17:g.7676154T>A"}
     assert by_plugin["cadd"]["phred"] == 8.2
     assert result.colocated_variants == ["rs123", "rs456"]
+
+
+def test_transcript_flags_mane_gencode_primary_canonical():
+    """The transcript-level tags (canonical / MANE / GENCODE primary) are parsed
+    off their CSQ columns onto the typed consequence, independent of the spec."""
+    tagged = row_str(
+        Allele="T",
+        Consequence="missense_variant",
+        Feature="ENST00000269305.9",
+        Feature_type="Transcript",
+        BIOTYPE="protein_coding",
+        CANONICAL="YES",
+        Gene="ENSG00000141510",
+        STRAND="1",
+        MANE_SELECT="NM_000546.6",
+        GENCODE_PRIMARY="1",
+    )
+    plain = row_str(
+        Allele="T",
+        Consequence="missense_variant",
+        Feature="ENST00000000001.1",
+        Feature_type="Transcript",
+        BIOTYPE="protein_coding",
+        Gene="ENSG00000141510",
+        STRAND="1",
+    )
+
+    result = _get_alt_allele_details("C", "T", [tagged, plain], INDEX_MAP, SPEC)
+    tagged_cons, plain_cons = result.predicted_molecular_consequences
+
+    assert tagged_cons.is_canonical is True
+    assert tagged_cons.is_mane_select is True
+    assert tagged_cons.is_gencode_primary is True
+
+    # empty GENCODE_PRIMARY column -> not flagged
+    assert plain_cons.is_canonical is False
+    assert plain_cons.is_mane_select is False
+    assert plain_cons.is_gencode_primary is False
 
 
 def test_no_spec_means_no_annotations():

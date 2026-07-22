@@ -29,15 +29,26 @@ INDEX_MAP = {
     )
 }
 
-# A wider layout that also carries the canonical / MANE columns, for group tests.
+# A wider layout that also carries the canonical / MANE / GENCODE primary columns,
+# for group tests.
 GROUP_COLUMNS = (
-    "Allele Consequence Feature CANONICAL MANE_SELECT MANE_PLUS_CLINICAL".split()
+    "Allele Consequence Feature CANONICAL MANE_SELECT MANE_PLUS_CLINICAL "
+    "GENCODE_PRIMARY".split()
 )
 GROUP_INDEX_MAP = {name: i for i, name in enumerate(GROUP_COLUMNS)}
 
 
-def _group_entry(feature: str, canonical: str, mane_select: str, mane_plus: str) -> str:
-    return "|".join(["T", "missense_variant", feature, canonical, mane_select, mane_plus])
+def _group_entry(
+    feature: str,
+    canonical: str,
+    mane_select: str,
+    mane_plus: str,
+    gencode_primary: str = "",
+) -> str:
+    return "|".join(
+        ["T", "missense_variant", feature, canonical, mane_select, mane_plus,
+         gencode_primary]
+    )
 
 
 def _group_record(pos: int, entries: list[str]) -> str:
@@ -430,6 +441,25 @@ def test_transcript_group_mane_any_of():
     kept, _ = rf.apply_filter_pipeline(lines, compiled)
     assert len(kept) == 1
     assert [e[fi] for e in rf.extract_csq_entries(kept[0])] == ["ENST_A", "ENST_C"]
+
+
+def test_transcript_group_gencode_primary():
+    lines = [
+        _group_record(
+            1,
+            [
+                _group_entry("ENST_A", "", "", "", "1"),  # GENCODE primary
+                _group_entry("ENST_B", "YES", "", "", ""),  # canonical only
+            ],
+        )
+    ]
+    fi = GROUP_INDEX_MAP["Feature"]
+    compiled = rf.compile_filters(
+        [_transcript_group_filter("gencode_primary")], GROUP_INDEX_MAP
+    )
+    kept, _ = rf.apply_filter_pipeline(lines, compiled)
+    assert len(kept) == 1
+    assert [e[fi] for e in rf.extract_csq_entries(kept[0])] == ["ENST_A"]
 
 
 def test_transcript_group_rejects_unknown_group():

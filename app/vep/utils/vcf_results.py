@@ -231,6 +231,12 @@ def _get_alt_allele_details(
                 bool(mane_plus_clinical) or mane_label == "MANE_Plus_Clinical"
             )
 
+            # GENCODE primary: the GENCODE_PRIMARY column (from flag_gencode_primary,
+            # human GRCh38 only) carries "1" for the primary transcript, else empty.
+            is_gencode_primary = (
+                get_csq_value(csq_values, "GENCODE_PRIMARY", None, index_map) == "1"
+            )
+
             consequences.append(
                 model.PredictedTranscriptConsequence(
                     feature_type=model.FeatureType.transcript,
@@ -245,6 +251,8 @@ def _get_alt_allele_details(
                     is_mane_select=is_mane_select,
                     is_mane_plus_clinical=is_mane_plus_clinical,
                     mane_select_refseq_id=mane_select_refseq,
+                    # GENCODE primary
+                    is_gencode_primary=is_gencode_primary,
                     # Protein & functional annotations
                     ensembl_protein_id=get_csq_value(
                         csq_values, "ENSP", None, index_map
