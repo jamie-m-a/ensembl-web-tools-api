@@ -2452,6 +2452,105 @@
             ]
           }
         ]
+      },
+      {
+        "option_id": "intact",
+        "blocks": [
+          {
+            "kind": "rows",
+            "view": "default",
+            "when": {
+              "present": "intact.interaction_ac"
+            },
+            "rows": [
+              {
+                "label": "IntAct",
+                "from": "intact.interaction_ac",
+                "format": "count"
+              }
+            ]
+          },
+          {
+            "kind": "rows",
+            "view": "default",
+            "when": {
+              "empty": "intact.interaction_ac"
+            },
+            "rows": [
+              {
+                "label": "IntAct",
+                "from": "intact.feature_type"
+              }
+            ]
+          },
+          {
+            "kind": "rows",
+            "view": "show_all",
+            "heading": "IntAct",
+            "rows": [
+              {
+                "label": "Interactions",
+                "from": "intact.interaction_ac",
+                "format": "count",
+                "placeholder": "—"
+              },
+              {
+                "label": "Feature AC",
+                "from": "intact.feature_ac",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_feature_ac",
+                  "default": false
+                }
+              },
+              {
+                "label": "Feature short label",
+                "from": "intact.feature_short_label",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_feature_short_label",
+                  "default": false
+                }
+              },
+              {
+                "label": "Feature annotation",
+                "from": "intact.feature_annotation",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_feature_annotation",
+                  "default": false
+                }
+              },
+              {
+                "label": "Affected protein AC",
+                "from": "intact.ap_ac",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_ap_ac",
+                  "default": false
+                }
+              },
+              {
+                "label": "Interaction participants",
+                "from": "intact.interaction_participants",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_interaction_participants",
+                  "default": false
+                }
+              },
+              {
+                "label": "PubMed ID",
+                "from": "intact.pmid",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_pmid",
+                  "default": false
+                }
+              }
+            ]
+          }
+        ]
       }
     ]
   }

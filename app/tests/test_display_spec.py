@@ -53,6 +53,8 @@ SPEC_DRIVEN_OPTIONS = {
     "protvar",
     # ENSP parse plugin + a "Protein ID" row with an app_popup builder link
     "protein",
+    # default-vs-Show-all views + count + sub-option count rows (no new operator)
+    "intact",
 }
 
 
