@@ -178,6 +178,12 @@ class TargetSpec(BaseModel):
     # Build this target only when the condition holds; otherwise it comes out
     # empty (ClinVar's breakdown is only read for conflicting classifications).
     when: WhenSpec | None = None
+    # For a target whose value is a list of objects (zip/regex/chunk/...): the
+    # keys each element carries. Purely declarative — it does not change parsing;
+    # it lets the display spec's `list` blocks reference an element's fields
+    # (e.g. a MaveDB assay's `urn`/`score`) and have those refs validated at load
+    # time, the list-item analogue of the top-level `field` refs.
+    item_fields: list[str] | None = None
 
     @model_validator(mode="after")
     def _check_transform_shape(self) -> "TargetSpec":

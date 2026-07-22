@@ -224,6 +224,92 @@ def test_parse_plugin_with_no_config_is_a_soft_warning(caplog):
     assert "orphan" in caplog.text
 
 
+# --- display `list` blocks: item-field refs are checked -----------------------
+
+
+def _go_like_doc(cells):
+    """A minimal merged doc with a `go`-like list plugin (item_fields id/name)
+    and a display `list` block whose item is `cells`."""
+    plugins = [
+        {
+            "plugin": "go",
+            "scope": "transcript",
+            "output": "go_terms",
+            "csq_fields": ["GO"],
+            "targets": [
+                {
+                    "field": "go_terms",
+                    "from": "GO",
+                    "transform": "list",
+                    "item_fields": ["id", "name"],
+                }
+            ],
+        }
+    ]
+    config = [
+        {
+            "id": "go",
+            "order": 1,
+            "parsed_as": ["go"],
+            "config": {"emit": "flag", "keyword": "go"},
+        }
+    ]
+    doc = _doc(config, plugins)
+    doc["display"] = {
+        "options": [
+            {
+                "option_id": "go",
+                "blocks": [
+                    {
+                        "kind": "list",
+                        "heading": "Gene Ontology",
+                        "from": "go.go_terms",
+                        "item": {"cells": cells},
+                    }
+                ],
+            }
+        ]
+    }
+    return doc
+
+
+def test_display_list_block_valid_item_refs_load():
+    doc = _go_like_doc(
+        [
+            {"from": "id", "link": {"kind": "external", "template": "x/{id}"}},
+            {"from": "name"},
+        ]
+    )
+    MergedSpec.model_validate(doc)  # no raise
+
+
+def test_display_list_cell_unknown_item_field_raises():
+    doc = _go_like_doc([{"from": "bogus"}])
+    with pytest.raises(ValidationError, match="item field 'bogus'"):
+        MergedSpec.model_validate(doc)
+
+
+def test_display_list_link_template_unknown_item_field_raises():
+    doc = _go_like_doc(
+        [{"from": "id", "link": {"kind": "external", "template": "x/{missing}"}}]
+    )
+    with pytest.raises(ValidationError, match="item field 'missing'"):
+        MergedSpec.model_validate(doc)
+
+
+def test_display_list_unknown_list_field_raises():
+    doc = _go_like_doc([{"from": "id"}])
+    doc["display"]["options"][0]["blocks"][0]["from"] = "go.not_a_target"
+    with pytest.raises(ValidationError, match="not_a_target"):
+        MergedSpec.model_validate(doc)
+
+
+def test_bundled_display_has_list_options():
+    spec = load_merged_spec("human_grch38")
+    ids = {o.option_id for o in spec.display.options}
+    assert {"phenotypes", "go"} <= ids
+
+
 # --- expected_csq_columns (the per-job basis for the missing-field check) -----
 
 

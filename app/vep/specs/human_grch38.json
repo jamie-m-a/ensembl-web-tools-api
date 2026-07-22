@@ -1141,6 +1141,10 @@
                 },
                 "strip": true
               }
+            ],
+            "item_fields": [
+              "id",
+              "name"
             ]
           }
         ],
@@ -2032,6 +2036,53 @@
                 "from": "riboseq_orfs.impact"
               }
             ]
+          }
+        ]
+      },
+      {
+        "option_id": "phenotypes",
+        "blocks": [
+          {
+            "kind": "list",
+            "heading": "Phenotypes",
+            "from": "phenotype_data.phenotypes",
+            "truncate": {
+              "visible_count": 3
+            },
+            "item": {
+              "cells": [
+                {
+                  "format": "phenotype"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "option_id": "go",
+        "blocks": [
+          {
+            "kind": "list",
+            "heading": "Gene Ontology",
+            "from": "go.go_terms",
+            "truncate": {
+              "visible_count": 3
+            },
+            "item": {
+              "cells": [
+                {
+                  "from": "id",
+                  "link": {
+                    "kind": "external",
+                    "template": "https://amigo.geneontology.org/amigo/term/{id}"
+                  }
+                },
+                {
+                  "from": "name"
+                }
+              ]
+            }
           }
         ]
       }

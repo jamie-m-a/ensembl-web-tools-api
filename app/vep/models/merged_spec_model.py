@@ -29,7 +29,11 @@ from vep.models.config_spec_model import (
     LiteralFields,
     PluginEmitter,
 )
-from vep.models.display_spec_model import DisplayPayload, DisplaySpec
+from vep.models.display_spec_model import (
+    DisplayListBlock,
+    DisplayPayload,
+    DisplaySpec,
+)
 from vep.models.parsing_spec_model import ParsingSpec, PluginSpec
 from vep.utils.config_interpreter import build_fields
 
@@ -181,35 +185,65 @@ class MergedSpec(BaseModel):
         return self
 
     def _check_display_refs(self) -> list[str]:
-        """Display↔parsing consistency: resolve every `<plugin>.<field>` a
-        display row reads, plus every block's `requires`, against the parsing
-        plugins and their declared target fields."""
+        """Display↔parsing consistency: resolve every field a display option
+        reads against the parsing plugins and their declared targets — a fixed
+        row's `<plugin>.<field>`, a list block's `<plugin>.<listField>`, and each
+        list cell's item-relative field against that list target's `item_fields`
+        — plus every block's `requires`."""
         if self.display is None:
             return []
 
-        fields_by_plugin = {
-            plugin.plugin: {target.field for target in plugin.targets}
+        targets_by_plugin = {
+            plugin.plugin: {t.field: t for t in plugin.targets}
             for plugin in self.parsing.plugins
         }
         errors: list[str] = []
+
+        def field_error(option_id: str, plugin: str, field: str) -> str | None:
+            if plugin not in targets_by_plugin:
+                return (
+                    f"display option {option_id!r} references unknown parse "
+                    f"plugin {plugin!r}"
+                )
+            if field not in targets_by_plugin[plugin]:
+                return (
+                    f"display option {option_id!r} references field {field!r} "
+                    f"that parse plugin {plugin!r} does not produce"
+                )
+            return None
+
         for option in self.display.options:
+            oid = option.option_id
             for block in option.blocks:
-                if block.requires and block.requires not in fields_by_plugin:
+                if block.requires and block.requires not in targets_by_plugin:
                     errors.append(
-                        f"display option {option.option_id!r} requires unknown "
-                        f"parse plugin {block.requires!r}"
+                        f"display option {oid!r} requires unknown parse plugin "
+                        f"{block.requires!r}"
                     )
-            for plugin, field in option.field_refs():
-                if plugin not in fields_by_plugin:
-                    errors.append(
-                        f"display option {option.option_id!r} references unknown "
-                        f"parse plugin {plugin!r}"
-                    )
-                elif field not in fields_by_plugin[plugin]:
-                    errors.append(
-                        f"display option {option.option_id!r} references field "
-                        f"{field!r} that parse plugin {plugin!r} does not produce"
-                    )
+                if not isinstance(block, DisplayListBlock):
+                    continue
+                # The list field itself must be a target; then each cell's
+                # item-relative refs must be in that target's item_fields.
+                plugin, list_field = block.list_ref()
+                err = field_error(oid, plugin, list_field)
+                if err:
+                    errors.append(err)
+                    continue
+                item_fields = set(
+                    targets_by_plugin[plugin][list_field].item_fields or []
+                )
+                for cell in block.item.cells:
+                    for item_field in cell.item_field_refs():
+                        if item_field not in item_fields:
+                            errors.append(
+                                f"display option {oid!r} list "
+                                f"{plugin}.{list_field} references item field "
+                                f"{item_field!r} not in its target's item_fields"
+                            )
+            for plugin, field in option.scalar_field_refs():
+                err = field_error(oid, plugin, field)
+                if err:
+                    errors.append(err)
         return errors
 
     def _check_custom_columns(
