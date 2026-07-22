@@ -42,7 +42,9 @@
       {
         "id": "protein",
         "order": 13,
-        "parsed_as": [],
+        "parsed_as": [
+          "protein"
+        ],
         "config": {
           "emit": "flag",
           "keyword": "protein"
@@ -878,6 +880,10 @@
                 "field": "raw",
                 "type": "raw"
               }
+            ],
+            "item_fields": [
+              "pocket_id",
+              "score"
             ]
           },
           {
@@ -898,6 +904,10 @@
                 "field": "raw",
                 "type": "raw"
               }
+            ],
+            "item_fields": [
+              "partner",
+              "score"
             ]
           }
         ]
@@ -938,7 +948,11 @@
             "when": {
               "field": "ClinVar_CLNSIG",
               "includes": "Conflicting_classifications_of_pathogenicity"
-            }
+            },
+            "item_fields": [
+              "significance",
+              "count"
+            ]
           }
         ]
       },
@@ -1087,6 +1101,11 @@
                 "desc": true,
                 "nulls": "last"
               }
+            ],
+            "item_fields": [
+              "disease",
+              "gene_id",
+              "l2g_score"
             ]
           },
           {
@@ -1114,6 +1133,10 @@
               {
                 "op": "dedup"
               }
+            ],
+            "item_fields": [
+              "gene_id",
+              "biosample"
             ]
           }
         ]
@@ -1707,6 +1730,25 @@
         ]
       },
       {
+        "plugin": "protein",
+        "scope": "transcript",
+        "output": "protein",
+        "csq_fields": [
+          "ENSP"
+        ],
+        "require_any_output": [
+          "ensembl_protein_id"
+        ],
+        "targets": [
+          {
+            "field": "ensembl_protein_id",
+            "from": "ENSP",
+            "transform": "scalar",
+            "type": "string"
+          }
+        ]
+      },
+      {
         "plugin": "hgvsg",
         "scope": "allele",
         "output": "hgvsg",
@@ -2169,6 +2211,341 @@
                 "format": "num",
                 "sub_option": {
                   "id": "mutfunc_exp"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "opentargets",
+        "heading": "OpenTargets",
+        "blocks": [
+          {
+            "kind": "list",
+            "heading": "GWAS gene associations",
+            "from": "opentargets.gwas_associations",
+            "truncate": {
+              "visible_count": 3
+            },
+            "item": {
+              "cells": [
+                {
+                  "from": "disease",
+                  "mono": true,
+                  "link": {
+                    "kind": "external",
+                    "template": "https://platform.opentargets.org/disease/{disease}"
+                  }
+                },
+                {
+                  "from": "gene_id",
+                  "mono": true,
+                  "link": {
+                    "kind": "external",
+                    "template": "https://platform.opentargets.org/target/{gene_id}"
+                  }
+                },
+                {
+                  "label": "L2G",
+                  "from": "l2g_score",
+                  "format": "num"
+                }
+              ]
+            }
+          },
+          {
+            "kind": "list",
+            "heading": "QTL gene associations",
+            "from": "opentargets.qtl_associations",
+            "item": {
+              "cells": [
+                {
+                  "from": "gene_id",
+                  "mono": true,
+                  "link": {
+                    "kind": "external",
+                    "template": "https://platform.opentargets.org/target/{gene_id}"
+                  }
+                },
+                {
+                  "from": "biosample"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "option_id": "clinvar",
+        "blocks": [
+          {
+            "kind": "rows",
+            "when": {
+              "empty": "clinvar.conflicting_breakdown"
+            },
+            "rows": [
+              {
+                "label": "Clinical significance",
+                "from": "clinvar.significance",
+                "format": "humanize_join"
+              }
+            ]
+          },
+          {
+            "kind": "group",
+            "heading": "Clinical significance",
+            "when": {
+              "present": "clinvar.conflicting_breakdown"
+            },
+            "blocks": [
+              {
+                "kind": "rows",
+                "rows": [
+                  {
+                    "label": "Classification",
+                    "from": "clinvar.significance",
+                    "format": "humanize_join"
+                  }
+                ]
+              },
+              {
+                "kind": "list",
+                "from": "clinvar.conflicting_breakdown",
+                "item": {
+                  "label": {
+                    "from": "significance",
+                    "format": "humanize"
+                  },
+                  "cells": [
+                    {
+                      "from": "count"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "protvar",
+        "heading": "ProtVar",
+        "blocks": [
+          {
+            "kind": "rows",
+            "view": "default",
+            "rows": [
+              {
+                "label": "Stability",
+                "from": "protvar.structure_stability_score",
+                "format": "num",
+                "link": {
+                  "kind": "external",
+                  "builder": "protvar"
+                }
+              }
+            ]
+          },
+          {
+            "kind": "list",
+            "view": "default",
+            "from": "protvar.pockets",
+            "item": {
+              "label": {
+                "template": "Pocket {pocket_id}"
+              },
+              "cells": [
+                {
+                  "from": "score",
+                  "format": "num"
+                }
+              ],
+              "link": {
+                "kind": "external",
+                "builder": "protvar"
+              }
+            }
+          },
+          {
+            "kind": "list",
+            "view": "default",
+            "from": "protvar.interaction_interfaces",
+            "item": {
+              "label": {
+                "template": "Interface {partner}"
+              },
+              "cells": [
+                {
+                  "from": "score",
+                  "format": "num"
+                }
+              ],
+              "link": {
+                "kind": "external",
+                "builder": "protvar"
+              }
+            }
+          },
+          {
+            "kind": "rows",
+            "view": "show_all",
+            "rows": [
+              {
+                "label": "Protein Structure Stability",
+                "from": "protvar.structure_stability_score",
+                "format": "num",
+                "sub_option": {
+                  "id": "protvar_stability",
+                  "default": true
+                },
+                "link": {
+                  "kind": "external",
+                  "builder": "protvar"
+                }
+              },
+              {
+                "label": "Protein Pockets",
+                "from": "protvar.pockets",
+                "format": "count",
+                "sub_option": {
+                  "id": "protvar_pocket",
+                  "default": true
+                },
+                "link": {
+                  "kind": "external",
+                  "builder": "protvar"
+                }
+              },
+              {
+                "label": "Protein-Protein Interaction Interface",
+                "from": "protvar.interaction_interfaces",
+                "format": "count",
+                "sub_option": {
+                  "id": "protvar_int",
+                  "default": true
+                },
+                "link": {
+                  "kind": "external",
+                  "builder": "protvar"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "protein",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "Protein ID",
+                "from": "protein.ensembl_protein_id",
+                "mono": true,
+                "link": {
+                  "kind": "app_popup",
+                  "builder": "protein_popup"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "intact",
+        "blocks": [
+          {
+            "kind": "rows",
+            "view": "default",
+            "when": {
+              "present": "intact.interaction_ac"
+            },
+            "rows": [
+              {
+                "label": "IntAct",
+                "from": "intact.interaction_ac",
+                "format": "count"
+              }
+            ]
+          },
+          {
+            "kind": "rows",
+            "view": "default",
+            "when": {
+              "empty": "intact.interaction_ac"
+            },
+            "rows": [
+              {
+                "label": "IntAct",
+                "from": "intact.feature_type"
+              }
+            ]
+          },
+          {
+            "kind": "rows",
+            "view": "show_all",
+            "heading": "IntAct",
+            "rows": [
+              {
+                "label": "Interactions",
+                "from": "intact.interaction_ac",
+                "format": "count",
+                "placeholder": "—"
+              },
+              {
+                "label": "Feature AC",
+                "from": "intact.feature_ac",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_feature_ac",
+                  "default": false
+                }
+              },
+              {
+                "label": "Feature short label",
+                "from": "intact.feature_short_label",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_feature_short_label",
+                  "default": false
+                }
+              },
+              {
+                "label": "Feature annotation",
+                "from": "intact.feature_annotation",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_feature_annotation",
+                  "default": false
+                }
+              },
+              {
+                "label": "Affected protein AC",
+                "from": "intact.ap_ac",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_ap_ac",
+                  "default": false
+                }
+              },
+              {
+                "label": "Interaction participants",
+                "from": "intact.interaction_participants",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_interaction_participants",
+                  "default": false
+                }
+              },
+              {
+                "label": "PubMed ID",
+                "from": "intact.pmid",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_pmid",
+                  "default": false
                 }
               }
             ]

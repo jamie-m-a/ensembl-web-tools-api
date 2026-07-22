@@ -43,6 +43,7 @@ def test_bundled_spec_validates():
         "mavedb",
         "clinvar",
         "protvar",
+        "protein",
         "opentargets",
         "go",
         "spliceai",

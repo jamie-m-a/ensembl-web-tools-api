@@ -254,10 +254,8 @@ def _get_alt_allele_details(
                     mane_select_refseq_id=mane_select_refseq,
                     # GENCODE primary
                     is_gencode_primary=is_gencode_primary,
-                    # Protein & functional annotations
-                    ensembl_protein_id=get_csq_value(
-                        csq_values, "ENSP", None, index_map
-                    ),
+                    # Protein & functional annotations (ENSP is now the `protein`
+                    # parse plugin, in `annotations`).
                     uniprot=_parse_uniprot(csq_values, index_map),
                     protein_matches=_parse_protein_matches(csq_values, index_map),
                     sift=_parse_prediction(
