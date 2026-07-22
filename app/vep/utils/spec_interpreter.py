@@ -147,15 +147,21 @@ def _apply_regex(csq_values, index_map, target: TargetSpec):
     return rows[0] if rows else None
 
 
+def pattern_affixes(from_pattern: str) -> tuple[str, str]:
+    """The literal (prefix, suffix) around the `{placeholder}` of a `pattern_map`
+    `from_pattern`: a column matches iff it is `prefix + <key> + suffix`, so a
+    matched key maps back to its column as `f"{prefix}{key}{suffix}"`."""
+    placeholder = _PLACEHOLDER_RE.search(from_pattern)
+    return from_pattern[: placeholder.start()], from_pattern[placeholder.end() :]
+
+
 def _apply_pattern_map(csq_values, index_map, target: TargetSpec) -> dict:
     """Columns matching `from_pattern` -> {wildcard: value}.
 
     The columns are discovered from the CSQ header, so whichever ancestries a
     run actually emitted come through without being named in the spec.
     """
-    placeholder = _PLACEHOLDER_RE.search(target.from_pattern)
-    prefix = target.from_pattern[: placeholder.start()]
-    suffix = target.from_pattern[placeholder.end() :]
+    prefix, suffix = pattern_affixes(target.from_pattern)
     excluded = set(target.exclude or [])
 
     values: dict = {}
