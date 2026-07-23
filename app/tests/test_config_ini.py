@@ -634,6 +634,35 @@ def test_clinvar_line_is_assembly_specific(
     )
 
 
+def test_gnomad_sv_custom_fields_and_overlap_cutoff(monkeypatch, tmp_path):
+    # SVTYPE is gated on the master so it is always in `fields=`; the overall AF
+    # is on by default; a selected population adds its code. `overlap_cutoff`
+    # takes the select's value verbatim. `fields=` is written after `format`.
+    line = find_line(
+        build_lines(
+            monkeypatch,
+            tmp_path,
+            gnomad_sv=True,
+            gnomad_sv_af=True,
+            gnomad_sv_af_afr=True,
+            gnomad_sv_overlap_cutoff="90",
+        ),
+        "short_name=gnomAD_SV",
+    )
+    assert line == (
+        f"custom file={PLUGIN_PATH}/gnomad.v4.1.sv.sites_AF.vcf.gz,"
+        "type=exact,short_name=gnomAD_SV,format=vcf,"
+        "fields=SVTYPE%AF%AF_afr,overlap_cutoff=90"
+    )
+
+    # Only SVTYPE when no AF is selected (overall off, no populations).
+    svtype_only = find_line(
+        build_lines(monkeypatch, tmp_path, gnomad_sv=True, gnomad_sv_af=False),
+        "short_name=gnomAD_SV",
+    )
+    assert "fields=SVTYPE," in svtype_only
+
+
 def test_gencode_promoters_custom_has_no_fields_clause(monkeypatch, tmp_path):
     # A gff-overlap custom (fields=None) writes no `fields=` clause at all — VEP
     # emits the source's attributes itself. The line matches the authored order.

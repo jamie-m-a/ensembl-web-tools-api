@@ -731,6 +731,45 @@
         }
       },
       {
+        "id": "gnomad_sv",
+        "order": 58,
+        "parsed_as": [
+          "gnomad_sv"
+        ],
+        "config": {
+          "emit": "custom",
+          "params": {
+            "file": "{path}/gnomad.v4.1.sv.sites_AF.vcf.gz",
+            "type": "exact",
+            "short_name": "gnomAD_SV",
+            "format": "vcf",
+            "overlap_cutoff": {
+              "from_option": "gnomad_sv_overlap_cutoff",
+              "as": "value"
+            }
+          },
+          "fields": {
+            "builder": "gnomad_sv_populations",
+            "join": "%",
+            "populations": [
+              { "option": "gnomad_sv", "codes": ["SVTYPE"] },
+              { "option": "gnomad_sv_af", "codes": ["AF"] },
+              { "option": "gnomad_sv_af_afr", "codes": ["AF_afr"] },
+              { "option": "gnomad_sv_af_ami", "codes": ["AF_ami"] },
+              { "option": "gnomad_sv_af_amr", "codes": ["AF_amr"] },
+              { "option": "gnomad_sv_af_asj", "codes": ["AF_asj"] },
+              { "option": "gnomad_sv_af_eas", "codes": ["AF_eas"] },
+              { "option": "gnomad_sv_af_fin", "codes": ["AF_fin"] },
+              { "option": "gnomad_sv_af_mid", "codes": ["AF_mid"] },
+              { "option": "gnomad_sv_af_nfe", "codes": ["AF_nfe"] },
+              { "option": "gnomad_sv_af_rmi", "codes": ["AF_rmi"] },
+              { "option": "gnomad_sv_af_sas", "codes": ["AF_sas"] }
+            ]
+          },
+          "fields_after": "format"
+        }
+      },
+      {
         "id": "clinvar",
         "order": 60,
         "parsed_as": [
@@ -1122,6 +1161,48 @@
             "from": "AoU_gvs_max_subpop",
             "transform": "scalar",
             "type": "string"
+          }
+        ]
+      },
+      {
+        "plugin": "gnomad_sv",
+        "scope": "allele",
+        "output": "frequencies.gnomad_sv",
+        "csq_fields": [
+          "gnomAD_SV",
+          "gnomAD_SV_SVTYPE",
+          "gnomAD_SV_AF"
+        ],
+        "require_any_output": [
+          "id"
+        ],
+        "targets": [
+          {
+            "field": "id",
+            "from": "gnomAD_SV",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "svtype",
+            "from": "gnomAD_SV_SVTYPE",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "overall",
+            "from": "gnomAD_SV_AF",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "populations",
+            "transform": "pattern_map",
+            "type": "float",
+            "from_pattern": "gnomAD_SV_AF_{pop}",
+            "exclude": [
+              "gnomAD_SV_AF"
+            ]
           }
         ]
       },

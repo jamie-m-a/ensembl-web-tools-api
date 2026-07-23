@@ -299,6 +299,22 @@ class ConfigIniParams(BaseModel):
     allofus_mid: bool = False
     allofus_sas: bool = False
     allofus_oth: bool = False
+    # gnomAD SV v4.1 (human GRCh38). A VEP `custom` vcf-exact line; the SV id +
+    # SVTYPE always ride along, the per-population AFs are toggles (overall on),
+    # and `overlap_cutoff` (80/90/100) tunes the reciprocal-overlap requirement.
+    gnomad_sv: bool = False
+    gnomad_sv_overlap_cutoff: str = "100"  # 80 | 90 | 100
+    gnomad_sv_af: bool = True  # overall AF pre-selected
+    gnomad_sv_af_afr: bool = False
+    gnomad_sv_af_ami: bool = False
+    gnomad_sv_af_amr: bool = False
+    gnomad_sv_af_asj: bool = False
+    gnomad_sv_af_eas: bool = False
+    gnomad_sv_af_fin: bool = False
+    gnomad_sv_af_mid: bool = False
+    gnomad_sv_af_nfe: bool = False
+    gnomad_sv_af_rmi: bool = False
+    gnomad_sv_af_sas: bool = False
     # ClinVar clinical significance (human GRCh37/GRCh38). A VEP `custom` line
     # surfacing the CLNSIG field; not assembly-specific.
     clinvar: bool = False

@@ -317,6 +317,63 @@ def _allofus_option() -> dict:
     }
 
 
+# gnomAD SV v4.1 (human GRCh38): a flat list of AF toggles (no sex split). The
+# SV id (`gnomAD_SV`) and `gnomAD_SV_SVTYPE` are always returned; these gate the
+# per-population AF columns. Population code -> label; "" is the overall AF.
+_GNOMAD_SV_POPULATIONS = [
+    ("", "All"),
+    ("afr", "African & African-American"),
+    ("ami", "Amish"),
+    ("amr", "Admixed American"),
+    ("asj", "Ashkenazi Jewish"),
+    ("eas", "East Asian"),
+    ("fin", "Finnish"),
+    ("mid", "Middle Eastern"),
+    ("nfe", "Non-Finnish European"),
+    ("rmi", "Remaining"),
+    ("sas", "South Asian"),
+]
+
+
+def _gnomad_sv_af_option_id(code: str) -> str:
+    """Form option id for a gnomAD SV AF population (`""` = overall)."""
+    return "gnomad_sv_af" if code == "" else f"gnomad_sv_af_{code}"
+
+
+def _gnomad_sv_option() -> dict:
+    """The gnomAD SV v4.1 option: an overlap-cutoff select plus per-population AF
+    toggles (overall AF pre-selected). SVTYPE + the SV id ride along always."""
+    population_options = [
+        {
+            "id": _gnomad_sv_af_option_id(code),
+            "label": label,
+            "type": "boolean",
+            "default": code == "",  # overall AF pre-selected
+        }
+        for code, label in _GNOMAD_SV_POPULATIONS
+    ]
+    return {
+        "id": "gnomad_sv",
+        "label": "gnomAD SV v4.1",
+        "type": "boolean",
+        "default": False,
+        "sub_options": [
+            {
+                "id": "gnomad_sv_overlap_cutoff",
+                "label": "Overlap cutoff",
+                "type": "select",
+                "default": "100",
+                "options": [
+                    {"label": "80%", "value": "80"},
+                    {"label": "90%", "value": "90"},
+                    {"label": "100%", "value": "100"},
+                ],
+            },
+            {"type": "group", "options": population_options},
+        ],
+    }
+
+
 # --------------------------------------------------------------------------- #
 # AF population-code -> form-label decoders
 #
@@ -339,6 +396,11 @@ _GNOMAD_ANCESTRY_LABELS = {
 # All of Us population codes -> labels ("all" is the overall AF -> empty code).
 _ALLOFUS_POPULATION_LABELS = {
     code: label for code, label in _ALLOFUS_POPULATIONS if code != "all"
+}
+
+# gnomAD SV population codes -> labels ("" is the overall AF -> "All").
+_GNOMAD_SV_POPULATION_LABELS = {
+    code: label for code, label in _GNOMAD_SV_POPULATIONS if code != ""
 }
 
 # gnomAD sex-split suffixes.
@@ -385,6 +447,8 @@ def af_population_label(source: str, code: str) -> str:
         return "All"
     if source == "all_of_us":
         return _ALLOFUS_POPULATION_LABELS.get(code, code)
+    if source == "gnomad_sv":
+        return _GNOMAD_SV_POPULATION_LABELS.get(code, code)
     return _gnomad_population_label(code)
 
 
@@ -457,6 +521,7 @@ def _add_human_grch38_options(panels: list[dict]) -> None:
             _gnomad_exomes_option(),
             _gnomad_genomes_option(),
             _allofus_option(),
+            _gnomad_sv_option(),
         ],
     })
 
