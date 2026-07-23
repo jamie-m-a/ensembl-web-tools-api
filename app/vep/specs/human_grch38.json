@@ -6,6 +6,19 @@
   "config": {
     "entries": [
       {
+        "id": "updownstream_distance",
+        "order": 5,
+        "parsed_as": [],
+        "config": {
+          "emit": "setting",
+          "keyword": "distance",
+          "value": {
+            "from_option": "updownstream_distance_bp",
+            "as": "value"
+          }
+        }
+      },
+      {
         "id": "hgvs",
         "order": 10,
         "parsed_as": [

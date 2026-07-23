@@ -213,6 +213,20 @@ class FlagEmitter(BaseModel):
     keyword: str
 
 
+class SettingEmitter(BaseModel):
+    """`<keyword> <value>` — a bare VEP config.ini setting with a value, emitted
+    only when the entry's own boolean option is on. Unlike `FlagEmitter` (which
+    writes 0/1 from the option itself), the value comes from a `ParamValue` —
+    typically another option's numeric field via `from_option`, e.g.
+    `distance 5000` from the up/downstream-distance field."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    emit: Literal["setting"]
+    keyword: str
+    value: ParamValue
+
+
 class PluginEmitter(BaseModel):
     """`plugin <name>,<k>=<v>,…` when the entry's option is on. Static params,
     assembly-keyed files, and sub-flag interpolation are all `ParamValue`s;
@@ -253,7 +267,8 @@ class CustomEmitter(BaseModel):
 
 
 ConfigEmitter = Annotated[
-    Union[FlagEmitter, PluginEmitter, CustomEmitter], Field(discriminator="emit")
+    Union[FlagEmitter, SettingEmitter, PluginEmitter, CustomEmitter],
+    Field(discriminator="emit"),
 ]
 
 
