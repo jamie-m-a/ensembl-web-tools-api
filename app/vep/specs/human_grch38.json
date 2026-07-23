@@ -852,8 +852,8 @@
           {
             "field": "pockets",
             "from": "ProtVar_pocket",
-            "transform": "positional",
-            "wrap": "list",
+            "transform": "chunk",
+            "size": 7,
             "as": [
               {
                 "field": "pocket_id",
