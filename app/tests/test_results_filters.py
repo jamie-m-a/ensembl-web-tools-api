@@ -538,6 +538,15 @@ def test_af_source_descriptor():
     assert rf.af_source_descriptor("gnomAD_SV_AF_rmi")["label"] == "Remaining"
     assert rf.af_source_descriptor("gnomAD_SV") is None
     assert rf.af_source_descriptor("gnomAD_SV_SVTYPE") is None
+    # gnomAD CNV: sample frequencies (SF prefix), "remaining" spelled out.
+    assert rf.af_source_descriptor("gnomAD_CNV_SF") == {
+        "key": "gnomAD_CNV_SF",
+        "source": "gnomad_cnv",
+        "population": "",
+        "label": "All",
+    }
+    assert rf.af_source_descriptor("gnomAD_CNV_SF_remaining")["label"] == "Remaining"
+    assert rf.af_source_descriptor("gnomAD_CNV") is None
     assert rf.af_source_descriptor("SYMBOL") is None
 
 

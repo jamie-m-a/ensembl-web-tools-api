@@ -315,6 +315,20 @@ class ConfigIniParams(BaseModel):
     gnomad_sv_af_nfe: bool = False
     gnomad_sv_af_rmi: bool = False
     gnomad_sv_af_sas: bool = False
+    # gnomAD CNV v4.1 (human GRCh38). Like gnomAD SV but *sample* frequencies
+    # (SF) and no Amish; "remaining" spelled out.
+    gnomad_cnv: bool = False
+    gnomad_cnv_overlap_cutoff: str = "100"  # 80 | 90 | 100
+    gnomad_cnv_sf: bool = True  # overall SF pre-selected
+    gnomad_cnv_sf_afr: bool = False
+    gnomad_cnv_sf_amr: bool = False
+    gnomad_cnv_sf_asj: bool = False
+    gnomad_cnv_sf_eas: bool = False
+    gnomad_cnv_sf_fin: bool = False
+    gnomad_cnv_sf_mid: bool = False
+    gnomad_cnv_sf_nfe: bool = False
+    gnomad_cnv_sf_sas: bool = False
+    gnomad_cnv_sf_remaining: bool = False
     # ClinVar clinical significance (human GRCh37/GRCh38). A VEP `custom` line
     # surfacing the CLNSIG field; not assembly-specific.
     clinvar: bool = False

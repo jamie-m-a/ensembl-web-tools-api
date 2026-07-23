@@ -68,6 +68,7 @@ def test_bundled_spec_validates():
         "all_of_us",
         "gencode_promoter",
         "gnomad_sv",
+        "gnomad_cnv",
     }
 
 

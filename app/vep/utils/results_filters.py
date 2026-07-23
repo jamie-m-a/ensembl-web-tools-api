@@ -356,7 +356,12 @@ def af_columns(index_map: dict[str, int]) -> list[str]:
         name
         for name in index_map
         if name.startswith(
-            ("gnomAD_exomes_AF", "gnomAD_genomes_AF", "gnomAD_SV_AF")
+            (
+                "gnomAD_exomes_AF",
+                "gnomAD_genomes_AF",
+                "gnomAD_SV_AF",
+                "gnomAD_CNV_SF",
+            )
         )
         or (name.startswith("AoU_gvs_") and name.endswith("_af"))
     ]
@@ -377,6 +382,9 @@ def af_source_descriptor(column: str) -> dict | None:
     elif column.startswith("gnomAD_SV_AF"):
         source = "gnomad_sv"
         population = column[len("gnomAD_SV_AF"):].lstrip("_")
+    elif column.startswith("gnomAD_CNV_SF"):
+        source = "gnomad_cnv"
+        population = column[len("gnomAD_CNV_SF"):].lstrip("_")
     elif column.startswith("AoU_gvs_") and column.endswith("_af"):
         source = "all_of_us"
         raw = column[len("AoU_gvs_"):-len("_af")]

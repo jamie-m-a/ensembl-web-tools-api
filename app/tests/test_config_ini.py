@@ -663,6 +663,26 @@ def test_gnomad_sv_custom_fields_and_overlap_cutoff(monkeypatch, tmp_path):
     assert "fields=SVTYPE," in svtype_only
 
 
+def test_gnomad_cnv_custom_fields_and_overlap_cutoff(monkeypatch, tmp_path):
+    # Same shape as gnomAD SV but *sample* frequencies (SF) and its own file.
+    line = find_line(
+        build_lines(
+            monkeypatch,
+            tmp_path,
+            gnomad_cnv=True,
+            gnomad_cnv_sf=True,
+            gnomad_cnv_sf_nfe=True,
+            gnomad_cnv_overlap_cutoff="80",
+        ),
+        "short_name=gnomAD_CNV",
+    )
+    assert line == (
+        f"custom file={PLUGIN_PATH}/gnomad.v4.1.cnv.all_SF.vcf.gz,"
+        "type=exact,short_name=gnomAD_CNV,format=vcf,"
+        "fields=SVTYPE%SF%SF_nfe,overlap_cutoff=80"
+    )
+
+
 def test_gencode_promoters_custom_has_no_fields_clause(monkeypatch, tmp_path):
     # A gff-overlap custom (fields=None) writes no `fields=` clause at all — VEP
     # emits the source's attributes itself. The line matches the authored order.

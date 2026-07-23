@@ -749,7 +749,7 @@
             }
           },
           "fields": {
-            "builder": "gnomad_sv_populations",
+            "builder": "gnomad_structural",
             "join": "%",
             "populations": [
               { "option": "gnomad_sv", "codes": ["SVTYPE"] },
@@ -764,6 +764,44 @@
               { "option": "gnomad_sv_af_nfe", "codes": ["AF_nfe"] },
               { "option": "gnomad_sv_af_rmi", "codes": ["AF_rmi"] },
               { "option": "gnomad_sv_af_sas", "codes": ["AF_sas"] }
+            ]
+          },
+          "fields_after": "format"
+        }
+      },
+      {
+        "id": "gnomad_cnv",
+        "order": 59,
+        "parsed_as": [
+          "gnomad_cnv"
+        ],
+        "config": {
+          "emit": "custom",
+          "params": {
+            "file": "{path}/gnomad.v4.1.cnv.all_SF.vcf.gz",
+            "type": "exact",
+            "short_name": "gnomAD_CNV",
+            "format": "vcf",
+            "overlap_cutoff": {
+              "from_option": "gnomad_cnv_overlap_cutoff",
+              "as": "value"
+            }
+          },
+          "fields": {
+            "builder": "gnomad_structural",
+            "join": "%",
+            "populations": [
+              { "option": "gnomad_cnv", "codes": ["SVTYPE"] },
+              { "option": "gnomad_cnv_sf", "codes": ["SF"] },
+              { "option": "gnomad_cnv_sf_afr", "codes": ["SF_afr"] },
+              { "option": "gnomad_cnv_sf_amr", "codes": ["SF_amr"] },
+              { "option": "gnomad_cnv_sf_asj", "codes": ["SF_asj"] },
+              { "option": "gnomad_cnv_sf_eas", "codes": ["SF_eas"] },
+              { "option": "gnomad_cnv_sf_fin", "codes": ["SF_fin"] },
+              { "option": "gnomad_cnv_sf_mid", "codes": ["SF_mid"] },
+              { "option": "gnomad_cnv_sf_nfe", "codes": ["SF_nfe"] },
+              { "option": "gnomad_cnv_sf_sas", "codes": ["SF_sas"] },
+              { "option": "gnomad_cnv_sf_remaining", "codes": ["SF_remaining"] }
             ]
           },
           "fields_after": "format"
@@ -1202,6 +1240,48 @@
             "from_pattern": "gnomAD_SV_AF_{pop}",
             "exclude": [
               "gnomAD_SV_AF"
+            ]
+          }
+        ]
+      },
+      {
+        "plugin": "gnomad_cnv",
+        "scope": "allele",
+        "output": "frequencies.gnomad_cnv",
+        "csq_fields": [
+          "gnomAD_CNV",
+          "gnomAD_CNV_SVTYPE",
+          "gnomAD_CNV_SF"
+        ],
+        "require_any_output": [
+          "id"
+        ],
+        "targets": [
+          {
+            "field": "id",
+            "from": "gnomAD_CNV",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "svtype",
+            "from": "gnomAD_CNV_SVTYPE",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "overall",
+            "from": "gnomAD_CNV_SF",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "populations",
+            "transform": "pattern_map",
+            "type": "float",
+            "from_pattern": "gnomAD_CNV_SF_{pop}",
+            "exclude": [
+              "gnomAD_CNV_SF"
             ]
           }
         ]
