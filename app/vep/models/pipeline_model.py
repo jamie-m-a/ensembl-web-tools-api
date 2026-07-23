@@ -146,6 +146,7 @@ class ConfigIniParams(BaseModel):
     # `plugin ...` line via the config spec (config_specs → config_interpreter).
     mavedb: bool = False
     revel: bool = False
+    clinpred: bool = False  # ClinPred pathogenicity score (human GRCh37/38)
     riboseqorfs: bool = False
     alphamissense: bool = False
     opentargets: bool = False
