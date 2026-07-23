@@ -176,6 +176,10 @@ class ConfigIniParams(BaseModel):
     nearest_exon_jb: bool = False
     nearest_exon_jb_max_range: int = 10000  # max search range (bp)
     nearest_exon_jb_intronic: bool = False
+    # Up/downstream distance for consequence calling (VEP `distance <bp>`). A
+    # config-only setting (no output); emitted only when the toggle is on.
+    updownstream_distance: bool = False
+    updownstream_distance_bp: int = Field(default=5000, ge=0, le=1_000_000)
     # Geno2MP variant associations (assembly-specific; see *_BY_ASSEMBLY).
     geno2mp: bool = False
     # UTRAnnotator 5' UTR variants (assembly-specific; see *_BY_ASSEMBLY).

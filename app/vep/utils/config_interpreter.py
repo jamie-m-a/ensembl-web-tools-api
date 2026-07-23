@@ -24,6 +24,7 @@ from vep.models.config_spec_model import (
     GnomadAncestrySexFields,
     LiteralFields,
     PluginEmitter,
+    SettingEmitter,
 )
 
 
@@ -135,6 +136,10 @@ def _emit_entry(entry, options, assembly, context) -> str | None:
 
     if not entry.requirements_met(options):
         return None  # ...and only when its parent master is on too (ClinVar)
+
+    if isinstance(emitter, SettingEmitter):
+        value = _param_value(emitter.value, options, assembly, context)
+        return f"{emitter.keyword} {value}"
 
     if isinstance(emitter, PluginEmitter):
         parts = _params_str(emitter.params, options, assembly, context)

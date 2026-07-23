@@ -81,6 +81,25 @@ _ALWAYS_VISIBLE_PANELS: list[dict] = [
                     },
                 ],
             },
+            {
+                # Up/downstream distance for consequence calling (VEP `distance`).
+                # A toggle revealing a numeric field (bp) that overrides VEP's
+                # default of 5000; no output, nothing parsed.
+                "id": "updownstream_distance",
+                "label": "Up/downstream distance",
+                "type": "boolean",
+                "default": False,
+                "sub_options": [
+                    {
+                        "id": "updownstream_distance_bp",
+                        "label": "Distance (bp)",
+                        "type": "number",
+                        "default": 5000,
+                        "min": 0,
+                        "max": 1000000,
+                    },
+                ],
+            },
         ],
     },
     {

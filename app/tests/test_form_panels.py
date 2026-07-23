@@ -138,6 +138,19 @@ def test_mouse_shows_only_always_visible_panels():
     assert "riboseqorfs" not in genes_opts
 
 
+def test_updownstream_distance_available_for_all_species():
+    # A base (all-species) Genes & transcripts option with a bounded numeric field.
+    for taxon, assembly in [(HUMAN, "GRCh38.p14"), (MOUSE, "GRCm39"), (HUMAN, "GRCh37.p13")]:
+        panels = get_visible_panels(species_taxonomy_id=taxon, assembly_name=assembly)
+        genes = next(p for p in panels if p["id"] == "genes_and_transcripts")
+        option = next(o for o in genes["options"] if o["id"] == "updownstream_distance")
+        field = next(
+            s for s in option["sub_options"] if s["id"] == "updownstream_distance_bp"
+        )
+        assert field["type"] == "number"
+        assert (field["default"], field["min"], field["max"]) == (5000, 0, 1000000)
+
+
 def test_human_t2t_is_not_treated_as_grch37_38():
     # human taxonomy but a non-GRCh37/38 assembly gets only the base panels
     panels = get_visible_panels(

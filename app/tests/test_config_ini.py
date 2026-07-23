@@ -107,6 +107,28 @@ def test_flag_options_render_as_one_or_zero(monkeypatch, tmp_path):
     assert "protein 0" in lines
 
 
+# --- up/downstream distance (a bare `setting` keyword) -----------------------
+
+
+def test_updownstream_distance_off_emits_no_line(monkeypatch, tmp_path):
+    assert find_line(build_lines(monkeypatch, tmp_path), "distance ") is None
+
+
+def test_updownstream_distance_emits_the_field_value(monkeypatch, tmp_path):
+    lines = build_lines(
+        monkeypatch,
+        tmp_path,
+        updownstream_distance=True,
+        updownstream_distance_bp=20000,
+    )
+    assert "distance 20000" in lines
+
+
+def test_updownstream_distance_defaults_to_5000(monkeypatch, tmp_path):
+    lines = build_lines(monkeypatch, tmp_path, updownstream_distance=True)
+    assert "distance 5000" in lines
+
+
 # --- 3. mane gating ----------------------------------------------------------
 
 
