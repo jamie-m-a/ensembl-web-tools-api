@@ -1870,6 +1870,11 @@
                 "label": "CADD (PHRED)",
                 "from": "cadd.phred",
                 "format": "num"
+              },
+              {
+                "label": "CADD (RAW)",
+                "from": "cadd.raw",
+                "format": "num"
               }
             ]
           }
