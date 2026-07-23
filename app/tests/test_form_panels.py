@@ -347,6 +347,22 @@ def test_gnomad_sv_option_is_grch38_allele_frequency():
     )
 
 
+def test_gnomad_cnv_option_is_grch38_allele_frequency():
+    g38 = get_visible_panels(species_taxonomy_id=HUMAN, assembly_name="GRCh38.p14")
+    ids = option_ids(g38)
+    # SF prefix, "remaining" spelled out, no ami
+    assert {
+        "gnomad_cnv",
+        "gnomad_cnv_sf",
+        "gnomad_cnv_sf_remaining",
+        "gnomad_cnv_overlap_cutoff",
+    } <= ids
+    assert "gnomad_cnv_sf_ami" not in ids
+    assert "gnomad_cnv" not in option_ids(
+        get_visible_panels(species_taxonomy_id=MOUSE, assembly_name="GRCm39")
+    )
+
+
 def test_option_ids_are_valid_config_ini_parameters():
     # The GRCh38 set is the superset of every option/sub-option.
     panels = get_visible_panels(

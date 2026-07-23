@@ -15,7 +15,7 @@ module only turns *selected options* into lines. See docs/design/.
 
 from vep.models.config_spec_model import (
     AllofusPopulationFields,
-    GnomadSvFields,
+    GnomadStructuralFields,
     ByAssembly,
     ConfigSpec,
     CustomEmitter,
@@ -113,7 +113,7 @@ def build_fields(fields, options: dict) -> list[str]:
                     result.append(_code(ancestry.code, sex.code))
         return result
 
-    if isinstance(fields, (AllofusPopulationFields, GnomadSvFields)):
+    if isinstance(fields, (AllofusPopulationFields, GnomadStructuralFields)):
         result = []
         for population in fields.populations:
             if options.get(population.option):
