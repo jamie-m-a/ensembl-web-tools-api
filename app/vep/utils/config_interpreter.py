@@ -133,6 +133,9 @@ def _emit_entry(entry, options, assembly, context) -> str | None:
     if not options.get(entry.id):
         return None  # plugin / custom lines only appear when the option is on
 
+    if not entry.requirements_met(options):
+        return None  # ...and only when its parent master is on too (ClinVar)
+
     if isinstance(emitter, PluginEmitter):
         parts = _params_str(emitter.params, options, assembly, context)
         line = f"plugin {emitter.name}"

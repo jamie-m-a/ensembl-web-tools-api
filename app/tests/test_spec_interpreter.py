@@ -42,6 +42,7 @@ def test_bundled_spec_validates():
         "mutfunc",
         "mavedb",
         "clinvar",
+        "clinvar_sv",
         "protvar",
         "protein",
         "opentargets",
@@ -239,6 +240,22 @@ def test_clinvar_unparseable_breakdown_token_skipped():
 
 def test_clinvar_empty_is_none():
     assert run("clinvar", EMPTY) is None
+
+
+# --- ClinVar structural variants ---------------------------------------------
+
+
+def test_clinvar_sv_reports_significance_and_origin():
+    result = run(
+        "clinvar_sv",
+        row_list(ClinVar_SV_CLNSIG="Pathogenic", ClinVar_SV_ORIGIN="germline"),
+    )
+    assert result == {"significance": ["Pathogenic"], "origin": ["germline"]}
+
+
+def test_clinvar_sv_empty_is_none():
+    # No CLNSIG (no SV overlap) -> the plugin produces nothing (require_any_input).
+    assert run("clinvar_sv", EMPTY) is None
 
 
 # --- gnomAD / All of Us: pattern_map -----------------------------------------

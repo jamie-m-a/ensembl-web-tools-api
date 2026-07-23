@@ -64,6 +64,8 @@ ALL_COLS = [
     "REVEL", "am_class", "am_pathogenicity", "EVE_CLASS", "EVE_SCORE",
     # ClinVar
     "ClinVar_CLNSIG", "ClinVar_CLNSIGCONF",
+    # ClinVar structural variants
+    "ClinVar_SV", "ClinVar_SV_CLNSIG", "ClinVar_SV_ORIGIN",
 ]
 
 HEADER = "Consequence annotations from Ensembl VEP. Format: " + "|".join(ALL_COLS)

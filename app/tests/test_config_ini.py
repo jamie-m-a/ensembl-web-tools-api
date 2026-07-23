@@ -625,12 +625,39 @@ def test_clinvar_line_is_assembly_specific(
     monkeypatch, tmp_path, assembly, expected_file
 ):
     line = find_line(
-        build_lines(monkeypatch, tmp_path, assembly=assembly, clinvar=True),
-        "short_name=ClinVar",
+        build_lines(
+            monkeypatch, tmp_path, assembly=assembly, clinvar=True, clinvar_short=True
+        ),
+        "short_name=ClinVar,",
     )
     assert line == (
         f"custom file={PLUGIN_PATH}/{expected_file},"
         "short_name=ClinVar,fields=CLNSIG%CLNSIGCONF,format=vcf,type=exact"
+    )
+
+
+def test_clinvar_sub_option_requires_the_master(monkeypatch, tmp_path):
+    # A sub-option on but the master off (a stale value from edit/rerun) must not
+    # emit its custom — the `requires: ["clinvar"]` gate holds.
+    lines = build_lines(monkeypatch, tmp_path, clinvar=False, clinvar_short=True)
+    assert find_line(lines, "short_name=ClinVar,") is None
+
+
+def test_clinvar_master_on_but_no_sub_option_emits_nothing(monkeypatch, tmp_path):
+    # Enabling the master alone runs neither custom until a sub-option is picked.
+    lines = build_lines(monkeypatch, tmp_path, clinvar=True)
+    assert find_line(lines, "short_name=ClinVar,") is None
+    assert find_line(lines, "short_name=ClinVar_SV,") is None
+
+
+def test_clinvar_sv_custom_line(monkeypatch, tmp_path):
+    line = find_line(
+        build_lines(monkeypatch, tmp_path, clinvar=True, clinvar_sv=True),
+        "short_name=ClinVar_SV,",
+    )
+    assert line == (
+        f"custom file={PLUGIN_PATH}/nstd102.GRCh38.variant_call.combined.sorted.vcf.gz,"
+        "short_name=ClinVar_SV,fields=CLNSIG%ORIGIN,format=vcf,type=exact"
     )
 
 

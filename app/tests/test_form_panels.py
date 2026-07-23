@@ -292,13 +292,27 @@ def test_allofus_absent_below_grch38():
         assert "allofus" not in option_ids(panels)
 
 
+def _clinvar_option(assembly):
+    panels = get_visible_panels(species_taxonomy_id=HUMAN, assembly_name=assembly)
+    va = next(p for p in panels if p["id"] == "variant_associations")
+    return next(o for o in va["options"] if o["id"] == "clinvar")
+
+
 def test_clinvar_in_variant_associations_for_grch37_and_grch38():
     for assembly in ("GRCh37.p13", "GRCh38.p14"):
-        panels = get_visible_panels(
-            species_taxonomy_id=HUMAN, assembly_name=assembly
-        )
-        va = next(p for p in panels if p["id"] == "variant_associations")
-        assert "clinvar" in [o["id"] for o in va["options"]]
+        clinvar = _clinvar_option(assembly)
+        assert clinvar["label"] == "Clinical Significance (ClinVar)"
+        # "Short variants" is available on both assemblies.
+        sub_ids = [s["id"] for s in clinvar["sub_options"]]
+        assert "clinvar_short" in sub_ids
+
+
+def test_clinvar_structural_sub_option_is_grch38_only():
+    # "Structural variants" (ClinVar_SV) is GRCh38-only.
+    g38 = [s["id"] for s in _clinvar_option("GRCh38.p14")["sub_options"]]
+    assert g38 == ["clinvar_short", "clinvar_sv"]
+    g37 = [s["id"] for s in _clinvar_option("GRCh37.p13")["sub_options"]]
+    assert "clinvar_sv" not in g37
 
 
 def test_clinvar_absent_for_non_human():
