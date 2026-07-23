@@ -333,6 +333,25 @@
         }
       },
       {
+        "id": "clinpred",
+        "order": 45,
+        "parsed_as": [
+          "clinpred"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "ClinPred",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/ClinPred_hg38_sorted_tabbed.tsv.gz",
+                "GRCh37": "{path}/ClinPred_hg37_sorted_tabbed.tsv.gz"
+              }
+            }
+          }
+        }
+      },
+      {
         "id": "loeuf",
         "order": 43,
         "parsed_as": [
@@ -1573,6 +1592,25 @@
         ]
       },
       {
+        "plugin": "clinpred",
+        "scope": "transcript",
+        "output": "clinpred",
+        "csq_fields": [
+          "ClinPred"
+        ],
+        "require_any_output": [
+          "score"
+        ],
+        "targets": [
+          {
+            "field": "score",
+            "from": "ClinPred",
+            "transform": "scalar",
+            "type": "float"
+          }
+        ]
+      },
+      {
         "plugin": "alphamissense",
         "scope": "transcript",
         "output": "alphamissense",
@@ -1884,6 +1922,21 @@
               {
                 "label": "REVEL",
                 "from": "revel.score",
+                "format": "num"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "clinpred",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "ClinPred",
+                "from": "clinpred.score",
                 "format": "num"
               }
             ]

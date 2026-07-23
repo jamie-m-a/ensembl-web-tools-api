@@ -58,6 +58,7 @@ def test_bundled_spec_validates():
         "intact",
         "popeve",
         "revel",
+        "clinpred",
         "alphamissense",
         "cadd",
         "eve",
