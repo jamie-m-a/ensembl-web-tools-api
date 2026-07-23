@@ -52,6 +52,7 @@ def test_bundled_spec_validates():
         "hgvsg",
         "spdi",
         "loeuf",
+        "nmd",
         "phenotype_data",
         "dosage_sensitivity",
         "intact",

@@ -96,6 +96,7 @@ _ALWAYS_VISIBLE_PANELS: list[dict] = [
 # Options added to the existing Genes & transcripts panel for human GRCh37/38.
 _HUMAN_37_38_GENES_OPTIONS: list[dict] = [
     {"id": "utrannotator", "label": "UTRAnnotator", "type": "boolean", "default": False},
+    {"id": "nmd", "label": "NMD", "type": "boolean", "default": False},
 ]
 
 # Extra panels shown only for human GRCh37/38. Pathogenicity options carry a
