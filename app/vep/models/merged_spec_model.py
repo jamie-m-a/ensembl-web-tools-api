@@ -235,11 +235,19 @@ class MergedSpec(BaseModel):
             emitter = entry.config
             if isinstance(emitter, CustomEmitter):
                 short_name = emitter.params.get("short_name")
-                # A fields-less custom's columns are source-derived (gff/bed
-                # overlap), not statically known, so it requires nothing.
-                if isinstance(short_name, str) and emitter.fields is not None:
-                    for field in build_fields(emitter.fields, options):
-                        expected.add(f"{short_name}_{field}")
+                if isinstance(short_name, str):
+                    # VEP always emits the bare `short_name` match column for a
+                    # custom (the matched record / overlap), so it is expected
+                    # whenever the option is on — independent of `fields`. This is
+                    # also what keeps an identity field read from it (gnomAD SV's
+                    # id) from being nulled by the AF-column gate.
+                    expected.add(short_name)
+                    # A fields-less custom's other columns are source-derived
+                    # (gff/bed overlap), not statically known, so it requires no
+                    # more than the base.
+                    if emitter.fields is not None:
+                        for field in build_fields(emitter.fields, options):
+                            expected.add(f"{short_name}_{field}")
             elif isinstance(emitter, PluginEmitter) and _is_simple_plugin(emitter):
                 for parse_id in entry.parsed_as:
                     plugin = by_plugin.get(parse_id)

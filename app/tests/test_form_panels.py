@@ -319,6 +319,34 @@ def test_regulatory_panel_is_grch38_only():
     )
 
 
+def test_gnomad_sv_option_is_grch38_allele_frequency():
+    g38 = get_visible_panels(species_taxonomy_id=HUMAN, assembly_name="GRCh38.p14")
+    af = next(p for p in g38 if p["id"] == "allele_frequencies")
+    sv = next((o for o in af["options"] if o["id"] == "gnomad_sv"), None)
+    assert sv is not None
+    ids = option_ids(g38)
+    assert {
+        "gnomad_sv",
+        "gnomad_sv_af",
+        "gnomad_sv_af_afr",
+        "gnomad_sv_af_sas",
+        "gnomad_sv_overlap_cutoff",
+    } <= ids
+    # overall AF is pre-selected; the populations are opt-in
+    af_opts = {
+        opt["id"]: opt
+        for grp in sv["sub_options"]
+        if grp.get("type") == "group"
+        for opt in grp["options"]
+    }
+    assert af_opts["gnomad_sv_af"]["default"] is True
+    assert af_opts["gnomad_sv_af_afr"]["default"] is False
+    # GRCh38-only (mouse has no allele_frequencies panel)
+    assert "gnomad_sv" not in option_ids(
+        get_visible_panels(species_taxonomy_id=MOUSE, assembly_name="GRCm39")
+    )
+
+
 def test_option_ids_are_valid_config_ini_parameters():
     # The GRCh38 set is the superset of every option/sub-option.
     panels = get_visible_panels(

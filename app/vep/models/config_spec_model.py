@@ -177,7 +177,25 @@ class AllofusPopulationFields(BaseModel):
     populations: list[PopulationCode]
 
 
-FieldsSpec = Union[LiteralFields, GnomadAncestrySexFields, AllofusPopulationFields]
+class GnomadSvFields(BaseModel):
+    """gnomAD SV: concatenate the codes of each selected field-option (SVTYPE is
+    gated on the master option so it is always included, then the overall AF and
+    each selected population AF). Same shape as `AllofusPopulationFields` — an
+    option-gated code list — kept as its own builder id for clarity."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    builder: Literal["gnomad_sv_populations"]
+    join: str = "%"
+    populations: list[PopulationCode]
+
+
+FieldsSpec = Union[
+    LiteralFields,
+    GnomadAncestrySexFields,
+    AllofusPopulationFields,
+    GnomadSvFields,
+]
 
 
 # --------------------------------------------------------------------------- #

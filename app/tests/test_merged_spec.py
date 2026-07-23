@@ -48,8 +48,8 @@ def _doc(config_entries, parse_plugins):
 def test_bundled_merged_spec_is_consistent():
     # load_merged_spec runs the consistency check; a bad spec would raise here.
     spec = load_merged_spec("human_grch38")
-    assert len(spec.config_entries()) == 31
-    assert len(spec.parse_plugins()) == 28
+    assert len(spec.config_entries()) == 32
+    assert len(spec.parse_plugins()) == 29
 
 
 # --- reference integrity ----------------------------------------------------
@@ -324,15 +324,23 @@ def test_simple_plugin_expects_its_csq_fields():
 
 
 def test_custom_literal_expects_exact_columns():
-    assert _expected(clinvar=True) == {"ClinVar_CLNSIG", "ClinVar_CLNSIGCONF"}
+    # The bare `short_name` match column is always emitted by a custom, so it is
+    # expected too, alongside the literal `short_name_<field>` columns.
+    assert _expected(clinvar=True) == {
+        "ClinVar",
+        "ClinVar_CLNSIG",
+        "ClinVar_CLNSIGCONF",
+    }
 
 
 def test_custom_builder_expects_the_combinatorial_columns():
-    # default gnomAD_exomes = All + Both + UKB -> the overall AF column
-    assert _expected(gnomad_exomes=True) == {"gnomAD_exomes_AF"}
+    # default gnomAD_exomes = All + Both + UKB -> the overall AF column, plus the
+    # bare `short_name` match column (always emitted by a custom)
+    assert _expected(gnomad_exomes=True) == {"gnomAD_exomes", "gnomAD_exomes_AF"}
     # adding the afr ancestry (both) adds its column, via the same builder that
     # writes the config `fields=`
     assert _expected(gnomad_exomes=True, gnomad_exomes_afr=True) == {
+        "gnomAD_exomes",
         "gnomAD_exomes_AF",
         "gnomAD_exomes_AF_afr",
     }

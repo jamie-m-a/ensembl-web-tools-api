@@ -528,6 +528,16 @@ def test_af_source_descriptor():
     assert rf.af_source_descriptor("gnomAD_exomes_AF_nfe_XX")["label"] == (
         "Non-Finnish European · Female"
     )
+    # gnomAD SV: the AF columns are AF sources; the SV id / SVTYPE columns are not.
+    assert rf.af_source_descriptor("gnomAD_SV_AF") == {
+        "key": "gnomAD_SV_AF",
+        "source": "gnomad_sv",
+        "population": "",
+        "label": "All",
+    }
+    assert rf.af_source_descriptor("gnomAD_SV_AF_rmi")["label"] == "Remaining"
+    assert rf.af_source_descriptor("gnomAD_SV") is None
+    assert rf.af_source_descriptor("gnomAD_SV_SVTYPE") is None
     assert rf.af_source_descriptor("SYMBOL") is None
 
 
