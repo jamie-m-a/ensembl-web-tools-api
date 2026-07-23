@@ -114,6 +114,9 @@
         "parsed_as": [
           "protvar"
         ],
+        "forces_on": [
+          "hgvsg"
+        ],
         "config": {
           "emit": "plugin",
           "name": "ProtVar",
