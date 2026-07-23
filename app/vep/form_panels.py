@@ -440,6 +440,15 @@ def _add_human_grch38_options(panels: list[dict]) -> None:
             {"id": "phenotypes", "label": "Phenotypes", "type": "boolean", "default": False},
         ])
 
+    # Regulatory: GENCODE promoter windows (a gff-overlap custom annotation).
+    panels.append({
+        "id": "regulatory",
+        "label": "Regulatory",
+        "options": [
+            {"id": "gencode_promoters", "label": "GENCODE promoter", "type": "boolean", "default": False},
+        ],
+    })
+
     # Allele frequencies: gnomAD exomes/genomes v4.1, NIH All of Us.
     panels.append({
         "id": "allele_frequencies",

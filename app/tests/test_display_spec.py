@@ -55,6 +55,8 @@ SPEC_DRIVEN_OPTIONS = {
     "protein",
     # default-vs-Show-all views + count + sub-option count rows (no new operator)
     "intact",
+    # a fields-less gff-overlap custom (new Regulatory panel)
+    "gencode_promoters",
 }
 
 

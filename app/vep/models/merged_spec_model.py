@@ -235,7 +235,9 @@ class MergedSpec(BaseModel):
             emitter = entry.config
             if isinstance(emitter, CustomEmitter):
                 short_name = emitter.params.get("short_name")
-                if isinstance(short_name, str):
+                # A fields-less custom's columns are source-derived (gff/bed
+                # overlap), not statically known, so it requires nothing.
+                if isinstance(short_name, str) and emitter.fields is not None:
                     for field in build_fields(emitter.fields, options):
                         expected.add(f"{short_name}_{field}")
             elif isinstance(emitter, PluginEmitter) and _is_simple_plugin(emitter):
@@ -448,6 +450,10 @@ class MergedSpec(BaseModel):
         if not isinstance(short_name, str):
             # A non-literal short_name (by_assembly / from_option) can't be
             # resolved to column names statically; nothing to check.
+            return []
+        if emitter.fields is None:
+            # A fields-less overlap custom emits source-derived columns VEP names
+            # itself; nothing to check statically.
             return []
 
         mapped = [p for p in self.parsing.plugins if p.plugin in entry.parsed_as]

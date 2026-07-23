@@ -142,7 +142,9 @@ def _emit_entry(entry, options, assembly, context) -> str | None:
         return line
 
     if isinstance(emitter, CustomEmitter):
-        field_list = build_fields(emitter.fields, options)
+        # A fields-less custom (gff/bed overlap) writes no `fields=` clause at
+        # all — VEP emits the source's attributes itself.
+        field_list = build_fields(emitter.fields, options) if emitter.fields else []
         if emitter.omit_if_no_fields and not field_list:
             return None
         join = getattr(emitter.fields, "join", "%")
@@ -151,7 +153,7 @@ def _emit_entry(entry, options, assembly, context) -> str | None:
             resolved = _param_value(value, options, assembly, context)
             if resolved is not _SKIP:
                 parts.append(f"{key}={resolved}")
-            if key == emitter.fields_after:
+            if emitter.fields is not None and key == emitter.fields_after:
                 parts.append(f"fields={join.join(field_list)}")
         return "custom " + ",".join(parts)
 

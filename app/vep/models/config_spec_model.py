@@ -212,13 +212,20 @@ class PluginEmitter(BaseModel):
 class CustomEmitter(BaseModel):
     """`custom file=…,short_name=…,fields=…,format=…` — gnomAD/AoU/ClinVar. When
     `omit_if_no_fields`, the whole line is dropped if `fields` resolves empty
-    (nothing selected)."""
+    (nothing selected).
+
+    `fields` is optional: a `gff`/`bed` overlap custom (GENCODE Promoters) lets
+    VEP emit the source's attributes automatically and so has no `fields=` clause
+    at all — leave it None and no clause is written. Such a custom's columns are
+    source-derived, not statically known, so it contributes nothing to
+    `expected_csq_columns` and skips the custom-column check.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     emit: Literal["custom"]
     params: dict[str, ParamValue] = {}
-    fields: FieldsSpec
+    fields: FieldsSpec | None = None
     # `fields=` is emitted immediately after this param, matching the arg order
     # VEP's `custom` lines use (…,short_name=…,fields=…,format=…).
     fields_after: str = "short_name"

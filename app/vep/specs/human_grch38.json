@@ -756,6 +756,23 @@
             ]
           }
         }
+      },
+      {
+        "id": "gencode_promoters",
+        "order": 65,
+        "parsed_as": [
+          "gencode_promoter"
+        ],
+        "config": {
+          "emit": "custom",
+          "params": {
+            "file": "{path}/gencode.v49.promoter_windows.sorted.gff3.gz",
+            "gff_type": "gencode_promoter",
+            "format": "gff",
+            "short_name": "GENCODE_Promoter",
+            "type": "overlap"
+          }
+        }
       }
     ]
   },
@@ -986,6 +1003,32 @@
               "significance",
               "count"
             ]
+          }
+        ]
+      },
+      {
+        "plugin": "gencode_promoter",
+        "scope": "allele",
+        "output": "gencode_promoter",
+        "csq_fields": [
+          "GENCODE_Promoter",
+          "GENCODE_Promoter_feature_id"
+        ],
+        "require_any_output": [
+          "region"
+        ],
+        "targets": [
+          {
+            "field": "region",
+            "from": "GENCODE_Promoter",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "feature_id",
+            "from": "GENCODE_Promoter_feature_id",
+            "transform": "scalar",
+            "type": "string"
           }
         ]
       },
@@ -2653,6 +2696,27 @@
                   "id": "intact_pmid",
                   "default": false
                 }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "gencode_promoters",
+        "blocks": [
+          {
+            "kind": "rows",
+            "heading": "GENCODE promoter",
+            "rows": [
+              {
+                "label": "Region",
+                "from": "gencode_promoter.region",
+                "mono": true
+              },
+              {
+                "label": "Feature ID",
+                "from": "gencode_promoter.feature_id",
+                "mono": true
               }
             ]
           }
