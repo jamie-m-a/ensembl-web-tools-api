@@ -179,6 +179,8 @@ class ConfigIniParams(BaseModel):
     geno2mp: bool = False
     # UTRAnnotator 5' UTR variants (assembly-specific; see *_BY_ASSEMBLY).
     utrannotator: bool = False
+    # NMD escape prediction (NMD plugin; no params). Human GRCh37/38.
+    nmd: bool = False
     # Dosage sensitivity (DosageSensitivity plugin); `cover` sub-flag.
     dosage_sensitivity: bool = False
     dosage_sensitivity_cover: bool = False

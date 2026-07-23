@@ -79,6 +79,17 @@
         }
       },
       {
+        "id": "nmd",
+        "order": 48,
+        "parsed_as": [
+          "nmd"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "NMD"
+        }
+      },
+      {
         "id": "opentargets",
         "order": 22,
         "parsed_as": [
@@ -1714,6 +1725,25 @@
         ]
       },
       {
+        "plugin": "nmd",
+        "scope": "transcript",
+        "output": "nmd",
+        "csq_fields": [
+          "NMD"
+        ],
+        "require_any_output": [
+          "prediction"
+        ],
+        "targets": [
+          {
+            "field": "prediction",
+            "from": "NMD",
+            "transform": "scalar",
+            "type": "string"
+          }
+        ]
+      },
+      {
         "plugin": "spdi",
         "scope": "allele",
         "output": "spdi",
@@ -2007,6 +2037,21 @@
                 "label": "LOEUF",
                 "from": "loeuf.score",
                 "format": "num"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "nmd",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "NMD",
+                "from": "nmd.prediction",
+                "format": "humanize"
               }
             ]
           }

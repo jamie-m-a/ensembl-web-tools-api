@@ -40,7 +40,7 @@ SPEC = load_merged_spec("human_grch38")
 # The options moved off the frontend switch in this change.
 SPEC_DRIVEN_OPTIONS = {
     "hgvs", "hgvsg", "spdi", "alphamissense", "revel", "cadd", "spliceai",
-    "loeuf", "dosage_sensitivity", "utrannotator", "riboseqorfs", "eve",
+    "loeuf", "dosage_sensitivity", "utrannotator", "nmd", "riboseqorfs", "eve",
     # `list`-block options (repeat + truncate, migrated off frontend overrides)
     "phenotypes", "go", "mavedb",
     # sub-option rows (Show-all enumeration)
