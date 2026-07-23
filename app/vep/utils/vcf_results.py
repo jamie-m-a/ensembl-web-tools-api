@@ -13,6 +13,7 @@ from pathlib import Path
 from pydantic import FilePath
 import vcfpy
 from vep.models import vcf_results_model as model
+from vep.form_panels import af_max_subpopulation_label
 from vep.utils import results_filters
 from vep.utils.bgzf import _BgzfReader
 from vep.utils.csq import (
@@ -644,22 +645,23 @@ def _with_display_panels(
     """
     response.metadata.display_panels = panels
     response.metadata.display = display
+    # AF is allele-scoped, so its annotations hang off the alt alleles.
+    alleles = [
+        allele
+        for variant in response.variants
+        for allele in variant.alternative_alleles
+    ]
     if expected_columns is not None:
         response.metadata.available_af_sources = [
             source
             for source in response.metadata.available_af_sources
             if source.key in expected_columns
         ]
-        # AF is allele-scoped, so its annotations hang off the alt alleles.
-        _gate_af_columns(
-            (
-                allele
-                for variant in response.variants
-                for allele in variant.alternative_alleles
-            ),
-            spec,
-            expected_columns,
-        )
+        _gate_af_columns(alleles, spec, expected_columns)
+    # Decode each All of Us annotation's max-subpopulation code(s) to a label,
+    # after any gating (a gated job nulls an unselected max, so a leaked one is
+    # not relabelled). Serve-time metadata only — not part of the spec digest.
+    _label_af_max_subpopulation(alleles)
     return response
 
 
@@ -719,6 +721,23 @@ def _gate_af_columns(
             for field, source in scalar_gates:
                 if source not in expected_columns:
                     annotation.data[field] = None
+
+
+def _label_af_max_subpopulation(
+    alleles: Iterable[model.AlternativeVariantAllele],
+) -> None:
+    """Attach a decoded `max_subpopulation_label` to each AF annotation carrying a
+    `max_subpopulation` code — the All of Us subpopulation(s) the max AF came
+    from (only that plugin emits the field). The frontend renders the label;
+    decoding here keeps the population vocabulary defined only in
+    `form_panels.py`. A null/absent code (unselected, or gated away) is skipped."""
+    for allele in alleles:
+        for annotation in allele.annotations:
+            raw = annotation.data.get("max_subpopulation")
+            if raw:
+                annotation.data["max_subpopulation_label"] = (
+                    af_max_subpopulation_label(raw)
+                )
 
 
 def get_results_from_path(
