@@ -302,6 +302,9 @@ class ConfigIniParams(BaseModel):
     # ClinVar clinical significance (human GRCh37/GRCh38). A VEP `custom` line
     # surfacing the CLNSIG field; not assembly-specific.
     clinvar: bool = False
+    # GENCODE promoter windows (human GRCh38). A VEP `custom` gff overlap line
+    # (no `fields=`; VEP emits the gff attributes itself).
+    gencode_promoters: bool = False
     # Assembly name (from the selected species, e.g. "GRCh38"/"GRCh37"); used to
     # pick assembly-specific plugin data files. Defaults to GRCh38.
     assembly_name: str = ""

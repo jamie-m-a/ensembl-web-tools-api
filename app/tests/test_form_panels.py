@@ -306,6 +306,19 @@ def test_clinvar_absent_for_non_human():
     assert "clinvar" not in option_ids(panels)
 
 
+def test_regulatory_panel_is_grch38_only():
+    g38 = get_visible_panels(species_taxonomy_id=HUMAN, assembly_name="GRCh38.p14")
+    assert "regulatory" in panel_ids(g38)
+    assert "gencode_promoters" in option_ids(g38)
+    # Not for human GRCh37 (no spec) nor other species.
+    assert "regulatory" not in panel_ids(
+        get_visible_panels(species_taxonomy_id=HUMAN, assembly_name="GRCh37")
+    )
+    assert "regulatory" not in panel_ids(
+        get_visible_panels(species_taxonomy_id=MOUSE, assembly_name="GRCm39")
+    )
+
+
 def test_option_ids_are_valid_config_ini_parameters():
     # The GRCh38 set is the superset of every option/sub-option.
     panels = get_visible_panels(

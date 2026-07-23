@@ -66,6 +66,7 @@ def test_bundled_spec_validates():
         "gnomad_exomes",
         "gnomad_genomes",
         "all_of_us",
+        "gencode_promoter",
     }
 
 

@@ -632,3 +632,17 @@ def test_clinvar_line_is_assembly_specific(
         f"custom file={PLUGIN_PATH}/{expected_file},"
         "short_name=ClinVar,fields=CLNSIG%CLNSIGCONF,format=vcf,type=exact"
     )
+
+
+def test_gencode_promoters_custom_has_no_fields_clause(monkeypatch, tmp_path):
+    # A gff-overlap custom (fields=None) writes no `fields=` clause at all — VEP
+    # emits the source's attributes itself. The line matches the authored order.
+    line = find_line(
+        build_lines(monkeypatch, tmp_path, gencode_promoters=True),
+        "short_name=GENCODE_Promoter",
+    )
+    assert line == (
+        f"custom file={PLUGIN_PATH}/gencode.v49.promoter_windows.sorted.gff3.gz,"
+        "gff_type=gencode_promoter,format=gff,short_name=GENCODE_Promoter,type=overlap"
+    )
+    assert "fields=" not in line
