@@ -32,6 +32,8 @@ from typing import Callable, Iterable, Iterator
 
 from pydantic import BaseModel
 
+from vep.form_panels import af_population_label
+
 # Field identifiers understood by the query builder. Must match the frontend's
 # filter `field` values (see the results filters UI).
 CONSEQUENCE_FIELD = "consequence"
@@ -360,28 +362,28 @@ def af_columns(index_map: dict[str, int]) -> list[str]:
 
 
 def af_source_descriptor(column: str) -> dict | None:
-    """Split an AF column into {key, source, population} for the results metadata
-    (population "" = the source's overall AF). None for non-AF columns."""
+    """Split an AF column into {key, source, population, label} for the results
+    metadata (population "" = the source's overall AF, labelled "All"). The label
+    is the human population name from the input form (decoded once here so the
+    frontend need not keep its own copy). None for non-AF columns."""
     if column.startswith("gnomAD_exomes_AF"):
-        return {
-            "key": column,
-            "source": "gnomad_exomes",
-            "population": column[len("gnomAD_exomes_AF"):].lstrip("_"),
-        }
-    if column.startswith("gnomAD_genomes_AF"):
-        return {
-            "key": column,
-            "source": "gnomad_genomes",
-            "population": column[len("gnomAD_genomes_AF"):].lstrip("_"),
-        }
-    if column.startswith("AoU_gvs_") and column.endswith("_af"):
-        population = column[len("AoU_gvs_"):-len("_af")]
-        return {
-            "key": column,
-            "source": "all_of_us",
-            "population": "" if population == "all" else population,
-        }
-    return None
+        source = "gnomad_exomes"
+        population = column[len("gnomAD_exomes_AF"):].lstrip("_")
+    elif column.startswith("gnomAD_genomes_AF"):
+        source = "gnomad_genomes"
+        population = column[len("gnomAD_genomes_AF"):].lstrip("_")
+    elif column.startswith("AoU_gvs_") and column.endswith("_af"):
+        source = "all_of_us"
+        raw = column[len("AoU_gvs_"):-len("_af")]
+        population = "" if raw == "all" else raw
+    else:
+        return None
+    return {
+        "key": column,
+        "source": source,
+        "population": population,
+        "label": af_population_label(source, population),
+    }
 
 
 def _compile_allele_frequency(f: ResultsFilter, index_map: dict[str, int]) -> CompiledFilter | None:

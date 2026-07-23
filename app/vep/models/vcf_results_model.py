@@ -155,6 +155,10 @@ class AfSource(BaseModel):
         description="gnomad_exomes | gnomad_genomes | all_of_us"
     )
     population: str = Field(description="Population code, or '' for overall")
+    label: str = Field(
+        description="Human label for this population (from the form), e.g. "
+        "'Non-Finnish European · Female'; 'All' for the overall AF"
+    )
 
 
 class Metadata(BaseModel):

@@ -317,3 +317,69 @@ def test_option_ids_are_valid_config_ini_parameters():
     # are excluded here; every real option/sub-option id must be a parameter.
     for option_id in option_ids(panels, include_sub_options=True):
         assert option_id in config_fields, f"{option_id} is not a ConfigIniParams field"
+
+
+# ---------------------------------------------------------------------------
+# AF population-code -> form-label decoders (af_population_label /
+# af_max_subpopulation_label). These decode the population codes the results
+# parser emits (see results_filters.af_source_descriptor) back to their form
+# labels, reusing the option tuples above as the single source of truth. Ported
+# from the frontend's former frequencyPopulationLabels util, which now reads the
+# decoded label off the response rather than keeping its own copy of the tables.
+# ---------------------------------------------------------------------------
+
+label = form_panels.af_population_label
+
+
+def test_af_label_gnomad_bare_ancestry():
+    assert label("gnomad_exomes", "afr") == "African & African-American"
+    assert label("gnomad_exomes", "nfe") == "Non-Finnish European"
+
+
+def test_af_label_gnomad_sex_suffix():
+    assert label("gnomad_exomes", "nfe_XX") == "Non-Finnish European · Female"
+    assert label("gnomad_genomes", "afr_XY") == "African & African-American · Male"
+
+
+def test_af_label_gnomad_bare_sex_is_all_that_sex():
+    assert label("gnomad_exomes", "XX") == "All · Female"
+    assert label("gnomad_exomes", "XY") == "All · Male"
+
+
+def test_af_label_gnomad_non_ukb_subset():
+    assert label("gnomad_exomes", "non_ukb") == "All · excl. UK Biobank"
+    assert label("gnomad_exomes", "non_ukb_afr") == (
+        "African & African-American · excl. UK Biobank"
+    )
+    assert label("gnomad_exomes", "non_ukb_nfe_XX") == (
+        "Non-Finnish European · Female · excl. UK Biobank"
+    )
+
+
+def test_af_label_gnomad_grpmax_and_genomes_only():
+    assert label("gnomad_genomes", "grpmax") == "Maximum across all groups"
+    assert label("gnomad_genomes", "ami") == "Amish"
+    assert label("gnomad_genomes", "remaining") == "Remaining"
+
+
+def test_af_label_allofus_flat_codes():
+    assert label("all_of_us", "afr") == "African"
+    assert label("all_of_us", "amr") == "Latino/Ad Mixed American"
+    assert label("all_of_us", "eur") == "European"
+    assert label("all_of_us", "max") == "Maximum subpopulation"
+
+
+def test_af_label_overall_is_all_for_every_source():
+    assert label("gnomad_exomes", "") == "All"
+    assert label("gnomad_genomes", "") == "All"
+    assert label("all_of_us", "") == "All"
+
+
+def test_af_label_unrecognised_falls_back_to_code():
+    assert label("gnomad_exomes", "zzz") == "zzz"
+    assert label("all_of_us", "zzz") == "zzz"
+
+
+def test_af_max_subpopulation_label_single_and_joined():
+    assert form_panels.af_max_subpopulation_label("eur") == "European"
+    assert form_panels.af_max_subpopulation_label("eur&afr") == "European / African"

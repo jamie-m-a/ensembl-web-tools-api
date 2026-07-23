@@ -315,6 +315,85 @@ def _allofus_option() -> dict:
     }
 
 
+# --------------------------------------------------------------------------- #
+# AF population-code -> form-label decoders
+#
+# The results parser emits the same population codes these option ids are built
+# from (see results_filters.af_source_descriptor), so a served AF column can be
+# labelled by decoding its code back to the form label. That decode lives here,
+# beside the option tuples it reuses, so the label vocabulary is defined exactly
+# once — the frontend reads the decoded label off the response rather than
+# keeping its own copy of these tables.
+# --------------------------------------------------------------------------- #
+
+# gnomAD ancestry codes -> labels. Genomes is a superset of exomes, so its list
+# covers both sources; grpmax (genomes-only, added separately as a plain toggle)
+# is folded in. The form's "all" ancestry is the overall AF, which the parser
+# reports as an empty population code, so it is left out of the map.
+_GNOMAD_ANCESTRY_LABELS = {
+    code: label for code, label in _GNOMAD_GENOMES_ANCESTRIES if code != "all"
+} | {"grpmax": "Maximum across all groups"}
+
+# All of Us population codes -> labels ("all" is the overall AF -> empty code).
+_ALLOFUS_POPULATION_LABELS = {
+    code: label for code, label in _ALLOFUS_POPULATIONS if code != "all"
+}
+
+# gnomAD sex-split suffixes.
+_SEX_LABELS = {"XX": "Female", "XY": "Male"}
+
+
+def _gnomad_population_label(code: str) -> str:
+    """Decode a compound gnomAD population code, e.g. `nfe_XX` -> 'Non-Finnish
+    European · Female', `non_ukb_afr` -> 'African & African-American · excl. UK
+    Biobank'. A code is an optional `non_ukb` subset prefix, then an ancestry (or
+    a bare sex code = all ancestries), then an optional `_XX`/`_XY` sex suffix."""
+    rest = code
+
+    exclude_ukb = False
+    if rest == "non_ukb" or rest.startswith("non_ukb_"):
+        exclude_ukb = True
+        rest = rest[len("non_ukb"):].lstrip("_")
+
+    sex = None
+    if rest.endswith(("_XX", "_XY")):
+        sex = _SEX_LABELS[rest[-2:]]
+        rest = rest[:-3]
+    elif rest in ("XX", "XY"):
+        sex = _SEX_LABELS[rest]
+        rest = ""
+
+    ancestry = "All" if rest == "" else _GNOMAD_ANCESTRY_LABELS.get(rest, rest)
+    parts = [ancestry]
+    if sex:
+        parts.append(sex)
+    if exclude_ukb:
+        parts.append("excl. UK Biobank")
+    return " · ".join(parts)
+
+
+def af_population_label(source: str, code: str) -> str:
+    """The form label for an AF population `code` within an AF `source`
+    (`gnomad_exomes` / `gnomad_genomes` / `all_of_us`). The empty code is the
+    source's overall AF ("All"); an unrecognised code falls back to itself.
+
+    Reused by the results metadata (each `AfSource.label`) and the All of Us
+    `max_subpopulation` decode, so the label vocabulary stays defined once."""
+    if code == "":
+        return "All"
+    if source == "all_of_us":
+        return _ALLOFUS_POPULATION_LABELS.get(code, code)
+    return _gnomad_population_label(code)
+
+
+def af_max_subpopulation_label(raw: str) -> str:
+    """Decode All of Us `max_subpopulation` — the subpopulation(s) the max AF came
+    from, given as `&`-joined population codes — to ` / `-joined labels."""
+    return " / ".join(
+        af_population_label("all_of_us", part) for part in raw.split("&")
+    )
+
+
 def _add_human_grch38_options(panels: list[dict]) -> None:
     """Layer the human GRCh38-only options onto the (already human 37/38) panels.
 

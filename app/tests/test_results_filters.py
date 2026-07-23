@@ -503,22 +503,31 @@ def test_af_columns_discovery_excludes_subpop_label():
 
 
 def test_af_source_descriptor():
+    # Each descriptor carries a decoded population `label` (from form_panels): the
+    # overall AF is "All", a compound gnomAD code decodes to its form label.
     assert rf.af_source_descriptor("gnomAD_exomes_AF") == {
         "key": "gnomAD_exomes_AF",
         "source": "gnomad_exomes",
         "population": "",
+        "label": "All",
     }
     assert rf.af_source_descriptor("gnomAD_genomes_AF_grpmax") == {
         "key": "gnomAD_genomes_AF_grpmax",
         "source": "gnomad_genomes",
         "population": "grpmax",
+        "label": "Maximum across all groups",
     }
     assert rf.af_source_descriptor("AoU_gvs_all_af") == {
         "key": "AoU_gvs_all_af",
         "source": "all_of_us",
         "population": "",
+        "label": "All",
     }
     assert rf.af_source_descriptor("AoU_gvs_afr_af")["population"] == "afr"
+    assert rf.af_source_descriptor("AoU_gvs_afr_af")["label"] == "African"
+    assert rf.af_source_descriptor("gnomAD_exomes_AF_nfe_XX")["label"] == (
+        "Non-Finnish European · Female"
+    )
     assert rf.af_source_descriptor("SYMBOL") is None
 
 
@@ -690,8 +699,8 @@ def _response_with_af_sources() -> model.VepResultsResponse:
         metadata=model.Metadata(
             pagination=model.PaginationMetadata(page=1, per_page=10, total=0),
             available_af_sources=[
-                model.AfSource(key="gnomAD_exomes_AF", source="gnomad_exomes", population=""),
-                model.AfSource(key="gnomAD_genomes_AF", source="gnomad_genomes", population=""),
+                model.AfSource(key="gnomAD_exomes_AF", source="gnomad_exomes", population="", label="All"),
+                model.AfSource(key="gnomAD_genomes_AF", source="gnomad_genomes", population="", label="All"),
             ],
         ),
         variants=[],
@@ -723,3 +732,63 @@ def test_af_sources_untouched_without_a_pin():
         _response_with_af_sources(), None, None, expected_columns=None
     )
     assert len(gated.metadata.available_af_sources) == 2
+
+
+# --- All of Us max_subpopulation decoded to a label at serve time -----------
+
+
+def _allele_with_aou_data(data: dict) -> model.AlternativeVariantAllele:
+    return model.AlternativeVariantAllele(
+        allele_sequence="T",
+        allele_type="SNV",
+        predicted_molecular_consequences=[],
+        annotations=[
+            model.Annotation(plugin="all_of_us", scope="allele", data=data)
+        ],
+    )
+
+
+def test_label_af_max_subpopulation_decodes_amp_joined_codes():
+    allele = _allele_with_aou_data(
+        {"populations": {"max": 0.2}, "max_subpopulation": "eur&afr"}
+    )
+    vcf_results._label_af_max_subpopulation([allele])
+    assert (
+        allele.annotations[0].data["max_subpopulation_label"]
+        == "European / African"
+    )
+
+
+def test_label_af_max_subpopulation_skips_when_null_or_absent():
+    nulled = _allele_with_aou_data(
+        {"populations": {}, "max_subpopulation": None}
+    )
+    absent = _allele_with_aou_data({"populations": {}})
+    vcf_results._label_af_max_subpopulation([nulled, absent])
+    assert "max_subpopulation_label" not in nulled.annotations[0].data
+    assert "max_subpopulation_label" not in absent.annotations[0].data
+
+
+def test_with_display_panels_labels_max_subpopulation():
+    # The serve path (any job) decodes the max-subpopulation code to a label.
+    variant = model.Variant(
+        allele_type="SNV",
+        location=model.Location(region_name="1", start=1, end=2),
+        reference_allele=model.ReferenceVariantAllele(allele_sequence="C"),
+        alternative_alleles=[
+            _allele_with_aou_data(
+                {"populations": {"max": 0.2}, "max_subpopulation": "eur"}
+            )
+        ],
+    )
+    response = model.VepResultsResponse(
+        metadata=model.Metadata(
+            pagination=model.PaginationMetadata(page=1, per_page=10, total=1)
+        ),
+        variants=[variant],
+    )
+    out = vcf_results._with_display_panels(
+        response, None, None, expected_columns=None
+    )
+    data = out.variants[0].alternative_alleles[0].annotations[0].data
+    assert data["max_subpopulation_label"] == "European"
