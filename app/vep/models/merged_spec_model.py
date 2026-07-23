@@ -232,6 +232,8 @@ class MergedSpec(BaseModel):
         for entry in self.config.entries:
             if not options.get(entry.id):
                 continue
+            if not entry.requirements_met(options):
+                continue  # a sub-option entry contributes nothing without its parent
             emitter = entry.config
             if isinstance(emitter, CustomEmitter):
                 short_name = emitter.params.get("short_name")

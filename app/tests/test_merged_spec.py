@@ -48,8 +48,8 @@ def _doc(config_entries, parse_plugins):
 def test_bundled_merged_spec_is_consistent():
     # load_merged_spec runs the consistency check; a bad spec would raise here.
     spec = load_merged_spec("human_grch38")
-    assert len(spec.config_entries()) == 33
-    assert len(spec.parse_plugins()) == 30
+    assert len(spec.config_entries()) == 34
+    assert len(spec.parse_plugins()) == 31
 
 
 # --- reference integrity ----------------------------------------------------
@@ -325,11 +325,25 @@ def test_simple_plugin_expects_its_csq_fields():
 
 def test_custom_literal_expects_exact_columns():
     # The bare `short_name` match column is always emitted by a custom, so it is
-    # expected too, alongside the literal `short_name_<field>` columns.
-    assert _expected(clinvar=True) == {
+    # expected too, alongside the literal `short_name_<field>` columns. ClinVar's
+    # short custom requires the master (`clinvar`) as well as its own sub-option.
+    assert _expected(clinvar=True, clinvar_short=True) == {
         "ClinVar",
         "ClinVar_CLNSIG",
         "ClinVar_CLNSIGCONF",
+    }
+
+
+def test_clinvar_sub_option_requires_the_master():
+    # A ClinVar sub-option selected without the master (a stale value restored by
+    # edit/rerun) expects nothing — the `requires: ["clinvar"]` gate holds.
+    assert _expected(clinvar_short=True) == set()
+    assert _expected(clinvar_sv=True) == set()
+    # With the master on, each sub-option expects its own custom's columns.
+    assert _expected(clinvar=True, clinvar_sv=True) == {
+        "ClinVar_SV",
+        "ClinVar_SV_CLNSIG",
+        "ClinVar_SV_ORIGIN",
     }
 
 

@@ -329,9 +329,14 @@ class ConfigIniParams(BaseModel):
     gnomad_cnv_sf_nfe: bool = False
     gnomad_cnv_sf_sas: bool = False
     gnomad_cnv_sf_remaining: bool = False
-    # ClinVar clinical significance (human GRCh37/GRCh38). A VEP `custom` line
-    # surfacing the CLNSIG field; not assembly-specific.
+    # ClinVar clinical significance. `clinvar` is the master toggle; the two
+    # sub-options each gate their own VEP `custom` line, and require the master
+    # (config entries carry `requires: ["clinvar"]`). `clinvar_short` is the
+    # original ClinVar CLNSIG custom (human GRCh37/GRCh38); `clinvar_sv` is the
+    # ClinVar_SV structural-variant custom (GRCh38-only).
     clinvar: bool = False
+    clinvar_short: bool = False
+    clinvar_sv: bool = False
     # GENCODE promoter windows (human GRCh38). A VEP `custom` gff overlap line
     # (no `fields=`; VEP emits the gff attributes itself).
     gencode_promoters: bool = False

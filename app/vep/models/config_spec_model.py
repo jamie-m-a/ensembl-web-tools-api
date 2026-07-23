@@ -286,7 +286,21 @@ class ConfigEntry(BaseModel):
     # user's own HGVSg selection, which is what the results view gates the HGVSg
     # row's display on, so the value is computed without showing the row.
     forces_on: list[str] = []
+    # Other option ids that must ALSO be selected for this entry to emit — a
+    # parent-gate for independent sub-options. The ClinVar master (`clinvar`)
+    # reveals two independent toggles (`clinvar_short` / `clinvar_sv`), each
+    # gating its own custom line; `requires: ["clinvar"]` keeps a sub-option from
+    # emitting when the master is off (e.g. a stale sub-option value restored by
+    # edit/rerun after the master was unchecked). Unlike `forces_on` this only
+    # gates emission; it never turns another option on.
+    requires: list[str] = []
     config: ConfigEmitter
+
+    def requirements_met(self, options: dict) -> bool:
+        """Whether every `requires` dependency is selected. The extra gate the
+        config interpreter and `expected_csq_columns` apply on top of the
+        entry's own option, so a sub-option entry emits only with its parent."""
+        return all(options.get(dependency) for dependency in self.requires)
 
 
 class ConfigSpec(BaseModel):

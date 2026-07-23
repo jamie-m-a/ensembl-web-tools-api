@@ -808,9 +808,12 @@
         }
       },
       {
-        "id": "clinvar",
+        "id": "clinvar_short",
         "order": 60,
         "parsed_as": [
+          "clinvar"
+        ],
+        "requires": [
           "clinvar"
         ],
         "config": {
@@ -830,6 +833,31 @@
             "literal": [
               "CLNSIG",
               "CLNSIGCONF"
+            ]
+          }
+        }
+      },
+      {
+        "id": "clinvar_sv",
+        "order": 61,
+        "parsed_as": [
+          "clinvar_sv"
+        ],
+        "requires": [
+          "clinvar"
+        ],
+        "config": {
+          "emit": "custom",
+          "params": {
+            "file": "{path}/nstd102.GRCh38.variant_call.combined.sorted.vcf.gz",
+            "short_name": "ClinVar_SV",
+            "format": "vcf",
+            "type": "exact"
+          },
+          "fields": {
+            "literal": [
+              "CLNSIG",
+              "ORIGIN"
             ]
           }
         }
@@ -1080,6 +1108,30 @@
               "significance",
               "count"
             ]
+          }
+        ]
+      },
+      {
+        "plugin": "clinvar_sv",
+        "scope": "allele",
+        "output": "clinvar_sv",
+        "csq_fields": [
+          "ClinVar_SV_CLNSIG",
+          "ClinVar_SV_ORIGIN"
+        ],
+        "require_any_input": [
+          "ClinVar_SV_CLNSIG"
+        ],
+        "targets": [
+          {
+            "field": "significance",
+            "from": "ClinVar_SV_CLNSIG",
+            "transform": "list"
+          },
+          {
+            "field": "origin",
+            "from": "ClinVar_SV_ORIGIN",
+            "transform": "list"
           }
         ]
       },
@@ -2590,49 +2642,84 @@
         "option_id": "clinvar",
         "blocks": [
           {
-            "kind": "rows",
-            "when": {
-              "empty": "clinvar.conflicting_breakdown"
-            },
-            "rows": [
-              {
-                "label": "Clinical significance",
-                "from": "clinvar.significance",
-                "format": "humanize_join"
-              }
-            ]
-          },
-          {
             "kind": "group",
-            "heading": "Clinical significance",
-            "when": {
-              "present": "clinvar.conflicting_breakdown"
+            "requires_selected": {
+              "id": "clinvar_short",
+              "default": false
             },
             "blocks": [
               {
                 "kind": "rows",
+                "when": {
+                  "empty": "clinvar.conflicting_breakdown"
+                },
                 "rows": [
                   {
-                    "label": "Classification",
+                    "label": "Clinical significance",
                     "from": "clinvar.significance",
                     "format": "humanize_join"
                   }
                 ]
               },
               {
-                "kind": "list",
-                "from": "clinvar.conflicting_breakdown",
-                "item": {
-                  "label": {
-                    "from": "significance",
-                    "format": "humanize"
+                "kind": "group",
+                "heading": "Clinical significance",
+                "when": {
+                  "present": "clinvar.conflicting_breakdown"
+                },
+                "blocks": [
+                  {
+                    "kind": "rows",
+                    "rows": [
+                      {
+                        "label": "Classification",
+                        "from": "clinvar.significance",
+                        "format": "humanize_join"
+                      }
+                    ]
                   },
-                  "cells": [
-                    {
-                      "from": "count"
+                  {
+                    "kind": "list",
+                    "from": "clinvar.conflicting_breakdown",
+                    "item": {
+                      "label": {
+                        "from": "significance",
+                        "format": "humanize"
+                      },
+                      "cells": [
+                        {
+                          "from": "count"
+                        }
+                      ]
                     }
-                  ]
-                }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "group",
+            "heading": "Structural variant",
+            "requires_selected": {
+              "id": "clinvar_sv",
+              "default": false
+            },
+            "blocks": [
+              {
+                "kind": "rows",
+                "requires": "clinvar_sv",
+                "rows": [
+                  {
+                    "label": "Clinical significance",
+                    "from": "clinvar_sv.significance",
+                    "format": "humanize_join"
+                  },
+                  {
+                    "label": "Origin",
+                    "from": "clinvar_sv.origin",
+                    "format": "humanize_join"
+                  }
+                ]
               }
             ]
           }

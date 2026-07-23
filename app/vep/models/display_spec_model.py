@@ -110,6 +110,24 @@ class WhenSpec(BaseModel):
         return self.present or self.empty  # type: ignore[return-value]
 
 
+class SelectedGate(BaseModel):
+    """Gate a block on whether a form option/sub-option was *selected* for the
+    job (as opposed to `when`/`requires`, which test the annotation data).
+
+    The ClinVar master's display renders its short and structural blocks under
+    one option, so each block gates on its own sub-option: dev-data VCFs are
+    annotated from a full cache and carry columns the user didn't pick, so
+    gating on data alone would leak the unselected variant kind into the view.
+    `id` is the sub-option id; `default` is that sub-option's default (an option
+    left at its default isn't written to the submitted parameters).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    default: bool = False
+
+
 class LinkSpec(BaseModel):
     """How to turn a value into a link.
 
@@ -300,6 +318,8 @@ class DisplayRowsBlock(BaseModel):
     kind: Literal["rows"] = "rows"
     heading: str | None = None
     requires: str | None = None
+    # Render only when this sub-option was selected (ClinVar short/structural).
+    requires_selected: SelectedGate | None = None
     # A data condition on top of `requires`: render this block only when the
     # named field is present / empty (ClinVar's bare vs headed shapes).
     when: WhenSpec | None = None
@@ -324,6 +344,7 @@ class DisplayListBlock(BaseModel):
     kind: Literal["list"]
     heading: str | None = None
     requires: str | None = None
+    requires_selected: SelectedGate | None = None
     when: WhenSpec | None = None
     view: BlockView | None = None
     source: str = Field(alias="from")
@@ -350,6 +371,7 @@ class DisplayGroupBlock(BaseModel):
 
     kind: Literal["group"] = "group"
     heading: str | None = None
+    requires_selected: SelectedGate | None = None
     when: WhenSpec | None = None
     view: BlockView | None = None
     blocks: list["DisplayBlock"]
