@@ -254,6 +254,12 @@ class ConfigEntry(BaseModel):
     # hgvs). Kept on the config side so the parsing specs stay untouched; it is
     # also the seed of a future per-entry merge (design §3).
     parsed_as: list[str] = []
+    # Other option ids to treat as on for config emission whenever this option
+    # is selected — a config-only dependency. ProtVar reads HGVSg to build its
+    # link, so `protvar` forces `hgvsg` to be computed; this never touches the
+    # user's own HGVSg selection, which is what the results view gates the HGVSg
+    # row's display on, so the value is computed without showing the row.
+    forces_on: list[str] = []
     config: ConfigEmitter
 
 

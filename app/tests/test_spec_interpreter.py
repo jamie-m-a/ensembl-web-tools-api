@@ -327,6 +327,20 @@ def test_protvar_shape_is_as_expected():
     assert result["interaction_interfaces"][0]["raw"] == "PARTNER1&0.9"
 
 
+def test_protvar_multiple_pockets():
+    """ProtVar_pocket packs one 7-field pocket after another; each must become
+    its own item (chunk of 7), not just the first."""
+    two = (
+        "P4&897.5&83.3&0.36&0.79&7.6&res4"
+        "&P12&515.8&87.7&0.33&0.75&4.3&res12"
+    )
+    pockets = run("protvar", row_list(ProtVar_pocket=two))["pockets"]
+    assert [p["pocket_id"] for p in pockets] == ["P4", "P12"]
+    assert pockets[0]["score"] == 0.36
+    assert pockets[1]["score"] == 0.33
+    assert pockets[1]["radius_of_gyration"] == 4.3
+
+
 def test_protvar_odd_interaction_token_count():
     """A trailing partner with no score: still one interface, score null."""
     result = run("protvar", row_list(ProtVar_int="PARTNER1&0.9&PARTNER3"))
@@ -341,9 +355,9 @@ def test_protvar_empty_is_none():
 
 
 def test_protvar_pocket_missing_middle_value_does_not_shift():
-    """An unparseable score empties only its own field: `positional` assigns
-    strictly by index, so a bad item cannot pull the later values forward and
-    have them silently reported under the wrong names."""
+    """An unparseable score empties only its own field: a pocket's fields are
+    assigned strictly by index, so a bad item cannot pull the later values
+    forward and have them silently reported under the wrong names."""
     raw = "POCKET1&-5.2&NA&0.8&0.6&12.5&RES"
     pocket = run("protvar", row_list(ProtVar_pocket=raw))["pockets"][0]
 

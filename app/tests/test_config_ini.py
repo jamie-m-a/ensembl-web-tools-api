@@ -232,6 +232,18 @@ def test_protvar_sub_flags(monkeypatch, tmp_path):
     assert "stability=0,pocket=1,int=0" in partial_line
 
 
+def test_protvar_forces_hgvsg_computed(monkeypatch, tmp_path):
+    # ProtVar builds its link from HGVSg, so selecting it forces `hgvsg 1` even
+    # when the HGVSg option itself is off. The HGVSg row still stays hidden: the
+    # results view gates display on the user's own selection, not on the flag.
+    lines = build_lines(monkeypatch, tmp_path, protvar=True, hgvsg=False)
+    assert "hgvsg 1" in lines
+
+    # Without ProtVar, an unselected HGVSg stays off.
+    off_lines = build_lines(monkeypatch, tmp_path, protvar=False, hgvsg=False)
+    assert "hgvsg 0" in off_lines
+
+
 def test_mutfunc_sub_flags_and_extended(monkeypatch, tmp_path):
     line = find_line(
         build_lines(

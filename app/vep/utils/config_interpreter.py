@@ -172,9 +172,18 @@ def emit_config_lines(
     `plugin_path`/`gff` fill the `{path}`/`{gff}` tokens.
     """
     context = {"path": plugin_path, "gff": gff}
+    # A selected option can force other options on for config emission only
+    # (ProtVar needs HGVSg computed to build its link). This is confined to the
+    # config lines — it never touches the options the results view gates display
+    # on — so a forced flag is computed without adding its row.
+    effective = dict(options)
+    for entry in spec.entries:
+        if options.get(entry.id):
+            for forced_id in entry.forces_on:
+                effective[forced_id] = True
     lines: list[str] = []
     for entry in sorted(spec.entries, key=lambda e: e.order):
-        line = _emit_entry(entry, options, assembly, context)
+        line = _emit_entry(entry, effective, assembly, context)
         if line is not None:
             lines.append(line)
     return lines
