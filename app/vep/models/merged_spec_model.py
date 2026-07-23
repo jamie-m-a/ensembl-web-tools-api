@@ -52,6 +52,116 @@ def _is_simple_plugin(emitter: PluginEmitter) -> bool:
     )
 
 
+# --- Display format <-> parsing type compatibility -------------------------- #
+#
+# Each display `format` assumes a value of a particular *shape*, and applying it
+# to the wrong shape crashes the frontend renderer: `num` calls `.toPrecision`
+# (throws on a string), `join`/`humanize_join` call `.join`/`.map` (throw on a
+# string / non-list). The parsing target a display field reads fixes that shape,
+# so the mismatch is caught here at load time instead of at render. A shape is a
+# small tag: ("scalar", "num"|"string"), ("list", "num"|"string"|"object"),
+# ("dict",) or ("object",).
+
+_NUMERIC_TYPES = frozenset({"float", "int"})
+
+
+def _scalar_shape(value_type: str) -> tuple[str, str]:
+    """A scalar value's shape from its parsing `type` (`raw` is source text, so
+    string-like)."""
+    return ("scalar", "num" if value_type in _NUMERIC_TYPES else "string")
+
+
+def _target_shape(target) -> tuple[str, ...]:
+    """The shape a display field gets when it reads a whole parsing target,
+    derived from the target's transform (and, for scalars/lists, element type)."""
+    transform = target.transform
+    if transform in ("scalar", "first"):
+        return _scalar_shape(target.type)
+    if transform == "list":
+        return ("list", _scalar_shape(target.type)[1])
+    if transform in ("zip", "chunk"):
+        return ("list", "object")
+    if transform == "positional":
+        return ("list", "object") if target.wrap == "list" else ("object",)
+    if transform == "regex":
+        return ("list", "object") if target.each else ("object",)
+    if transform in ("pattern_map", "key_value"):
+        return ("dict",)
+    return ("object",)  # unreachable for the current Transform set; be safe
+
+
+def _item_field_shape(list_target, item_ref: str | None) -> tuple[str, ...] | None:
+    """The shape of a list element's field (a cell/label `from`), or of the
+    scalar element itself when the cell has no `from`. None when the named field
+    is not among the target's declared `as` fields — an unresolved item ref,
+    already reported by `_check_display_refs`."""
+    if item_ref is None:
+        return _scalar_shape(list_target.type)
+    for field in list_target.as_fields or []:
+        if field.field == item_ref:
+            return _scalar_shape(field.type)
+    return None
+
+
+def _format_suits_shape(fmt: str, shape: tuple[str, ...]) -> bool:
+    """Whether `format` can be applied to `shape` without crashing / misreading.
+    `text` (and any unlisted format) only stringifies, so it suits anything."""
+    if fmt == "num":
+        return shape == ("scalar", "num")
+    if fmt in ("humanize", "phenotype"):
+        return shape == ("scalar", "string")
+    if fmt == "join":
+        return shape[0] == "list" and shape[1] in ("string", "num")
+    if fmt == "humanize_join":
+        return shape == ("list", "string")
+    if fmt == "count":
+        return shape[0] == "list" or shape == ("scalar", "string")
+    return True
+
+
+_FORMAT_NEEDS = {
+    "num": "a numeric field",
+    "humanize": "a string field",
+    "phenotype": "a string field",
+    "join": "a list of scalars",
+    "humanize_join": "a list of strings",
+    "count": "a list, or a delimited string",
+}
+
+_SHAPE_DESCRIPTIONS = {
+    ("scalar", "num"): "a numeric field",
+    ("scalar", "string"): "a string field",
+    ("list", "num"): "a list of numbers",
+    ("list", "string"): "a list of strings",
+    ("list", "object"): "a list of objects",
+    ("dict",): "a map",
+    ("object",): "an object",
+}
+
+
+def _describe_shape(shape: tuple[str, ...]) -> str:
+    return _SHAPE_DESCRIPTIONS.get(shape, str(shape))
+
+
+def _compose_errors(oid: str, compose, target_of) -> list[str]:
+    """A `with_score` value renders `num(score) (humanize(classification))`, so
+    the score must be numeric and the classification a string — either wrong
+    crashes exactly as a bad row `format` would."""
+    errors: list[str] = []
+    for ref, needed in (
+        (compose.score, ("scalar", "num")),
+        (compose.classification, ("scalar", "string")),
+    ):
+        target = target_of(ref)
+        if target is not None and _target_shape(target) != needed:
+            errors.append(
+                f"display option {oid!r} uses {ref!r} in a with_score value, "
+                f"which needs {_describe_shape(needed)}, but it is "
+                f"{_describe_shape(_target_shape(target))}"
+            )
+    return errors
+
+
 class MergedSpec(BaseModel):
     """Config + parsing for one genome, under one content digest."""
 
@@ -174,6 +284,7 @@ class MergedSpec(BaseModel):
                 errors += self._check_custom_columns(entry, entry.config)
 
         errors += self._check_display_refs()
+        errors += self._check_display_format_types()
 
         if errors:
             raise ValueError("config/parsing inconsistency: " + "; ".join(errors))
@@ -260,6 +371,74 @@ class MergedSpec(BaseModel):
                             err = scalar_ref_error(oid, ref)
                             if err:
                                 errors.append(err)
+        return errors
+
+    def _check_display_format_types(self) -> list[str]:
+        """Display↔parsing *type* consistency: every explicit `format` (and the
+        `with_score` compose) must suit the shape of the value it reads, so a
+        format that assumes a number or a list can't be applied to a string
+        field and crash the renderer at display time (`num` -> `.toPrecision`,
+        `join`/`humanize_join` -> `.join`/`.map`). The companion to
+        `_check_display_refs`, which already checked the field *exists*; here only
+        refs that resolve are shape-checked (an unresolved one is reported there),
+        so the two passes stay independent."""
+        if self.display is None:
+            return []
+
+        targets_by_plugin = {
+            plugin.plugin: {t.field: t for t in plugin.targets}
+            for plugin in self.parsing.plugins
+        }
+        errors: list[str] = []
+
+        def target_of(ref: str):
+            plugin, _, field = ref.partition(".")
+            return targets_by_plugin.get(plugin, {}).get(field)
+
+        def check(oid: str, ref: str, fmt: str, shape: tuple[str, ...]) -> None:
+            if not _format_suits_shape(fmt, shape):
+                errors.append(
+                    f"display option {oid!r} formats {ref!r} as {fmt!r}, but "
+                    f"that is {_describe_shape(shape)}; {fmt!r} needs "
+                    f"{_FORMAT_NEEDS.get(fmt, 'a compatible value')}"
+                )
+
+        for option in self.display.options:
+            oid = option.option_id
+            for block in option.iter_blocks():
+                if isinstance(block, DisplayRowsBlock):
+                    for row in block.rows:
+                        if row.source and row.format:
+                            target = target_of(row.source)
+                            if target is not None:
+                                check(oid, row.source, row.format, _target_shape(target))
+                        if row.compose:
+                            errors += _compose_errors(oid, row.compose, target_of)
+                elif isinstance(block, DisplayListBlock):
+                    plugin, list_field = block.list_ref()
+                    list_target = targets_by_plugin.get(plugin, {}).get(list_field)
+                    if list_target is None:
+                        continue  # unresolved list ref -> reported by _check_display_refs
+                    item = block.item
+                    label = item.label
+                    if label and label.format and label.source:
+                        shape = _item_field_shape(list_target, label.source)
+                        if shape is not None:
+                            check(
+                                oid,
+                                f"{plugin}.{list_field}.{label.source}",
+                                label.format,
+                                shape,
+                            )
+                    for cell in item.cells:
+                        if not cell.format:
+                            continue
+                        shape = _item_field_shape(list_target, cell.source)
+                        if shape is not None:
+                            ref = f"{plugin}.{list_field}" + (
+                                f".{cell.source}" if cell.source else ""
+                            )
+                            check(oid, ref, cell.format, shape)
         return errors
 
     def _check_custom_columns(

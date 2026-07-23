@@ -80,7 +80,9 @@ def _doc(display, plugins=None):
                     "output": "revel",
                     "csq_fields": ["REVEL"],
                     "targets": [
-                        {"field": "score", "from": "REVEL", "transform": "scalar"}
+                        # a float, as REVEL scores are — so a `num` format over it
+                        # is type-compatible (see the format<->type checks below)
+                        {"field": "score", "from": "REVEL", "transform": "scalar", "type": "float"}
                     ],
                 }
             ]
@@ -280,6 +282,140 @@ def test_valid_display_loads():
         _doc(_display({"label": "REVEL", "from": "revel.score", "format": "num"}))
     )
     assert spec.display.options[0].blocks[0].rows[0].source == "revel.score"
+
+
+# --- the static format <-> type compatibility check -------------------------
+#
+# A `format` assumes a value shape; applying it to the wrong parsing type crashes
+# the renderer (`num` -> `.toPrecision`, `join`/`humanize_join` -> `.join`/`.map`).
+# One plugin with a field of every shape the checks distinguish.
+
+_TYPED_PLUGIN = [
+    {
+        "plugin": "p",
+        "scope": "transcript",
+        "output": "p",
+        "csq_fields": ["C"],
+        "targets": [
+            {"field": "score", "from": "C", "transform": "scalar", "type": "float"},
+            {"field": "name", "from": "C", "transform": "scalar", "type": "string"},
+            {"field": "terms", "from": "C", "transform": "list", "type": "string"},
+            {
+                "field": "assays",
+                "from": "C",
+                "transform": "chunk",
+                "size": 2,
+                "as": [
+                    {"field": "urn", "type": "string"},
+                    {"field": "sc", "type": "float"},
+                ],
+                "item_fields": ["urn", "sc"],
+            },
+        ],
+    }
+]
+
+
+def _typed(*rows):
+    return _doc(_display(*rows), plugins=_TYPED_PLUGIN)
+
+
+def _typed_list(item):
+    return _doc(
+        {"options": [{"option_id": "p", "blocks": [
+            {"kind": "list", "from": "p.assays", "item": item}
+        ]}]},
+        plugins=_TYPED_PLUGIN,
+    )
+
+
+def test_num_format_over_a_string_field_raises():
+    """The motivating case: `num` calls `.toPrecision` and throws on a string."""
+    with pytest.raises(
+        ValidationError,
+        match=r"formats 'p.name' as 'num'.*needs a numeric field",
+    ):
+        MergedSpec.model_validate(
+            _typed({"label": "N", "from": "p.name", "format": "num"})
+        )
+
+
+def test_num_format_over_a_list_field_raises():
+    with pytest.raises(ValidationError, match=r"formats 'p.terms' as 'num'"):
+        MergedSpec.model_validate(
+            _typed({"label": "N", "from": "p.terms", "format": "num"})
+        )
+
+
+def test_list_format_over_a_scalar_raises():
+    """`humanize_join` maps `.replace` over the elements, so it needs a list."""
+    with pytest.raises(
+        ValidationError,
+        match=r"formats 'p.name' as 'humanize_join'.*needs a list of strings",
+    ):
+        MergedSpec.model_validate(
+            _typed({"label": "N", "from": "p.name", "format": "humanize_join"})
+        )
+
+
+def test_count_over_a_numeric_field_raises():
+    """`count` is for a list or a delimited string; a number always drops."""
+    with pytest.raises(ValidationError, match=r"formats 'p.score' as 'count'"):
+        MergedSpec.model_validate(
+            _typed({"label": "N", "from": "p.score", "format": "count"})
+        )
+
+
+def test_list_item_cell_format_is_type_checked():
+    """A cell's `format` is checked against the element field's declared `as`
+    type — `urn` is a string, so `num` over it would crash."""
+    with pytest.raises(ValidationError, match=r"formats 'p.assays.urn' as 'num'"):
+        MergedSpec.model_validate(
+            _typed_list({"cells": [{"from": "urn", "format": "num"}]})
+        )
+
+
+def test_with_score_requires_a_numeric_score():
+    """The `with_score` compose renders `num(score)`, so a string score is a
+    crash the same way a bad row format is."""
+    with pytest.raises(
+        ValidationError,
+        match=r"'p.name' in a with_score value, which needs a numeric field",
+    ):
+        MergedSpec.model_validate(
+            _typed(
+                {
+                    "label": "N",
+                    "compose": {
+                        "format": "with_score",
+                        "classification": "p.name",
+                        "score": "p.name",
+                    },
+                }
+            )
+        )
+
+
+def test_compatible_formats_over_matching_types_load():
+    """Every pairing the real spec uses: `num` over a float, a list format over a
+    list, `count` over a delimited string, and a cell `num` over a float item
+    field — all load."""
+    doc = _doc(
+        {"options": [{"option_id": "p", "blocks": [
+            {"kind": "rows", "rows": [
+                {"label": "S", "from": "p.score", "format": "num"},
+                {"label": "T", "from": "p.terms", "format": "humanize_join"},
+                {"label": "C", "from": "p.name", "format": "count"},
+            ]},
+            {"kind": "list", "from": "p.assays", "item": {"cells": [
+                {"from": "urn", "format": "text"},
+                {"from": "sc", "format": "num"},
+            ]}},
+        ]}]},
+        plugins=_TYPED_PLUGIN,
+    )
+    spec = MergedSpec.model_validate(doc)
+    assert spec.display is not None
 
 
 # --- scopes are derived, not authored ---------------------------------------
