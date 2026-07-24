@@ -541,6 +541,10 @@ def af_population_label(source: str, code: str) -> str:
         return _GNOMAD_SV_POPULATION_LABELS.get(code, code)
     if source == "gnomad_cnv":
         return _GNOMAD_CNV_POPULATION_LABELS.get(code, code)
+    # gnomAD v2 (GRCh37) codes carry the `AF` token (the parse captures the whole
+    # field, subset prefix and all); v4 codes never do.
+    if source in ("gnomad_exomes", "gnomad_genomes") and "AF" in code.split("_"):
+        return _gnomad_v2_population_label(code)
     return _gnomad_population_label(code)
 
 
@@ -629,6 +633,155 @@ def _add_human_grch38_options(panels: list[dict]) -> None:
     })
 
 
+# gnomAD v2 (human GRCh37) allele-frequency options. Unlike v4, the subset is a
+# dimension (a list of prefixes, not a UK-Biobank toggle); ancestries carry
+# sub-populations (no sex) and a plain popmax. Option ids match the ConfigIniParams
+# fields and the `gnomad_v2` config builder's codes. (code, label, [(subpop, label)])
+_GNOMAD_V2_EXOMES_SUBSETS = [
+    ("full", "Full dataset"), ("controls", "Controls"), ("non_neuro", "Non-neuro"),
+    ("non_topmed", "Non-TOPMed"), ("non_cancer", "Non-cancer"),
+]
+_GNOMAD_V2_GENOMES_SUBSETS = [
+    ("full", "Full dataset"), ("controls", "Controls"),
+    ("non_neuro", "Non-neuro"), ("non_topmed", "Non-TOPMed"),
+]
+_GNOMAD_V2_EXOMES_ANCESTRIES = [
+    ("all", "All", []),
+    ("popmax", "Maximum across populations", []),
+    ("afr", "African & African-American", []),
+    ("amr", "Admixed American", []),
+    ("asj", "Ashkenazi Jewish", []),
+    ("eas", "East Asian", [("kor", "Korean"), ("jpn", "Japanese"), ("oea", "Other East Asian")]),
+    ("fin", "Finnish", []),
+    ("nfe", "Non-Finnish European",
+     [("seu", "Southern European"), ("bgr", "Bulgarian"), ("onf", "Other non-Finnish European"),
+      ("swe", "Swedish"), ("nwe", "North-Western European"), ("est", "Estonian")]),
+    ("oth", "Other / uncertain", []),
+    ("sas", "South Asian", []),
+]
+_GNOMAD_V2_GENOMES_ANCESTRIES = [
+    ("all", "All", []),
+    ("popmax", "Maximum across populations", []),
+    ("afr", "African & African-American", []),
+    ("amr", "Admixed American", []),
+    ("asj", "Ashkenazi Jewish", []),
+    ("eas", "East Asian", []),
+    ("fin", "Finnish", []),
+    ("nfe", "Non-Finnish European",
+     [("seu", "Southern European"), ("onf", "Other non-Finnish European"),
+      ("nwe", "North-Western European"), ("est", "Estonian")]),
+    ("oth", "Other / uncertain", []),
+]
+
+# gnomAD v2 code -> label vocabularies, derived from the form data above so the
+# results labels and the form sub-options read the same. Subset prefixes exclude
+# `full` (empty prefix); ancestry excludes the synthetic `all`/`popmax` rows.
+_GNOMAD_V2_SUBSET_LABELS = {
+    code: lbl for code, lbl in _GNOMAD_V2_EXOMES_SUBSETS if code != "full"
+}
+_GNOMAD_V2_ANCESTRY_LABELS = {
+    code: lbl for code, lbl, _ in _GNOMAD_V2_EXOMES_ANCESTRIES
+    if code not in ("all", "popmax")
+}
+_GNOMAD_V2_SUBPOP_LABELS = {
+    sp: splbl
+    for _code, _lbl, subpops in _GNOMAD_V2_EXOMES_ANCESTRIES
+    for sp, splbl in subpops
+}
+
+
+def _gnomad_v2_population_label(code: str) -> str:
+    """Decode a gnomAD v2 (GRCh37) population code — the raw AF field name the
+    parse captures, e.g. `AF_afr`, `controls_AF_afr_male`, `AF_nfe_seu`,
+    `AF_popmax`, `AF_male` — to a ` · `-joined label. Grammar:
+    `[<subset>_]AF[_<anc>[_<subpop>]][_<sex>]`; `AF_popmax` is a single field."""
+    rest = code
+    subset = None
+    for prefix, lbl in _GNOMAD_V2_SUBSET_LABELS.items():
+        if rest.startswith(f"{prefix}_AF"):
+            subset = lbl
+            rest = rest[len(prefix) + 1:]
+            break
+    rest = rest[len("AF"):].lstrip("_")  # drop the AF token
+    sex = None
+    if rest in ("male", "female"):
+        sex, rest = ("XY" if rest == "male" else "XX"), ""
+    elif rest.endswith(("_male", "_female")):
+        sex = "XY" if rest.endswith("_male") else "XX"
+        rest = rest.rsplit("_", 1)[0]
+    if rest == "popmax":
+        ancestry = "Maximum across populations"
+    elif rest == "":
+        ancestry = "All"
+    elif "_" in rest:
+        anc, subpop = rest.split("_", 1)
+        ancestry = (f"{_GNOMAD_V2_ANCESTRY_LABELS.get(anc, anc)} › "
+                    f"{_GNOMAD_V2_SUBPOP_LABELS.get(subpop, subpop)}")
+    else:
+        ancestry = _GNOMAD_V2_ANCESTRY_LABELS.get(rest, rest)
+    parts = [ancestry]
+    if sex:
+        parts.append(sex)
+    if subset:
+        parts.append(subset)
+    return " · ".join(parts)
+
+
+def _gnomad_v2_option(prefix: str, label: str, subsets, ancestries) -> dict:
+    """A gnomAD v2 master option with a Subset group and a Genetic-ancestry group
+    (each ancestry carrying Combined/XX/XY, NFE/EAS also sub-population toggles;
+    popmax is a plain row)."""
+    subset_options = [
+        {"id": f"{prefix}_subset_{code}", "label": lbl, "type": "boolean",
+         "default": code == "full"}
+        for code, lbl in subsets
+    ]
+    ancestry_options = []
+    for code, lbl, subpops in ancestries:
+        option_id = f"{prefix}_{code}"
+        if code == "popmax":  # no sex split, no sub-pops
+            ancestry_options.append(
+                {"id": option_id, "label": lbl, "type": "boolean", "default": False}
+            )
+            continue
+        option = {
+            "id": option_id, "label": lbl, "type": "boolean",
+            "default": code == "all",  # All pre-selected -> fields=AF baseline
+            "sub_options": _gnomad_sex_suboptions(option_id),
+        }
+        if subpops:
+            option["sub_options"].append({
+                "type": "group", "label": "Sub-populations",
+                "options": [
+                    {"id": f"{prefix}_{code}_{sp}", "label": splbl,
+                     "type": "boolean", "default": False}
+                    for sp, splbl in subpops
+                ],
+            })
+        ancestry_options.append(option)
+    return {
+        "id": prefix, "label": label, "type": "boolean", "default": False,
+        "sub_options": [
+            {"type": "group", "label": "Subset", "options": subset_options},
+            {"type": "group", "label": "Genetic ancestry group", "options": ancestry_options},
+        ],
+    }
+
+
+def _gnomad_v2_exomes_option() -> dict:
+    return _gnomad_v2_option(
+        "gnomad_exomes", "gnomAD Exomes v2.1.1",
+        _GNOMAD_V2_EXOMES_SUBSETS, _GNOMAD_V2_EXOMES_ANCESTRIES,
+    )
+
+
+def _gnomad_v2_genomes_option() -> dict:
+    return _gnomad_v2_option(
+        "gnomad_genomes", "gnomAD Genomes v2.1",
+        _GNOMAD_V2_GENOMES_SUBSETS, _GNOMAD_V2_GENOMES_ANCESTRIES,
+    )
+
+
 def _add_human_grch37_options(panels: list[dict]) -> None:
     """Layer the reuse-tier options that exist for human GRCh37 too onto the
     (already human 37/38) panels: Gene Ontology, Phenotypes, IntAct, and
@@ -666,6 +819,16 @@ def _add_human_grch37_options(panels: list[dict]) -> None:
             clinvar.setdefault("sub_options", []).append(
                 {"id": "clinvar_sv", "label": "Structural variants", "type": "boolean", "default": False}
             )
+
+    # Allele frequencies: gnomAD exomes/genomes v2 (the GRCh37 shape).
+    panels.append({
+        "id": "allele_frequencies",
+        "label": "Allele frequencies",
+        "options": [
+            _gnomad_v2_exomes_option(),
+            _gnomad_v2_genomes_option(),
+        ],
+    })
 
 
 def get_visible_panels(

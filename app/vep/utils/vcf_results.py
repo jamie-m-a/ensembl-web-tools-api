@@ -1035,8 +1035,8 @@ def _get_results_from_vcfpy(
     available_af_sources = [
         model.AfSource(**descriptor)
         for descriptor in (
-            results_filters.af_source_descriptor(column)
-            for column in results_filters.af_columns(prediction_index_map)
+            results_filters.af_source_descriptor(column, spec)
+            for column in results_filters.af_columns(prediction_index_map, spec)
         )
         if descriptor
     ]

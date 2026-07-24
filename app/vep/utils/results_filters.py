@@ -28,11 +28,15 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Callable, Iterable, Iterator
+from typing import TYPE_CHECKING, Callable, Iterable, Iterator
 
 from pydantic import BaseModel
 
 from vep.form_panels import af_population_label
+from vep.utils.spec_interpreter import pattern_affixes
+
+if TYPE_CHECKING:
+    from vep.models.parsing_spec_model import ParsingSpec
 
 # Field identifiers understood by the query builder. Must match the frontend's
 # filter `field` values (see the results filters UI).
@@ -347,32 +351,109 @@ def _compile_transcript_group(f: ResultsFilter, index_map: dict[str, int]) -> Co
     return CompiledFilter(field=TRANSCRIPT_GROUP_FIELD, keep_entry=keep_entry)
 
 
-def af_columns(index_map: dict[str, int]) -> list[str]:
+def af_columns(index_map: dict[str, int], spec: ParsingSpec | None = None) -> list[str]:
     """The AF-bearing CSQ columns present, in header order. These are exactly the
-    allele-frequency options selected at input (VEP only emits chosen ones):
-    gnomAD exomes/genomes `*_AF[_pop]` and All of Us `AoU_gvs_<pop>_af` (the
-    `AoU_gvs_max_subpop` label column is excluded)."""
-    columns = [
-        name
-        for name in index_map
-        if name.startswith(
-            (
-                "gnomAD_exomes_AF",
-                "gnomAD_genomes_AF",
-                "gnomAD_SV_AF",
-                "gnomAD_CNV_SF",
+    allele-frequency options selected at input (VEP only emits chosen ones).
+
+    With a parsing `spec`, a column is AF iff some `frequencies.*` plugin claims
+    it (see `af_source_descriptor`) — so the gnomAD v2 grammar (a subset prefix
+    *before* `AF`), or any future source, is discovered without this list knowing
+    the shape. Without one (the filter path, which has no spec) it falls back to a
+    prefix match: any `gnomAD_(exomes|genomes)_…AF…` column, the SV/CNV `AF`/`SF`
+    columns, and All of Us `…_af` (the `AoU_gvs_max_subpop` label column excluded).
+    """
+    if spec is not None:
+        columns = [name for name in index_map if af_source_descriptor(name, spec)]
+    else:
+        columns = [
+            name
+            for name in index_map
+            if (
+                name.startswith(("gnomAD_exomes_", "gnomAD_genomes_"))
+                and "AF" in name.split("_")
             )
-        )
-        or (name.startswith("AoU_gvs_") and name.endswith("_af"))
-    ]
+            or name.startswith(("gnomAD_SV_AF", "gnomAD_CNV_SF"))
+            or (name.startswith("AoU_gvs_") and name.endswith("_af"))
+        ]
     return sorted(columns, key=lambda name: index_map[name])
 
 
-def af_source_descriptor(column: str) -> dict | None:
+def _af_source_specs(spec: ParsingSpec) -> list[tuple]:
+    """Per allele-frequency plugin (output under `frequencies.`):
+    `(source, overall_column, prefix, suffix, exclude)`. `overall_column` is the
+    `field=="overall"` scalar's column; `prefix`/`suffix` bracket the populations
+    `pattern_map`'s placeholder, so a matched column's key is exactly what sits
+    between them — the same key the parse stores the value under."""
+    specs: list[tuple] = []
+    for plugin in spec.plugins:
+        if not plugin.output.startswith("frequencies."):
+            continue
+        source = plugin.output.split(".")[-1]
+        overall = next(
+            (
+                target.source
+                for target in plugin.targets
+                if target.transform == "scalar"
+                and target.field == "overall"
+                and isinstance(target.source, str)
+            ),
+            None,
+        )
+        pattern = next(
+            (
+                target
+                for target in plugin.targets
+                if target.transform == "pattern_map" and target.from_pattern
+            ),
+            None,
+        )
+        if pattern is None:
+            prefix = suffix = None
+            exclude: set[str] = set()
+        else:
+            prefix, suffix = pattern_affixes(pattern.from_pattern)
+            exclude = set(pattern.exclude or [])
+        specs.append((source, overall, prefix, suffix, exclude))
+    return specs
+
+
+def _af_descriptor(column: str, source: str, population: str) -> dict:
+    return {
+        "key": column,
+        "source": source,
+        "population": population,
+        "label": af_population_label(source, population),
+    }
+
+
+def af_source_descriptor(column: str, spec: ParsingSpec | None = None) -> dict | None:
     """Split an AF column into {key, source, population, label} for the results
-    metadata (population "" = the source's overall AF, labelled "All"). The label
-    is the human population name from the input form (decoded once here so the
-    frontend need not keep its own copy). None for non-AF columns."""
+    metadata (population "" = the source's overall AF, labelled "All"). The
+    `population` code is exactly the key the parse stores the value under, so the
+    frontend can join a source's populations against each allele's parsed
+    frequencies; the `label` is the human population name (decoded once here, from
+    form_panels). None for a non-AF column.
+
+    With a `spec`, source + population are derived from the `frequencies.*`
+    plugins — handling gnomAD v2's subset-before-`AF` grammar (population
+    `controls_AF_afr`, not `afr`) and any future source. Without one (older jobs)
+    it falls back to the fixed gnomAD v4 / SV / CNV / All of Us layout."""
+    if spec is not None:
+        for source, overall, prefix, suffix, exclude in _af_source_specs(spec):
+            if overall is not None and column == overall:
+                return _af_descriptor(column, source, "")
+            if (
+                prefix is not None
+                and column not in exclude
+                and column.startswith(prefix)
+                and column.endswith(suffix)
+                and len(column) > len(prefix) + len(suffix)
+            ):
+                population = column[len(prefix): len(column) - len(suffix)]
+                return _af_descriptor(column, source, population)
+        return None
+
+    # Legacy (spec-less) path: the fixed gnomAD v4 / SV / CNV / All of Us layout.
     if column.startswith("gnomAD_exomes_AF"):
         source = "gnomad_exomes"
         population = column[len("gnomAD_exomes_AF"):].lstrip("_")
@@ -391,12 +472,7 @@ def af_source_descriptor(column: str) -> dict | None:
         population = "" if raw == "all" else raw
     else:
         return None
-    return {
-        "key": column,
-        "source": source,
-        "population": population,
-        "label": af_population_label(source, population),
-    }
+    return _af_descriptor(column, source, population)
 
 
 def _compile_allele_frequency(f: ResultsFilter, index_map: dict[str, int]) -> CompiledFilter | None:

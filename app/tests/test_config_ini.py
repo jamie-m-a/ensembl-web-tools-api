@@ -27,6 +27,7 @@ FASTA = "/vep_support/test.fa"
 # GRCh37 files when the submission's assembly resolves to GRCh37 (mirroring the
 # single map set the old builder keyed by assembly).
 CONFIG_SPEC = load_merged_spec("human_grch38").config
+CONFIG_SPEC_37 = load_merged_spec("human_grch37").config
 
 
 def build_lines(monkeypatch, tmp_path, *, assembly="GRCh38.p14", **kwargs):
@@ -39,6 +40,19 @@ def build_lines(monkeypatch, tmp_path, *, assembly="GRCh38.p14", **kwargs):
         genome_id="genome-under-test", assembly_name=assembly, **kwargs
     )
     params.create_config_ini_file(str(tmp_path), CONFIG_SPEC)
+    return (tmp_path / "config.ini").read_text().splitlines()
+
+
+def build_lines_37(monkeypatch, tmp_path, **kwargs):
+    """Build a config.ini against the GRCh37 spec (its own config entries)."""
+    monkeypatch.setattr(
+        "app.vep.models.pipeline_model.get_vep_support_location",
+        lambda genome_id: {"gff_location": GFF, "faa_location": FASTA},
+    )
+    params = ConfigIniParams(
+        genome_id="genome-under-test", assembly_name="GRCh37.p13", **kwargs
+    )
+    params.create_config_ini_file(str(tmp_path), CONFIG_SPEC_37)
     return (tmp_path / "config.ini").read_text().splitlines()
 
 
@@ -536,6 +550,119 @@ def test_gnomad_exomes_enabled_but_nothing_selected_emits_no_line(
         )
     )
     assert line is None
+
+
+# --- 11b. gnomAD v2 field builder (GRCh37 exomes/genomes) --------------------
+# Imported via `vep.` (not `app.vep.`) so the models are the same class objects
+# the interpreter's isinstance checks use under PYTHONPATH=app.
+
+
+def test_gnomad_v2_build_fields_grammar():
+    """`[subset_]AF[_anc[_subpop]][_sex]` over each selected subset x ancestry x
+    (sex or sub-pop); popmax is a plain toggle; sex codes are male/female (not
+    v4's XX/XY). The subset prefixes the whole code."""
+    from vep.utils.config_interpreter import build_fields
+    from vep.models.config_spec_model import (
+        GnomadV2Fields,
+        GnomadV2Subset,
+        GnomadV2Ancestry,
+        GnomadV2Subpop,
+        SexCode,
+    )
+
+    fields = GnomadV2Fields(
+        builder="gnomad_v2",
+        subsets=[
+            GnomadV2Subset(option="s_full", prefix=""),
+            GnomadV2Subset(option="s_controls", prefix="controls"),
+        ],
+        ancestries=[
+            GnomadV2Ancestry(option="a_all", code=""),
+            GnomadV2Ancestry(option="a_popmax", code="popmax", sex_split=False),
+            GnomadV2Ancestry(
+                option="a_nfe",
+                code="nfe",
+                subpops=[GnomadV2Subpop(option="a_nfe_seu", code="seu")],
+            ),
+        ],
+        sexes=[
+            SexCode(suffix="both", code=""),
+            SexCode(suffix="female", code="female"),
+            SexCode(suffix="male", code="male"),
+        ],
+    )
+    options = {
+        "s_full": True, "s_controls": True,
+        "a_all": True, "a_all_both": True, "a_all_male": True,  # not female
+        "a_popmax": True,
+        "a_nfe": True, "a_nfe_female": True, "a_nfe_seu": True,  # not both/male
+    }
+    assert build_fields(fields, options) == [
+        "AF", "AF_male", "AF_popmax", "AF_nfe_female", "AF_nfe_seu",
+        "controls_AF", "controls_AF_male", "controls_AF_popmax",
+        "controls_AF_nfe_female", "controls_AF_nfe_seu",
+    ]
+
+
+def gnomad_exomes_v2_fields(lines):
+    line = find_line(lines, "short_name=gnomAD_exomes")
+    return re.search(r"fields=([^,]+),format", line).group(1) if line else None
+
+
+def test_gnomad_exomes_v2_default_is_overall_af(monkeypatch, tmp_path):
+    # enabling with defaults (full subset + All + Combined) => fields=AF
+    lines = build_lines_37(monkeypatch, tmp_path, gnomad_exomes=True)
+    line = find_line(lines, "short_name=gnomAD_exomes")
+    assert line is not None
+    assert "gnomad.exomes.r2.1.sites.chr###CHR###_AF.vcf.gz" in line
+    assert gnomad_exomes_v2_fields(lines) == "AF"
+
+
+def test_gnomad_exomes_v2_subset_ancestry_subpop_combination(monkeypatch, tmp_path):
+    # non_neuro subset x (afr XX + NFE Southern-European sub-pop): the subset
+    # prefixes every code, and sub-pops take no sex.
+    fields = gnomad_exomes_v2_fields(
+        build_lines_37(
+            monkeypatch,
+            tmp_path,
+            gnomad_exomes=True,
+            gnomad_exomes_all=False,
+            gnomad_exomes_afr=True,
+            gnomad_exomes_afr_both=False,
+            gnomad_exomes_afr_female=True,
+            gnomad_exomes_nfe=True,
+            gnomad_exomes_nfe_both=False,
+            gnomad_exomes_nfe_seu=True,
+            gnomad_exomes_subset_non_neuro=True,
+        )
+    )
+    assert fields == (
+        "AF_afr_female%AF_nfe_seu"
+        "%non_neuro_AF_afr_female%non_neuro_AF_nfe_seu"
+    )
+
+
+def test_gnomad_exomes_v2_popmax(monkeypatch, tmp_path):
+    # popmax is a plain toggle (no sex), per subset.
+    fields = gnomad_exomes_v2_fields(
+        build_lines_37(
+            monkeypatch,
+            tmp_path,
+            gnomad_exomes=True,
+            gnomad_exomes_all=False,
+            gnomad_exomes_popmax=True,
+        )
+    )
+    assert fields == "AF_popmax"
+
+
+def test_gnomad_genomes_v2_has_no_sas_or_non_cancer(monkeypatch, tmp_path):
+    # genomes v2 is the smaller shape: no non_cancer subset, no South Asian.
+    lines = build_lines_37(monkeypatch, tmp_path, gnomad_genomes=True)
+    line = find_line(lines, "short_name=gnomAD_genomes")
+    assert line is not None
+    assert "gnomad.genomes.r2.1.sites.chr###CHR###_noVEP_AF.vcf.gz" in line
+    assert re.search(r"fields=([^,]+),format", line).group(1) == "AF"
 
 
 # --- 12. gnomAD genomes custom line (no UKB subset; ami/remaining/grpmax) -----

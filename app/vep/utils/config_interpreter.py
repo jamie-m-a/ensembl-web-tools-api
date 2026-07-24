@@ -24,6 +24,7 @@ from vep.models.config_spec_model import (
     FlagEmitter,
     FromOption,
     GnomadAncestrySexFields,
+    GnomadV2Fields,
     LiteralFields,
     PluginEmitter,
     SettingEmitter,
@@ -114,6 +115,37 @@ def build_fields(fields, options: dict) -> list[str]:
             for sex in fields.sexes:
                 if options.get(f"{ancestry.option}_{sex.suffix}"):
                     result.append(_code(ancestry.code, sex.code))
+        return result
+
+    if isinstance(fields, GnomadV2Fields):
+        # `[<subset>_]<base>[_<anc>[_<subpop>]][_<sex>]`, over every selected
+        # subset x ancestry x (sex or sub-population). "All" has empty ancestry
+        # code; popmax is a plain ancestry (`sex_split=False`); sub-populations
+        # take no sex.
+        def _v2_code(prefix: str, anc: str, subpop: str, sex: str) -> str:
+            parts = [p for p in (prefix, fields.base, anc, subpop, sex) if p]
+            return "_".join(parts)
+
+        result = []
+        for subset in fields.subsets:
+            if not options.get(subset.option):
+                continue
+            for ancestry in fields.ancestries:
+                if not options.get(ancestry.option):
+                    continue
+                if not ancestry.sex_split:  # popmax: one field, no XX/XY
+                    result.append(_v2_code(subset.prefix, ancestry.code, "", ""))
+                    continue
+                for sex in fields.sexes:
+                    if options.get(f"{ancestry.option}_{sex.suffix}"):
+                        result.append(
+                            _v2_code(subset.prefix, ancestry.code, "", sex.code)
+                        )
+                for subpop in ancestry.subpops:
+                    if options.get(subpop.option):
+                        result.append(
+                            _v2_code(subset.prefix, ancestry.code, subpop.code, "")
+                        )
         return result
 
     if isinstance(fields, (AllofusPopulationFields, GnomadStructuralFields)):

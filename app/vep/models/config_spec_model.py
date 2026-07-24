@@ -165,6 +165,61 @@ class GnomadAncestrySexFields(BaseModel):
     sexes: list[SexCode]
 
 
+class GnomadV2Subset(BaseModel):
+    """One gnomAD v2 subset toggle and its column prefix. `prefix` is empty for
+    the full dataset; otherwise it prefixes the whole code (`controls_AF_afr`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    option: str
+    prefix: str
+
+
+class GnomadV2Subpop(BaseModel):
+    """A sub-population toggle under a gnomAD v2 ancestry (no sex split): its code
+    is appended to the ancestry, `AF_nfe_seu`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    option: str
+    code: str
+
+
+class GnomadV2Ancestry(BaseModel):
+    """A gnomAD v2 ancestry option. `code` is empty for "all"; `sex_split=False`
+    marks a plain toggle with no XX/XY (popmax). `subpops` are its no-sex
+    sub-populations (NFE / EAS)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    option: str
+    code: str
+    sex_split: bool = True
+    subpops: list[GnomadV2Subpop] = []
+
+
+class GnomadV2Fields(BaseModel):
+    """The gnomAD v2 grammar (GRCh37 exomes/genomes): for each selected subset,
+    ancestry and sex / sub-population, emit
+    `[<subset>_]<base>[_<anc>[_<subpop>]][_<sex>]`.
+
+    Differs from v4's `gnomad_ancestry_sex`: the subset is a prefix chosen from a
+    list (not a single UK-Biobank toggle), ancestries carry sub-populations and a
+    plain popmax, and the sex codes are `male` / `female` rather than `XX` / `XY`.
+    The subset/ancestry/sex codes are open data on the option definitions; the
+    builder is only the combinatorial algorithm.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    builder: Literal["gnomad_v2"]
+    base: str = "AF"
+    join: str = "%"
+    subsets: list[GnomadV2Subset]
+    ancestries: list[GnomadV2Ancestry]
+    sexes: list[SexCode]
+
+
 class AllofusPopulationFields(BaseModel):
     """All of Us: concatenate the codes of each selected population (no sex
     split; "max" contributes two). Same TODO as above — codes move to the option
@@ -194,6 +249,7 @@ class GnomadStructuralFields(BaseModel):
 FieldsSpec = Union[
     LiteralFields,
     GnomadAncestrySexFields,
+    GnomadV2Fields,
     AllofusPopulationFields,
     GnomadStructuralFields,
 ]

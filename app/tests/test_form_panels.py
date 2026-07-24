@@ -120,12 +120,17 @@ def test_human_grch37_has_37_38_options_but_not_38_only():
 
     assert ALWAYS_VISIBLE_PANEL_IDS <= ids
     assert HUMAN_37_38_PANEL_IDS <= ids
-    assert "allele_frequencies" not in ids  # GRCh38-only
+    # allele_frequencies is present for GRCh37 too now (gnomAD v2 exomes/genomes),
+    # but only those two sources — not the GRCh38-only allofus/cnv.
+    assert "allele_frequencies" in ids
 
     opts = option_ids(panels)
     assert "utrannotator" in opts
     # the reuse-tier extras (go / phenotypes / intact / clinvar_sv) are offered
     assert HUMAN_37_38_EXTRA_OPTION_IDS <= opts
+    # gnomAD v2 exomes/genomes, but not the GRCh38-only AF sources
+    assert {"gnomad_exomes", "gnomad_genomes"} <= opts
+    assert opts.isdisjoint({"allofus", "gnomad_sv", "gnomad_cnv"})
     # but none of the GRCh38-only ones
     assert opts.isdisjoint(GRCH38_ONLY_OPTION_IDS)
 
@@ -235,12 +240,49 @@ def test_gnomad_exomes_structure_grch38():
     assert female["default"] is False and male["default"] is False
 
 
-def test_gnomad_exomes_absent_below_grch38():
-    for assembly in ("GRCh37.p13", "T2T-CHM13v2.0"):
-        panels = get_visible_panels(
-            species_taxonomy_id=HUMAN, assembly_name=assembly
-        )
-        assert "gnomad_exomes" not in option_ids(panels)
+def test_gnomad_exomes_absent_for_unspecced_assembly():
+    # v4 on GRCh38, v2 on GRCh37; nothing on an assembly without a spec.
+    panels = get_visible_panels(species_taxonomy_id=HUMAN, assembly_name="T2T-CHM13v2.0")
+    assert "gnomad_exomes" not in option_ids(panels)
+
+
+def test_gnomad_v2_exomes_structure_grch37():
+    # GRCh37 gets the v2 shape: a Subset group + a Genetic-ancestry group with a
+    # plain popmax row, sex splits, and NFE/EAS sub-populations. No UK-Biobank.
+    panels = get_visible_panels(species_taxonomy_id=HUMAN, assembly_name="GRCh37.p13")
+    af = next(p for p in panels if p["id"] == "allele_frequencies")
+    exomes = next(o for o in af["options"] if o["id"] == "gnomad_exomes")
+
+    sub_ids = [s.get("id") for s in exomes["sub_options"]]
+    assert "gnomad_exomes_include_ukb" not in sub_ids  # v2 has no UK-Biobank toggle
+
+    subset_grp = next(s for s in exomes["sub_options"] if s.get("label") == "Subset")
+    assert [o["id"] for o in subset_grp["options"]] == [
+        f"gnomad_exomes_subset_{s}"
+        for s in ["full", "controls", "non_neuro", "non_topmed", "non_cancer"]
+    ]
+    assert subset_grp["options"][0]["default"] is True  # Full dataset pre-selected
+
+    anc_grp = next(
+        s for s in exomes["sub_options"] if s.get("label") == "Genetic ancestry group"
+    )
+    anc_ids = [o["id"] for o in anc_grp["options"]]
+    assert anc_ids == [
+        f"gnomad_exomes_{a}"
+        for a in ["all", "popmax", "afr", "amr", "asj", "eas", "fin", "nfe", "oth", "sas"]
+    ]
+
+    all_anc = anc_grp["options"][0]
+    assert all_anc["default"] is True  # "All" pre-selected -> fields=AF baseline
+    popmax = anc_grp["options"][1]
+    assert "sub_options" not in popmax  # popmax is a plain toggle
+
+    nfe = next(o for o in anc_grp["options"] if o["id"] == "gnomad_exomes_nfe")
+    subpop_grp = next(s for s in nfe["sub_options"] if s.get("type") == "group")
+    assert [o["id"] for o in subpop_grp["options"]] == [
+        f"gnomad_exomes_nfe_{sp}"
+        for sp in ["seu", "bgr", "onf", "swe", "nwe", "est"]
+    ]
 
 
 def test_gnomad_genomes_structure_grch38():
@@ -274,12 +316,41 @@ def test_gnomad_genomes_structure_grch38():
     ]
 
 
-def test_gnomad_genomes_absent_below_grch38():
-    for assembly in ("GRCh37.p13", "T2T-CHM13v2.0"):
-        panels = get_visible_panels(
-            species_taxonomy_id=HUMAN, assembly_name=assembly
-        )
-        assert "gnomad_genomes" not in option_ids(panels)
+def test_gnomad_genomes_absent_for_unspecced_assembly():
+    panels = get_visible_panels(species_taxonomy_id=HUMAN, assembly_name="T2T-CHM13v2.0")
+    assert "gnomad_genomes" not in option_ids(panels)
+
+
+def test_gnomad_v2_genomes_structure_grch37():
+    # Genomes v2 drops SAS, the EAS sub-populations, non_cancer, and two of the
+    # NFE sub-populations relative to exomes.
+    panels = get_visible_panels(species_taxonomy_id=HUMAN, assembly_name="GRCh37.p13")
+    af = next(p for p in panels if p["id"] == "allele_frequencies")
+    genomes = next(o for o in af["options"] if o["id"] == "gnomad_genomes")
+
+    subset_grp = next(s for s in genomes["sub_options"] if s.get("label") == "Subset")
+    assert [o["id"] for o in subset_grp["options"]] == [
+        f"gnomad_genomes_subset_{s}"
+        for s in ["full", "controls", "non_neuro", "non_topmed"]  # no non_cancer
+    ]
+
+    anc_grp = next(
+        s for s in genomes["sub_options"] if s.get("label") == "Genetic ancestry group"
+    )
+    anc_ids = [o["id"] for o in anc_grp["options"]]
+    assert "gnomad_genomes_sas" not in anc_ids  # no South Asian
+    assert anc_ids == [
+        f"gnomad_genomes_{a}"
+        for a in ["all", "popmax", "afr", "amr", "asj", "eas", "fin", "nfe", "oth"]
+    ]
+
+    eas = next(o for o in anc_grp["options"] if o["id"] == "gnomad_genomes_eas")
+    assert all(s.get("type") != "group" for s in eas["sub_options"])  # no EAS sub-pops
+    nfe = next(o for o in anc_grp["options"] if o["id"] == "gnomad_genomes_nfe")
+    subpop_grp = next(s for s in nfe["sub_options"] if s.get("type") == "group")
+    assert [o["id"] for o in subpop_grp["options"]] == [
+        f"gnomad_genomes_nfe_{sp}" for sp in ["seu", "onf", "nwe", "est"]
+    ]
 
 
 def test_allofus_structure_grch38():
@@ -396,16 +467,18 @@ def test_gnomad_cnv_option_is_grch38_allele_frequency():
 
 
 def test_option_ids_are_valid_config_ini_parameters():
-    # The GRCh38 set is the superset of every option/sub-option.
-    panels = get_visible_panels(
-        species_taxonomy_id=HUMAN, assembly_name="GRCh38.p14"
-    )
+    # GRCh38 is the superset of every option/sub-option; GRCh37 adds the gnomAD v2
+    # ids (subset/popmax/sub-population/sex), which must also be parameters.
     config_fields = set(ConfigIniParams.model_fields)
 
-    # locked_children (hgvs_c/hgvs_p) are display-only, not parameters, so they
-    # are excluded here; every real option/sub-option id must be a parameter.
-    for option_id in option_ids(panels, include_sub_options=True):
-        assert option_id in config_fields, f"{option_id} is not a ConfigIniParams field"
+    for assembly in ("GRCh38.p14", "GRCh37.p13"):
+        panels = get_visible_panels(species_taxonomy_id=HUMAN, assembly_name=assembly)
+        # locked_children (hgvs_c/hgvs_p) are display-only, not parameters, so
+        # they are excluded here; every real option/sub-option id is a parameter.
+        for option_id in option_ids(panels, include_sub_options=True):
+            assert option_id in config_fields, (
+                f"{option_id} ({assembly}) is not a ConfigIniParams field"
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -1294,6 +1294,64 @@
             "type": "string"
           }
         ]
+      },
+      {
+        "plugin": "gnomad_exomes_v2",
+        "scope": "allele",
+        "output": "frequencies.gnomad_exomes",
+        "csq_fields": [
+          "gnomAD_exomes_AF"
+        ],
+        "require_any_output": [
+          "overall",
+          "populations"
+        ],
+        "targets": [
+          {
+            "field": "overall",
+            "from": "gnomAD_exomes_AF",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "populations",
+            "from_pattern": "gnomAD_exomes_{pop}",
+            "transform": "pattern_map",
+            "type": "float",
+            "exclude": [
+              "gnomAD_exomes_AF"
+            ]
+          }
+        ]
+      },
+      {
+        "plugin": "gnomad_genomes_v2",
+        "scope": "allele",
+        "output": "frequencies.gnomad_genomes",
+        "csq_fields": [
+          "gnomAD_genomes_AF"
+        ],
+        "require_any_output": [
+          "overall",
+          "populations"
+        ],
+        "targets": [
+          {
+            "field": "overall",
+            "from": "gnomAD_genomes_AF",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "populations",
+            "from_pattern": "gnomAD_genomes_{pop}",
+            "transform": "pattern_map",
+            "type": "float",
+            "exclude": [
+              "gnomAD_genomes_AF"
+            ]
+          }
+        ]
       }
     ]
   },

@@ -64,17 +64,6 @@
         }
       },
       {
-        "id": "nmd",
-        "order": 48,
-        "parsed_as": [
-          "nmd"
-        ],
-        "config": {
-          "emit": "plugin",
-          "name": "NMD"
-        }
-      },
-      {
         "id": "intact",
         "order": 27,
         "parsed_as": [
@@ -228,25 +217,6 @@
         }
       },
       {
-        "id": "clinpred",
-        "order": 45,
-        "parsed_as": [
-          "clinpred"
-        ],
-        "config": {
-          "emit": "plugin",
-          "name": "ClinPred",
-          "params": {
-            "file": {
-              "by_assembly": {
-                "GRCh38": "{path}/ClinPred_hg38_sorted_tabbed.tsv.gz",
-                "GRCh37": "{path}/ClinPred_hg37_sorted_tabbed.tsv.gz"
-              }
-            }
-          }
-        }
-      },
-      {
         "id": "loeuf",
         "order": 43,
         "parsed_as": [
@@ -278,6 +248,25 @@
               "by_assembly": {
                 "GRCh38": "{path}/Geno2MP.variants_GRCh38.vcf.gz",
                 "GRCh37": "{path}/Geno2MP.variants_GRCh37.vcf.gz"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "clinpred",
+        "order": 45,
+        "parsed_as": [
+          "clinpred"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "ClinPred",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/ClinPred_hg38_sorted_tabbed.tsv.gz",
+                "GRCh37": "{path}/ClinPred_hg37_sorted_tabbed.tsv.gz"
               }
             }
           }
@@ -331,6 +320,17 @@
               }
             }
           }
+        }
+      },
+      {
+        "id": "nmd",
+        "order": 48,
+        "parsed_as": [
+          "nmd"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "NMD"
         }
       },
       {
@@ -388,6 +388,256 @@
               {
                 "option": "nearest_exon_jb_intronic",
                 "keyword": "intronic"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "gnomad_exomes",
+        "order": 55,
+        "parsed_as": [
+          "gnomad_exomes_v2"
+        ],
+        "config": {
+          "emit": "custom",
+          "omit_if_no_fields": true,
+          "params": {
+            "file": "{path}/gnomad.exomes.r2.1.sites.chr###CHR###_AF.vcf.gz",
+            "short_name": "gnomAD_exomes",
+            "format": "vcf",
+            "type": "exact"
+          },
+          "fields": {
+            "builder": "gnomad_v2",
+            "base": "AF",
+            "subsets": [
+              {
+                "option": "gnomad_exomes_subset_full",
+                "prefix": ""
+              },
+              {
+                "option": "gnomad_exomes_subset_controls",
+                "prefix": "controls"
+              },
+              {
+                "option": "gnomad_exomes_subset_non_neuro",
+                "prefix": "non_neuro"
+              },
+              {
+                "option": "gnomad_exomes_subset_non_topmed",
+                "prefix": "non_topmed"
+              },
+              {
+                "option": "gnomad_exomes_subset_non_cancer",
+                "prefix": "non_cancer"
+              }
+            ],
+            "ancestries": [
+              {
+                "option": "gnomad_exomes_all",
+                "code": ""
+              },
+              {
+                "option": "gnomad_exomes_popmax",
+                "code": "popmax",
+                "sex_split": false
+              },
+              {
+                "option": "gnomad_exomes_afr",
+                "code": "afr"
+              },
+              {
+                "option": "gnomad_exomes_amr",
+                "code": "amr"
+              },
+              {
+                "option": "gnomad_exomes_asj",
+                "code": "asj"
+              },
+              {
+                "option": "gnomad_exomes_eas",
+                "code": "eas",
+                "subpops": [
+                  {
+                    "option": "gnomad_exomes_eas_kor",
+                    "code": "kor"
+                  },
+                  {
+                    "option": "gnomad_exomes_eas_jpn",
+                    "code": "jpn"
+                  },
+                  {
+                    "option": "gnomad_exomes_eas_oea",
+                    "code": "oea"
+                  }
+                ]
+              },
+              {
+                "option": "gnomad_exomes_fin",
+                "code": "fin"
+              },
+              {
+                "option": "gnomad_exomes_nfe",
+                "code": "nfe",
+                "subpops": [
+                  {
+                    "option": "gnomad_exomes_nfe_seu",
+                    "code": "seu"
+                  },
+                  {
+                    "option": "gnomad_exomes_nfe_bgr",
+                    "code": "bgr"
+                  },
+                  {
+                    "option": "gnomad_exomes_nfe_onf",
+                    "code": "onf"
+                  },
+                  {
+                    "option": "gnomad_exomes_nfe_swe",
+                    "code": "swe"
+                  },
+                  {
+                    "option": "gnomad_exomes_nfe_nwe",
+                    "code": "nwe"
+                  },
+                  {
+                    "option": "gnomad_exomes_nfe_est",
+                    "code": "est"
+                  }
+                ]
+              },
+              {
+                "option": "gnomad_exomes_oth",
+                "code": "oth"
+              },
+              {
+                "option": "gnomad_exomes_sas",
+                "code": "sas"
+              }
+            ],
+            "sexes": [
+              {
+                "suffix": "both",
+                "code": ""
+              },
+              {
+                "suffix": "female",
+                "code": "female"
+              },
+              {
+                "suffix": "male",
+                "code": "male"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "gnomad_genomes",
+        "order": 56,
+        "parsed_as": [
+          "gnomad_genomes_v2"
+        ],
+        "config": {
+          "emit": "custom",
+          "omit_if_no_fields": true,
+          "params": {
+            "file": "{path}/gnomad.genomes.r2.1.sites.chr###CHR###_noVEP_AF.vcf.gz",
+            "short_name": "gnomAD_genomes",
+            "format": "vcf",
+            "type": "exact"
+          },
+          "fields": {
+            "builder": "gnomad_v2",
+            "base": "AF",
+            "subsets": [
+              {
+                "option": "gnomad_genomes_subset_full",
+                "prefix": ""
+              },
+              {
+                "option": "gnomad_genomes_subset_controls",
+                "prefix": "controls"
+              },
+              {
+                "option": "gnomad_genomes_subset_non_neuro",
+                "prefix": "non_neuro"
+              },
+              {
+                "option": "gnomad_genomes_subset_non_topmed",
+                "prefix": "non_topmed"
+              }
+            ],
+            "ancestries": [
+              {
+                "option": "gnomad_genomes_all",
+                "code": ""
+              },
+              {
+                "option": "gnomad_genomes_popmax",
+                "code": "popmax",
+                "sex_split": false
+              },
+              {
+                "option": "gnomad_genomes_afr",
+                "code": "afr"
+              },
+              {
+                "option": "gnomad_genomes_amr",
+                "code": "amr"
+              },
+              {
+                "option": "gnomad_genomes_asj",
+                "code": "asj"
+              },
+              {
+                "option": "gnomad_genomes_eas",
+                "code": "eas"
+              },
+              {
+                "option": "gnomad_genomes_fin",
+                "code": "fin"
+              },
+              {
+                "option": "gnomad_genomes_nfe",
+                "code": "nfe",
+                "subpops": [
+                  {
+                    "option": "gnomad_genomes_nfe_seu",
+                    "code": "seu"
+                  },
+                  {
+                    "option": "gnomad_genomes_nfe_onf",
+                    "code": "onf"
+                  },
+                  {
+                    "option": "gnomad_genomes_nfe_nwe",
+                    "code": "nwe"
+                  },
+                  {
+                    "option": "gnomad_genomes_nfe_est",
+                    "code": "est"
+                  }
+                ]
+              },
+              {
+                "option": "gnomad_genomes_oth",
+                "code": "oth"
+              }
+            ],
+            "sexes": [
+              {
+                "suffix": "both",
+                "code": ""
+              },
+              {
+                "suffix": "female",
+                "code": "female"
+              },
+              {
+                "suffix": "male",
+                "code": "male"
               }
             ]
           }
