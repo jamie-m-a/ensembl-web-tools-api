@@ -55,6 +55,7 @@ def test_bundled_spec_validates():
         "loeuf",
         "nmd",
         "nearest_gene",
+        "nearest_exon_jb",
         "phenotype_data",
         "dosage_sensitivity",
         "intact",
@@ -287,6 +288,42 @@ def test_nearest_gene_single_without_direction():
 
 def test_nearest_gene_empty_is_none():
     assert run("nearest_gene", EMPTY) is None
+
+
+# --- NearestExonJB: exon_id+distance+boundary_type+exon_length, &-joined ------
+
+
+def test_nearest_exon_jb_parses_fields_and_types():
+    result = run(
+        "nearest_exon_jb", row_list(NearestExonJB="ENSE00004404283+53+start+117")
+    )
+    assert result == {
+        "boundaries": [
+            {
+                "exon_id": "ENSE00004404283",
+                "distance": 53,
+                "boundary_type": "start",
+                "exon_length": 117,
+            }
+        ]
+    }
+
+
+def test_nearest_exon_jb_intronic_two_boundaries():
+    # Intronic mode reports the nearest boundary on each side, &-joined; a small
+    # exon can carry boundary_type "start_end".
+    result = run(
+        "nearest_exon_jb",
+        row_list(
+            NearestExonJB="ENSE00003759395+3744+end+144&ENSE00004567867+53+start_end+107"
+        ),
+    )
+    assert [b["boundary_type"] for b in result["boundaries"]] == ["end", "start_end"]
+    assert [b["exon_length"] for b in result["boundaries"]] == [144, 107]
+
+
+def test_nearest_exon_jb_empty_is_none():
+    assert run("nearest_exon_jb", EMPTY) is None
 
 
 # --- gnomAD / All of Us: pattern_map -----------------------------------------

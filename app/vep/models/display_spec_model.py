@@ -276,28 +276,57 @@ class DisplayItemLabel(BaseModel):
             yield from _TEMPLATE_FIELD.findall(self.template)
 
 
+class DisplayItemFieldRow(BaseModel):
+    """One labelled field-row of a list element rendered as a stack of rows (see
+    `DisplayItemSpec.rows`): a fixed `label` and a value read from one item field
+    (NearestExonJB's Exon / Distance / Boundary type / Exon length)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    label: str
+    source: str = Field(alias="from")  # an item field, not `plugin.field`
+    format: RowFormat | None = None
+
+    def item_field_refs(self) -> Iterator[str]:
+        yield self.source
+
+
 class DisplayItemSpec(BaseModel):
     """How one element of a list renders.
 
     Without `label`, a row of one or more inline cells (a GO id + name). With
     `label`, a label/value row instead: `label` is the row's label and the
     `cells` render as its value — ClinVar's per-class counts, ProtVar's pockets.
+
+    With `rows` instead of `cells`, the element renders as a stack of labelled
+    field-rows (one `label: value` row per field) — a repeated structured record
+    like NearestExonJB's exon boundaries. `cells` and `rows` are mutually
+    exclusive; `label`/`link` don't apply to the `rows` layout.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     label: DisplayItemLabel | None = None
-    cells: list[CellSpec] = Field(min_length=1)
+    cells: list[CellSpec] | None = Field(default=None, min_length=1)
+    rows: list[DisplayItemFieldRow] | None = Field(default=None, min_length=1)
     # A trailing link on a label/value item's value (ProtVar's per-pocket icon).
     # Only meaningful with `label` (the row layout); a named builder, no refs.
     link: LinkSpec | None = None
 
+    @model_validator(mode="after")
+    def _cells_xor_rows(self) -> "DisplayItemSpec":
+        if bool(self.cells) == bool(self.rows):
+            raise ValueError("list item needs exactly one of `cells` or `rows`")
+        return self
+
     def item_field_refs(self) -> Iterator[str]:
-        """Every item field this element reads, across its label and cells."""
+        """Every item field this element reads, across its label, cells and rows."""
         if self.label:
             yield from self.label.item_field_refs()
-        for cell in self.cells:
+        for cell in self.cells or []:
             yield from cell.item_field_refs()
+        for row in self.rows or []:
+            yield from row.item_field_refs()
 
 
 class DisplayRowsBlock(BaseModel):

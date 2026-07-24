@@ -442,7 +442,7 @@ class MergedSpec(BaseModel):
                                 label.format,
                                 shape,
                             )
-                    for cell in item.cells:
+                    for cell in item.cells or []:
                         if not cell.format:
                             continue
                         shape = _item_field_shape(list_target, cell.source)
@@ -451,6 +451,17 @@ class MergedSpec(BaseModel):
                                 f".{cell.source}" if cell.source else ""
                             )
                             check(oid, ref, cell.format, shape)
+                    for field_row in item.rows or []:
+                        if not field_row.format:
+                            continue
+                        shape = _item_field_shape(list_target, field_row.source)
+                        if shape is not None:
+                            check(
+                                oid,
+                                f"{plugin}.{list_field}.{field_row.source}",
+                                field_row.format,
+                                shape,
+                            )
         return errors
 
     def _check_custom_columns(

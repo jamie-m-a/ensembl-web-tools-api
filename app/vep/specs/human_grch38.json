@@ -487,20 +487,27 @@
       {
         "id": "nearest_exon_jb",
         "order": 52,
-        "parsed_as": [],
+        "parsed_as": [
+          "nearest_exon_jb"
+        ],
         "config": {
           "emit": "plugin",
           "name": "NearestExonJB",
           "params": {
+            "gff3": "{gff}",
+            "vep_filter": "1",
             "max_range": {
               "from_option": "nearest_exon_jb_max_range",
               "as": "value"
-            },
-            "intronic": {
-              "from_option": "nearest_exon_jb_intronic",
-              "as": "int"
-            },
-            "gff3": "{gff}"
+            }
+          },
+          "flags": {
+            "options": [
+              {
+                "option": "nearest_exon_jb_intronic",
+                "keyword": "intronic"
+              }
+            ]
           }
         }
       },
@@ -1508,6 +1515,50 @@
         ],
         "require_any_output": [
           "nearest_genes"
+        ]
+      },
+      {
+        "plugin": "nearest_exon_jb",
+        "scope": "transcript",
+        "output": "boundaries",
+        "csq_fields": [
+          "NearestExonJB"
+        ],
+        "targets": [
+          {
+            "field": "boundaries",
+            "from": "NearestExonJB",
+            "transform": "regex",
+            "each": true,
+            "pattern": "^(?P<exon_id>[^+]+)\\+(?P<distance>-?\\d+)\\+(?P<boundary_type>[^+]+)\\+(?P<exon_length>\\d+)$",
+            "as": [
+              {
+                "field": "exon_id",
+                "type": "string"
+              },
+              {
+                "field": "distance",
+                "type": "int"
+              },
+              {
+                "field": "boundary_type",
+                "type": "string"
+              },
+              {
+                "field": "exon_length",
+                "type": "int"
+              }
+            ],
+            "item_fields": [
+              "exon_id",
+              "distance",
+              "boundary_type",
+              "exon_length"
+            ]
+          }
+        ],
+        "require_any_output": [
+          "boundaries"
         ]
       },
       {
@@ -2553,6 +2604,36 @@
                 },
                 {
                   "from": "direction"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "option_id": "nearest_exon_jb",
+        "blocks": [
+          {
+            "kind": "list",
+            "heading": "Nearest exon junction boundary",
+            "from": "nearest_exon_jb.boundaries",
+            "item": {
+              "rows": [
+                {
+                  "label": "Exon",
+                  "from": "exon_id"
+                },
+                {
+                  "label": "Distance to exon boundary",
+                  "from": "distance"
+                },
+                {
+                  "label": "Boundary type",
+                  "from": "boundary_type"
+                },
+                {
+                  "label": "Exon length",
+                  "from": "exon_length"
                 }
               ]
             }

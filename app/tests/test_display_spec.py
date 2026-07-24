@@ -42,7 +42,7 @@ SPEC_DRIVEN_OPTIONS = {
     "hgvs", "hgvsg", "spdi", "alphamissense", "revel", "clinpred", "cadd", "spliceai",
     "loeuf", "dosage_sensitivity", "utrannotator", "nmd", "riboseqorfs", "eve",
     # `list`-block options (repeat + truncate, migrated off frontend overrides)
-    "phenotypes", "go", "mavedb", "nearest_gene",
+    "phenotypes", "go", "mavedb", "nearest_gene", "nearest_exon_jb",
     # sub-option rows (Show-all enumeration)
     "mutfunc",
     # multi-cell list items under an option heading (GWAS + QTL groups)
