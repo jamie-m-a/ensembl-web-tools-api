@@ -86,6 +86,106 @@ def _alt_value(alt) -> str:
     return serialize() if callable(serialize) else str(alt)
 
 
+# VCF SVTYPE (or a symbolic allele's leading `<ID>` token) -> the word shown in
+# the results "variant" column. Subtype-proof: <DEL:ME:ALU> is SVTYPE=DEL. See
+# the VCF 4.2 spec, symbolic + breakend alternate alleles (§1.4.5, §5.3-5.4).
+_SV_TYPE_WORDS = {
+    "DEL": "deletion",
+    "INS": "insertion",
+    "DUP": "duplication",
+    "INV": "inversion",
+    "CNV": "copy_number_variation",
+    "BND": "breakend",
+}
+
+
+def _first_info(value):
+    """An INFO value as a scalar — vcfpy hands some back as single-element lists."""
+    if isinstance(value, (list, tuple)):
+        return value[0] if value else None
+    return value
+
+
+def _alt_serialized(alt) -> str:
+    """The alt allele's VCF text: `<DEL>` / `<DEL:ME:ALU>` for symbolic alleles,
+    the `t[p[` notation for breakends, or the sequence for a substitution."""
+    serialize = getattr(alt, "serialize", None)
+    if callable(serialize):
+        return serialize()
+    return str(getattr(alt, "value", alt))
+
+
+_BREAKEND_MATE_RE = re.compile(r"[\[\]]([^\[\]]+)[\[\]]")
+
+
+def _breakend_junction(record, serialized: str) -> str:
+    """A breakend's two loci as `<chrom:pos> ↔ <mate chrom:pos>` — this record's
+    position plus the mate parsed from the ALT (e.g. `G[17:198982[` -> the mate is
+    `17:198982`). The mate's base lives in the paired record (via MATEID), not this
+    one, so only positions are shown."""
+    start = f"{record.CHROM}:{record.POS}"
+    mate = _BREAKEND_MATE_RE.search(serialized)
+    return f"{start} ↔ {mate.group(1)}" if mate else start
+
+
+def _sv_span(record) -> int | None:
+    """A structural variant's length in bases: `abs(SVLEN)` when present and
+    non-zero (deletion/insertion/duplication), else `END - POS` (inversion/CNV,
+    whose SVLEN is 0 or absent). None when neither is available."""
+    svlen = _first_info(record.INFO.get("SVLEN"))
+    if svlen not in (None, "", "."):
+        try:
+            n = abs(int(str(svlen).split(",")[0]))
+            if n:
+                return n
+        except (TypeError, ValueError):
+            pass
+    end = _first_info(record.INFO.get("END"))
+    if end not in (None, "", "."):
+        try:
+            return abs(int(end) - int(record.POS))
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def _structural_info(record) -> dict | None:
+    """Structural-variant display details for a record, or None for a simple
+    substitution/indel.
+
+    VEP writes a type word (e.g. `deletion`) into the CSQ `Allele` column, so the
+    length heuristic in `_get_variant_type` mis-reads it as an insertion and the
+    UI renders the word as a sequence. Instead classify SVs from the VCF record:
+    the type from `SVTYPE` (or the symbolic `<ID>`), the displayed allele from the
+    symbolic ALT, and a `detail` line (span in bases for sized SVs). Breakends are
+    shown as `<BND>` (like the other symbolic alleles) with their two loci as the
+    detail, and the type `breakend`.
+    """
+    if not record.ALT:
+        return None
+    serialized = _alt_serialized(record.ALT[0])
+    is_symbolic = serialized.startswith("<")
+    is_breakend = ("[" in serialized) or ("]" in serialized)
+    if not (is_symbolic or is_breakend):
+        return None
+    svtype = _first_info(record.INFO.get("SVTYPE"))
+    if is_breakend:
+        key = svtype or "BND"
+        allele = "<BND>"
+        detail = _breakend_junction(record, serialized)
+    else:
+        # Prefer the declared SVTYPE; fall back to the `<ID>` leading token.
+        key = svtype or serialized[1:-1].split(":")[0]
+        allele = serialized
+        span = _sv_span(record)
+        detail = f"{span} bp" if span else None
+    return {
+        "type_word": _SV_TYPE_WORDS.get(str(key).upper(), str(key).lower()),
+        "allele": allele,
+        "detail": detail,
+    }
+
+
 
 
 
@@ -173,11 +273,16 @@ def _get_alt_allele_details(
     csqs: list[str],
     index_map: dict[str, int],
     spec: ParsingSpec | None = None,
+    sv: dict | None = None,
 ) -> model.AlternativeVariantAllele:
     """Creates  AlternativeVariantAllele based on
-    target alt allele and CSQ entires"""
+    target alt allele and CSQ entires.
+
+    `sv` (from `_structural_info`) overrides the type + displayed allele for
+    structural variants: `alt` stays VEP's CSQ `Allele` word for matching the CSQ
+    rows below, but the allele is shown as its symbolic/breakend form."""
     consequences = []
-    allele_type = _get_variant_type(ref, alt)
+    allele_type = sv["type_word"] if sv else _get_variant_type(ref, alt)
     # Allele-level annotations are identical across all of this allele's CSQ
     # rows, so capture them once (from the first matching row). They are also
     # the only annotations available for intergenic variants (no transcript
@@ -279,9 +384,16 @@ def _get_alt_allele_details(
                 )
             )
 
+    if sv:
+        allele_sequence = sv["allele"]
+    elif alt == "copy_number_variation":
+        allele_sequence = ""
+    else:
+        allele_sequence = alt
     return model.AlternativeVariantAllele(
-        allele_sequence=("" if alt=="copy_number_variation" else alt),
+        allele_sequence=allele_sequence,
         allele_type=allele_type,
+        structural_variant_detail=sv["detail"] if sv else None,
         colocated_variants=colocated_variants,
         annotations=allele_annotations,
         predicted_molecular_consequences=consequences,
@@ -893,9 +1005,11 @@ def _get_results_from_vcfpy(
                     for csq_string in csq_strings
                 ]))
 
+            sv = _structural_info(record)
+
             alt_alleles = [
                 _get_alt_allele_details(
-                    record.REF, alt, csq_strings, prediction_index_map, spec
+                    record.REF, alt, csq_strings, prediction_index_map, spec, sv
                 )
                 for alt in alt_allele_strings
             ]
@@ -910,7 +1024,11 @@ def _get_results_from_vcfpy(
                         allele_sequence=record.REF
                     ),
                     alternative_alleles=alt_alleles,
-                    allele_type=_get_variant_type(record.REF, longest_alt),
+                    allele_type=(
+                        sv["type_word"]
+                        if sv
+                        else _get_variant_type(record.REF, longest_alt)
+                    ),
                 )
             )
 
