@@ -2833,20 +2833,19 @@
                     ]
                   },
                   {
-                    "kind": "list",
+                    "kind": "table",
                     "from": "clinvar.conflicting_breakdown",
-                    "item": {
-                      "label": {
+                    "columns": [
+                      {
+                        "label": "Classifier",
                         "from": "significance",
-                        "format": "humanize",
-                        "wrap": "Studies reporting \"{}\""
+                        "format": "humanize"
                       },
-                      "cells": [
-                        {
-                          "from": "count"
-                        }
-                      ]
-                    }
+                      {
+                        "label": "Studies reporting",
+                        "from": "count"
+                      }
+                    ]
                   }
                 ]
               }

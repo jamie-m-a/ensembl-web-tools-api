@@ -411,6 +411,47 @@ def test_list_item_cell_format_is_type_checked():
         )
 
 
+# --- the `table` block ------------------------------------------------------
+
+
+def _typed_table(*columns):
+    return _doc(
+        {"options": [{"option_id": "p", "blocks": [
+            {"kind": "table", "from": "p.assays", "columns": list(columns)}
+        ]}]},
+        plugins=_TYPED_PLUGIN,
+    )
+
+
+def test_valid_table_loads():
+    spec = MergedSpec.model_validate(
+        _typed_table(
+            {"label": "URN", "from": "urn"},
+            {"label": "Score", "from": "sc", "format": "num"},
+        )
+    )
+    block = spec.display.options[0].blocks[0]
+    assert block.kind == "table"
+    assert [c.label for c in block.columns] == ["URN", "Score"]
+
+
+def test_table_column_ref_must_be_an_item_field():
+    """A column reads a field of the list element, checked like a list cell."""
+    with pytest.raises(
+        ValidationError, match=r"table p.assays references item field 'nope'"
+    ):
+        MergedSpec.model_validate(_typed_table({"label": "X", "from": "nope"}))
+
+
+def test_table_column_format_is_type_checked():
+    """A column's `format` is checked against the element field's `as` type —
+    `urn` is a string, so `num` over it would crash."""
+    with pytest.raises(ValidationError, match=r"formats 'p.assays.urn' as 'num'"):
+        MergedSpec.model_validate(
+            _typed_table({"label": "URN", "from": "urn", "format": "num"})
+        )
+
+
 def test_with_score_requires_a_numeric_score():
     """The `with_score` compose renders `num(score)`, so a string score is a
     crash the same way a bad row format is."""
