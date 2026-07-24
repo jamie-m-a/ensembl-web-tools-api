@@ -34,18 +34,6 @@ _ALWAYS_VISIBLE_PANELS: list[dict] = [
                 "label": "Distance to TSS",
                 "type": "boolean",
                 "default": False,
-                "sub_options": [
-                    {
-                        "id": "tss_distance_direction",
-                        "type": "select",
-                        "default": "upstream",
-                        "options": [
-                            {"label": "Upstream", "value": "upstream"},
-                            {"label": "Downstream", "value": "downstream"},
-                            {"label": "Both", "value": "both"},
-                        ],
-                    }
-                ],
             },
             {
                 "id": "nearest_gene",
