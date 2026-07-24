@@ -106,15 +106,15 @@ _HUMAN_37_38_GENES_OPTIONS: list[dict] = [
     {"id": "nmd", "label": "NMD", "type": "boolean", "default": False},
 ]
 
-# Extra panels shown only for human GRCh37/38. Pathogenicity options carry a
-# `category` label used to group them within the panel.
+# Extra panels shown only for human GRCh37/38. Variant-impact-prediction options
+# carry a `category` label used to group them within the panel.
 _HUMAN_37_38_PANELS: list[dict] = [
     {
         "id": "pathogenicity_predictions",
-        "label": "Pathogenicity predictions",
+        "label": "Variant Impact Predictions",
         "options": [
             {"id": "alphamissense", "label": "AlphaMissense", "type": "boolean", "default": False, "category": "Missense"},
-            {"id": "revel", "label": "Revel", "type": "boolean", "default": False, "category": "Missense"},
+            {"id": "revel", "label": "REVEL", "type": "boolean", "default": False, "category": "Missense"},
             {"id": "clinpred", "label": "ClinPred", "type": "boolean", "default": False, "category": "Missense"},
             {"id": "spliceai", "label": "SpliceAI", "type": "boolean", "default": False, "category": "Splicing"},
             {"id": "cadd", "label": "CADD", "type": "boolean", "default": False, "category": "Genome wide"},
@@ -573,7 +573,7 @@ def _add_human_grch38_options(panels: list[dict]) -> None:
          "category": "Functional", "sub_options": copy.deepcopy(_MUTFUNC_SUBOPTIONS)},
     ])
 
-    # Pathogenicity predictions: EVE (Missense).
+    # Variant Impact Predictions panel: EVE (Missense).
     if "pathogenicity_predictions" in by_id:
         by_id["pathogenicity_predictions"]["options"].append(
             {"id": "eve", "label": "EVE", "type": "boolean", "default": False, "category": "Missense"}
@@ -639,7 +639,7 @@ def get_visible_panels(
         for panel in panels:
             if panel["id"] == "genes_and_transcripts":
                 panel["options"].extend(copy.deepcopy(_HUMAN_37_38_GENES_OPTIONS))
-        # Pathogenicity / conservation / associations panels are human-only.
+        # Variant-impact / conservation / associations panels are human-only.
         panels.extend(copy.deepcopy(_HUMAN_37_38_PANELS))
 
     if is_human_grch38(species_taxonomy_id, assembly_name):
