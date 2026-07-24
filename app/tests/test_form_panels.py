@@ -26,12 +26,15 @@ HUMAN_37_38_PANEL_IDS = {
 }
 GRCH38_ONLY_OPTION_IDS = {
     "eve",
-    "intact",
     "mavedb",
     "opentargets",
     "protvar",
     "riboseqorfs",
 }
+
+# Reuse-tier options available for human GRCh37 as well as GRCh38 (data exists
+# for both). go/phenotypes are really multi-species, gated on human for now.
+HUMAN_37_38_EXTRA_OPTION_IDS = {"go", "phenotypes", "intact", "clinvar_sv"}
 
 
 def panel_ids(panels):
@@ -121,6 +124,9 @@ def test_human_grch37_has_37_38_options_but_not_38_only():
 
     opts = option_ids(panels)
     assert "utrannotator" in opts
+    # the reuse-tier extras (go / phenotypes / intact / clinvar_sv) are offered
+    assert HUMAN_37_38_EXTRA_OPTION_IDS <= opts
+    # but none of the GRCh38-only ones
     assert opts.isdisjoint(GRCH38_ONLY_OPTION_IDS)
 
 
@@ -320,12 +326,11 @@ def test_clinvar_in_variant_associations_for_grch37_and_grch38():
         assert "clinvar_short" in sub_ids
 
 
-def test_clinvar_structural_sub_option_is_grch38_only():
-    # "Structural variants" (ClinVar_SV) is GRCh38-only.
-    g38 = [s["id"] for s in _clinvar_option("GRCh38.p14")["sub_options"]]
-    assert g38 == ["clinvar_short", "clinvar_sv"]
-    g37 = [s["id"] for s in _clinvar_option("GRCh37.p13")["sub_options"]]
-    assert "clinvar_sv" not in g37
+def test_clinvar_structural_sub_option_available_for_both_human_assemblies():
+    # "Structural variants" (ClinVar_SV) exists for GRCh37 and GRCh38.
+    for assembly in ("GRCh38.p14", "GRCh37.p13"):
+        subs = [s["id"] for s in _clinvar_option(assembly)["sub_options"]]
+        assert subs == ["clinvar_short", "clinvar_sv"]
 
 
 def test_clinvar_absent_for_non_human():
