@@ -379,7 +379,15 @@ class MergedSpec(BaseModel):
                                 f"{item_field!r} not in its target's item_fields"
                             )
                 elif isinstance(block, DisplayTableBlock):
-                    # A table iterates a list target like a list block; each
+                    if block.rows is not None:
+                        # Fixed matrix: each row value is a scalar `plugin.field`,
+                        # checked like a row's `from`.
+                        for ref in block.matrix_value_refs():
+                            err = scalar_ref_error(oid, ref)
+                            if err:
+                                errors.append(err)
+                        continue
+                    # List mode: iterates a list target like a list block; each
                     # column reads one of that target's item_fields.
                     plugin, list_field = block.list_ref()
                     err = field_error(oid, plugin, list_field)
@@ -482,6 +490,14 @@ class MergedSpec(BaseModel):
                                 shape,
                             )
                 elif isinstance(block, DisplayTableBlock):
+                    if block.rows is not None:
+                        # Fixed matrix: a value column's format applies to each
+                        # row value it holds — checked against that scalar field.
+                        for ref, fmt in block.value_column_formats():
+                            target = target_of(ref)
+                            if target is not None:
+                                check(oid, ref, fmt, _target_shape(target))
+                        continue
                     plugin, list_field = block.list_ref()
                     list_target = targets_by_plugin.get(plugin, {}).get(list_field)
                     if list_target is None:
