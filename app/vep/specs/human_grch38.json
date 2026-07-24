@@ -2195,35 +2195,43 @@
         "option_id": "hgvs",
         "blocks": [
           {
-            "kind": "rows",
+            "kind": "group",
             "heading": "HGVS",
-            "rows": [
+            "blocks": [
               {
-                "key": "c",
-                "label": "HGVSc",
-                "from": "hgvs.transcript",
-                "mono": true
+                "kind": "rows",
+                "requires_selected": {
+                  "id": "hgvs",
+                  "default": false
+                },
+                "rows": [
+                  {
+                    "key": "c",
+                    "label": "HGVSc",
+                    "from": "hgvs.transcript",
+                    "mono": true
+                  },
+                  {
+                    "key": "p",
+                    "label": "HGVSp",
+                    "from": "hgvs.protein",
+                    "mono": true
+                  }
+                ]
               },
               {
-                "key": "p",
-                "label": "HGVSp",
-                "from": "hgvs.protein",
-                "mono": true
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "option_id": "hgvsg",
-        "blocks": [
-          {
-            "kind": "rows",
-            "rows": [
-              {
-                "label": "HGVSg",
-                "from": "hgvsg.genomic",
-                "mono": true
+                "kind": "rows",
+                "requires_selected": {
+                  "id": "hgvsg",
+                  "default": false
+                },
+                "rows": [
+                  {
+                    "label": "HGVSg",
+                    "from": "hgvsg.genomic",
+                    "mono": true
+                  }
+                ]
               }
             ]
           }

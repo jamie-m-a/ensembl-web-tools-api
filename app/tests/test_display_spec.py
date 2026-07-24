@@ -39,7 +39,7 @@ SPEC = load_merged_spec("human_grch38")
 
 # The options moved off the frontend switch in this change.
 SPEC_DRIVEN_OPTIONS = {
-    "hgvs", "hgvsg", "spdi", "alphamissense", "revel", "clinpred", "cadd", "spliceai",
+    "hgvs", "spdi", "alphamissense", "revel", "clinpred", "cadd", "spliceai",
     "loeuf", "dosage_sensitivity", "utrannotator", "nmd", "riboseqorfs", "eve",
     # `list`-block options (repeat + truncate, migrated off frontend overrides)
     "phenotypes", "go", "mavedb", "nearest_gene", "nearest_exon_jb",
@@ -443,7 +443,8 @@ def test_display_section_serialises_with_the_authored_key_names():
     """The wire format uses `from`, as authored -- not the Python field name."""
     dumped = SPEC.display_payload().model_dump(mode="json", by_alias=True)
     hgvs = next(o for o in dumped["options"] if o["option_id"] == "hgvs")
-    assert hgvs["blocks"][0]["rows"][0]["from"] == "hgvs.transcript"
+    # hgvs is now a "HGVS" group with per-param (requires_selected) sub-blocks.
+    assert hgvs["blocks"][0]["blocks"][0]["rows"][0]["from"] == "hgvs.transcript"
 
 
 # --- the legacy fallback ----------------------------------------------------
