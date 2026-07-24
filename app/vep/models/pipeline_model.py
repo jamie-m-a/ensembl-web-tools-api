@@ -1,4 +1,6 @@
 import logging, os
+from typing import Callable
+
 from pydantic import (
     BaseModel,
     DirectoryPath,
@@ -11,6 +13,7 @@ from pydantic import (
 from requests import HTTPError
 
 from core.config import (
+    DUMP_INI,
     NF_COMPUTE_ENV_ID,
     NF_PIPELINE_URL,
 )
@@ -69,6 +72,42 @@ class PipelineParams(BaseModel):
 # plugin-data resolution. Every `plugin ...` line below interpolates it, so no
 # plugin can run against real data until this is wired up.
 PLUGIN_PATH = "/[placeholder_path]"
+
+
+# --- DEV ONLY: real (beta) plugin-data locations ---------------------------
+# So a DUMP_INI dev job's config.ini points at the real data on nfs (the manual
+# HPC run reads it directly) instead of the PLUGIN_PATH placeholder. Wired only
+# under DUMP_INI (see create_config_ini_file). REMOVE this whole block — and the
+# DUMP_INI branch below — once production per-genome plugin-data resolution
+# lands. Not the final production paths; the beta layout used for dev today.
+_DEV_PLUGIN_ROOT = {
+    "GRCh38": "/nfs/production/flicek/ensembl/variation/enseweb-data_tools/beta_plugins/grch38",
+    "GRCh37": "/nfs/production/flicek/ensembl/variation/enseweb-data_tools/beta_plugins/grch37",
+}
+# Most datasets sit directly in the assembly's base dir; these few live in a
+# named subdir under it (keyed by config-entry id). GRCh37 simply has no entry
+# for the GRCh38-only datasets (AllOfUs / gnomAD CNV), so one map serves both.
+_DEV_PLUGIN_SUBDIRS = {
+    "allofus": "AllOfUs",
+    "go": "GO_data_files",
+    "phenotypes": "Phenotypes_data_files",
+    "gnomad_cnv": "gnomAD_CNV",
+    "gnomad_sv": "gnomAD_SV",
+    "gnomad_exomes": "gnomAD_exomes",
+    "gnomad_genomes": "gnomAD_genomes",
+}
+
+
+def _dev_plugin_path(assembly: str) -> "Callable[[str], str]":
+    """A per-entry `{path}` resolver for dev: the assembly's base dir, plus a
+    named subdir for the datasets that live in one."""
+    base = _DEV_PLUGIN_ROOT.get(assembly, _DEV_PLUGIN_ROOT["GRCh38"])
+
+    def resolve(entry_id: str) -> str:
+        subdir = _DEV_PLUGIN_SUBDIRS.get(entry_id)
+        return f"{base}/{subdir}" if subdir else base
+
+    return resolve
 
 # The option→config.ini translation — which `plugin …` / `custom …` line each
 # selected option emits — now lives in the declarative config spec (the `config`
@@ -381,11 +420,15 @@ class ConfigIniParams(BaseModel):
             transcript_version=self.transcript_version,
             canonical=self.canonical,
         )
+        # Dev jobs (DUMP_INI) resolve `{path}` to the real beta data layout so
+        # the dumped ini runs directly on the HPC; production still emits the
+        # placeholder until real per-genome resolution lands (see PLUGIN_PATH).
+        plugin_path = _dev_plugin_path(assembly) if DUMP_INI else PLUGIN_PATH
         lines += emit_config_lines(
             config_spec,
             self.model_dump(),
             assembly=assembly,
-            plugin_path=PLUGIN_PATH,
+            plugin_path=plugin_path,
             gff=self.gff,
         )
 

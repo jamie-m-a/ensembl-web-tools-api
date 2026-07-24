@@ -198,6 +198,40 @@ def test_per_assembly_plugin_files(monkeypatch, tmp_path, option, markers):
     assert find_line(lines37, grch38_marker) is None
 
 
+def test_dev_plugin_path_resolves_base_and_named_subdirs():
+    from app.vep.models.pipeline_model import _dev_plugin_path
+
+    resolve38 = _dev_plugin_path("GRCh38")
+    # A base-dir dataset resolves to the assembly base with no subdir.
+    assert resolve38("revel").endswith("/beta_plugins/grch38")
+    # A subdir dataset gets its named subdir appended.
+    assert resolve38("go").endswith("/beta_plugins/grch38/GO_data_files")
+    assert resolve38("gnomad_exomes").endswith("/beta_plugins/grch38/gnomAD_exomes")
+    # GRCh37 uses the grch37 base for the same entries.
+    assert (
+        _dev_plugin_path("GRCh37")("phenotypes")
+        .endswith("/beta_plugins/grch37/Phenotypes_data_files")
+    )
+
+
+def test_dev_dump_ini_wires_the_real_beta_paths(monkeypatch, tmp_path):
+    """Under DUMP_INI, `{path}` resolves to the real beta layout: base dir for
+    most datasets, a named subdir for the few that live in one."""
+    monkeypatch.setattr("app.vep.models.pipeline_model.DUMP_INI", True)
+    lines = build_lines(monkeypatch, tmp_path, revel=True, go=True)
+    assert find_line(lines, "beta_plugins/grch38/new_tabbed_revel_grch38") is not None
+    assert find_line(lines, "beta_plugins/grch38/GO_data_files/GO.pm_") is not None
+    assert find_line(lines, "[placeholder_path]") is None
+
+
+def test_production_keeps_the_placeholder_root(monkeypatch, tmp_path):
+    """Without DUMP_INI (production), `{path}` stays the placeholder — the dev
+    beta layout never leaks into a real run."""
+    lines = build_lines(monkeypatch, tmp_path, revel=True)
+    assert find_line(lines, "[placeholder_path]/new_tabbed_revel_grch38") is not None
+    assert find_line(lines, "beta_plugins") is None
+
+
 def test_spliceai_grch37_omits_snv_ensembl(monkeypatch, tmp_path):
     line38 = find_line(
         build_lines(monkeypatch, tmp_path, assembly="GRCh38.p14", spliceai=True),

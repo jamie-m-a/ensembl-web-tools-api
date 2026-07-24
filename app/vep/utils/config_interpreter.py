@@ -13,6 +13,8 @@ that stay in the backend next to the per-genome `gff`/`fasta` resolution — thi
 module only turns *selected options* into lines. See docs/design/.
 """
 
+from typing import Callable
+
 from vep.models.config_spec_model import (
     AllofusPopulationFields,
     GnomadStructuralFields,
@@ -174,15 +176,17 @@ def emit_config_lines(
     options: dict,
     *,
     assembly: str,
-    plugin_path: str,
+    plugin_path: str | Callable[[str], str],
     gff: str,
 ) -> list[str]:
     """The option-driven config.ini lines for `options`, in entry `order`.
 
     `options` is a flat {option_id: value} map (a `ConfigIniParams.model_dump()`).
-    `plugin_path`/`gff` fill the `{path}`/`{gff}` tokens.
+    `gff` fills the `{gff}` token; `plugin_path` fills `{path}` and is either a
+    single root string, or a callable `entry_id -> root` when the root varies by
+    entry (the dev plugin-data layout puts some datasets in named subdirs).
     """
-    context = {"path": plugin_path, "gff": gff}
+    resolve_path = plugin_path if callable(plugin_path) else lambda _entry_id: plugin_path
     # A selected option can force other options on for config emission only
     # (ProtVar needs HGVSg computed to build its link). This is confined to the
     # config lines — it never touches the options the results view gates display
@@ -194,6 +198,7 @@ def emit_config_lines(
                 effective[forced_id] = True
     lines: list[str] = []
     for entry in sorted(spec.entries, key=lambda e: e.order):
+        context = {"path": resolve_path(entry.id), "gff": gff}
         line = _emit_entry(entry, effective, assembly, context)
         if line is not None:
             lines.append(line)
