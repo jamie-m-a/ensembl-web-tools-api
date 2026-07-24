@@ -3,6 +3,7 @@ resolution, and the sidecar that pins the merged document to a job.
 """
 
 import json
+from pathlib import Path
 
 import pytest
 from pydantic import FilePath
@@ -82,6 +83,26 @@ def test_bundled_human_grch38_spec_loads_and_has_a_real_digest():
     assert spec.spec_version != "sha256:" + "0" * 64
     assert len(spec.config_entries()) > 0
     assert len(spec.parse_plugins()) > 0
+
+
+# --- Phase 0: shared-library assembly equivalence --------------------------
+
+
+def test_assembled_grch38_matches_the_pre_split_baseline():
+    """The library-split refactor gate: assembling human_grch38 from the shared
+    `annotation_library` + its thin config document must reproduce the pre-split
+    monolith *exactly* — same content digest, so no job's pinned spec, expected
+    columns or parsing changes. `human_grch38.baseline.json` is a byte copy of the
+    monolith taken before the split; loading it as a self-contained document must
+    match the assembled result."""
+    baseline = load_merged_spec_file(
+        Path(__file__).parent / "human_grch38.baseline.json"
+    )
+    assembled = load_merged_spec("human_grch38")
+    assert assembled.spec_version == baseline.spec_version
+    assert assembled.model_dump(mode="json", by_alias=True) == baseline.model_dump(
+        mode="json", by_alias=True
+    )
 
 
 # --- resolve_merged_spec -------------------------------------------------
