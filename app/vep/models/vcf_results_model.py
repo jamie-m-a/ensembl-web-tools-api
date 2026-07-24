@@ -181,6 +181,12 @@ class Metadata(BaseModel):
 class AlternativeVariantAllele(BaseModel):
     allele_sequence: str
     allele_type: str
+    # A secondary line for a structural allele shown beneath `allele_sequence`
+    # (which is the symbolic form, `<DEL>` / `<BND>`): the span in bases for
+    # sized SVs (e.g. "765 bp", from abs(SVLEN) or END - POS), or a breakend's two
+    # loci ("2:321681 ↔ 17:198982"). None for simple variants. Lets the table show
+    # `<DEL>` with its size instead of treating the symbolic allele as a sequence.
+    structural_variant_detail: str | None = None
     # TODO: colocated_variants is part of the unspecced tail of the go-flat
     # cutover — deliberately left typed for now, still to be converted to a
     # plugin spec (no sample data carries its column, so no spec could be
