@@ -452,6 +452,80 @@ def test_table_column_format_is_type_checked():
         )
 
 
+# --- the `table` block, fixed / matrix mode (SpliceAI) ----------------------
+
+
+def _typed_matrix(*rows, columns=None):
+    columns = columns or [{"label": "Metric"}, {"label": "Value", "format": "num"}]
+    return _doc(
+        {"options": [{"option_id": "p", "blocks": [
+            {"kind": "table", "columns": columns, "rows": list(rows)}
+        ]}]},
+        plugins=_TYPED_PLUGIN,
+    )
+
+
+def test_valid_fixed_table_loads():
+    spec = MergedSpec.model_validate(
+        _typed_matrix({"label": "Score", "values": ["p.score"]})
+    )
+    block = spec.display.options[0].blocks[0]
+    assert block.kind == "table"
+    assert block.rows[0].label == "Score"
+    assert block.rows[0].values == ["p.score"]
+
+
+def test_table_needs_from_or_rows():
+    """Exactly one of `from` (list) or `rows` (fixed) — neither is invalid."""
+    with pytest.raises(
+        ValidationError, match=r"table needs exactly one of `from` or `rows`"
+    ):
+        MergedSpec.model_validate(
+            _doc(
+                {"options": [{"option_id": "p", "blocks": [
+                    {"kind": "table", "columns": [{"label": "X"}]}
+                ]}]},
+                plugins=_TYPED_PLUGIN,
+            )
+        )
+
+
+def test_fixed_table_row_value_count_must_match_columns():
+    """Two columns means one value column, so a row with two values is wrong."""
+    with pytest.raises(ValidationError, match=r"but there are 1 value column"):
+        MergedSpec.model_validate(
+            _typed_matrix({"label": "Score", "values": ["p.score", "p.name"]})
+        )
+
+
+def test_fixed_table_columns_take_no_from():
+    with pytest.raises(
+        ValidationError, match=r"a fixed table's columns take no `from`"
+    ):
+        MergedSpec.model_validate(
+            _typed_matrix(
+                {"label": "Score", "values": ["p.score"]},
+                columns=[{"label": "Metric"}, {"label": "Value", "from": "x"}],
+            )
+        )
+
+
+def test_fixed_table_value_ref_is_checked():
+    with pytest.raises(ValidationError, match=r"'nope'"):
+        MergedSpec.model_validate(
+            _typed_matrix({"label": "X", "values": ["p.nope"]})
+        )
+
+
+def test_fixed_table_value_format_is_type_checked():
+    """The value column's `format` (num) is checked against each row value's
+    field type — `p.name` is a string, which would crash."""
+    with pytest.raises(ValidationError, match=r"formats 'p.name' as 'num'"):
+        MergedSpec.model_validate(
+            _typed_matrix({"label": "X", "values": ["p.name"]})
+        )
+
+
 def test_with_score_requires_a_numeric_score():
     """The `with_score` compose renders `num(score)`, so a string score is a
     crash the same way a bad row format is."""

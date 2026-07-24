@@ -398,15 +398,18 @@ class DisplayListBlock(BaseModel):
 
 
 class TableColumn(BaseModel):
-    """One column of a `table` block: a header `label` and a value read from the
-    list element's `from` field. Like a `CellSpec`, but the header is mandatory
-    and there is no link (a table is a plain grid of values)."""
+    """One column of a `table` block: a header `label`.
+
+    In list mode the value comes from the list element's `from` field. In fixed
+    (matrix) mode the columns are headers only — the first names the row-label
+    column, the rest are value columns filled from each `TableMatrixRow.values`,
+    with this column's `format` applied to that value."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     label: str
     # `from` is a Python keyword, hence the alias. Omit for a scalar list whose
-    # elements are the value themselves.
+    # elements are the value themselves (list mode), or in fixed mode (headers).
     source: str | None = Field(default=None, alias="from")
     format: RowFormat | None = None
     mono: bool = False
@@ -416,14 +419,28 @@ class TableColumn(BaseModel):
             yield self.source
 
 
-class DisplayTableBlock(BaseModel):
-    """A small table over a list-valued field: a header row of column labels,
-    then one body row per list element. For a breakdown that reads better as a
-    grid than as repeated label/value rows — ClinVar's conflicting
-    classifications (Classifier | Studies reporting).
+class TableMatrixRow(BaseModel):
+    """One row of a fixed `table` (matrix mode): a text `label` for the first
+    column, then a `<plugin>.<field>` scalar ref per value column — SpliceAI's
+    "Acceptor gain" | ds_acceptor_gain | dp_acceptor_gain."""
 
-    `from` is the `<plugin>.<listField>` the rows come from (as `DisplayListBlock`);
-    each column reads one of that target's `item_fields`.
+    model_config = ConfigDict(extra="forbid")
+
+    label: str
+    values: list[str] = Field(default_factory=list)
+
+
+class DisplayTableBlock(BaseModel):
+    """A small table with a header row of column labels. Two shapes:
+
+    * list mode (`from`): one body row per element of a `<plugin>.<listField>`,
+      each column reading that element's `from` item field — ClinVar's
+      conflicting classifications (Classifier | Studies reporting).
+    * fixed / matrix mode (`rows`): explicit rows of `{label, values}`, the label
+      filling the first column and each value a `<plugin>.<field>` scalar under a
+      value column — SpliceAI's splicing events (Splicing event | ΔS | ΔP).
+
+    Exactly one of `from` / `rows` is set.
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -434,17 +451,54 @@ class DisplayTableBlock(BaseModel):
     requires_selected: SelectedGate | None = None
     when: WhenSpec | None = None
     view: BlockView | None = None
-    source: str = Field(alias="from")
+    # list mode: the `<plugin>.<listField>` the rows come from.
+    source: str | None = Field(default=None, alias="from")
     columns: list[TableColumn] = Field(min_length=1)
+    # fixed mode: explicit rows.
+    rows: list[TableMatrixRow] | None = None
+
+    @model_validator(mode="after")
+    def _from_xor_rows(self) -> "DisplayTableBlock":
+        if bool(self.source) == bool(self.rows):
+            raise ValueError("table needs exactly one of `from` or `rows`")
+        if self.rows is not None:
+            # Fixed matrix: columns are headers, the first is the row-label
+            # column and the rest are value columns filled from each row.
+            for column in self.columns:
+                if column.source is not None:
+                    raise ValueError("a fixed table's columns take no `from`")
+            value_columns = len(self.columns) - 1
+            for row in self.rows:
+                if len(row.values) != value_columns:
+                    raise ValueError(
+                        f"table row {row.label!r} has {len(row.values)} value(s) "
+                        f"but there are {value_columns} value column(s)"
+                    )
+        return self
 
     def list_ref(self) -> tuple[str, str]:
-        """The `(plugin, listField)` this block iterates."""
-        plugin, _, field = self.source.partition(".")
+        """The `(plugin, listField)` this block iterates (list mode only)."""
+        plugin, _, field = (self.source or "").partition(".")
         return plugin, field
 
     def column_field_refs(self) -> Iterator[str]:
+        """The item fields the columns read (list mode)."""
         for column in self.columns:
             yield from column.item_field_refs()
+
+    def matrix_value_refs(self) -> Iterator[str]:
+        """Every `<plugin>.<field>` a fixed table's rows read."""
+        for row in self.rows or []:
+            yield from row.values
+
+    def value_column_formats(self) -> Iterator[tuple[str, str]]:
+        """(ref, format) pairs for a fixed table: each row value paired with its
+        value column's format (the columns after the label column), where set."""
+        value_columns = self.columns[1:]
+        for row in self.rows or []:
+            for column, ref in zip(value_columns, row.values):
+                if column.format:
+                    yield ref, column.format
 
 
 class DisplayGroupBlock(BaseModel):

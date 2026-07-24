@@ -2324,70 +2324,66 @@
         "option_id": "spliceai",
         "blocks": [
           {
-            "kind": "rows",
+            "kind": "group",
             "heading": "SpliceAI",
-            "requires": "spliceai",
-            "rows": [
+            "blocks": [
               {
-                "key": "symbol",
-                "label": "Gene",
-                "from": "spliceai.symbol"
+                "kind": "rows",
+                "requires": "spliceai",
+                "rows": [
+                  {
+                    "key": "symbol",
+                    "label": "Gene",
+                    "from": "spliceai.symbol"
+                  }
+                ]
               },
               {
-                "key": "ΔS acceptor gain",
-                "label": "ΔS acceptor gain",
-                "from": "spliceai.ds_acceptor_gain",
-                "format": "num",
-                "placeholder": "—"
-              },
-              {
-                "key": "ΔS acceptor loss",
-                "label": "ΔS acceptor loss",
-                "from": "spliceai.ds_acceptor_loss",
-                "format": "num",
-                "placeholder": "—"
-              },
-              {
-                "key": "ΔS donor gain",
-                "label": "ΔS donor gain",
-                "from": "spliceai.ds_donor_gain",
-                "format": "num",
-                "placeholder": "—"
-              },
-              {
-                "key": "ΔS donor loss",
-                "label": "ΔS donor loss",
-                "from": "spliceai.ds_donor_loss",
-                "format": "num",
-                "placeholder": "—"
-              },
-              {
-                "key": "ΔP acceptor gain",
-                "label": "ΔP acceptor gain",
-                "from": "spliceai.dp_acceptor_gain",
-                "format": "num",
-                "placeholder": "—"
-              },
-              {
-                "key": "ΔP acceptor loss",
-                "label": "ΔP acceptor loss",
-                "from": "spliceai.dp_acceptor_loss",
-                "format": "num",
-                "placeholder": "—"
-              },
-              {
-                "key": "ΔP donor gain",
-                "label": "ΔP donor gain",
-                "from": "spliceai.dp_donor_gain",
-                "format": "num",
-                "placeholder": "—"
-              },
-              {
-                "key": "ΔP donor loss",
-                "label": "ΔP donor loss",
-                "from": "spliceai.dp_donor_loss",
-                "format": "num",
-                "placeholder": "—"
+                "kind": "table",
+                "requires": "spliceai",
+                "columns": [
+                  {
+                    "label": "Splicing event"
+                  },
+                  {
+                    "label": "ΔS",
+                    "format": "num"
+                  },
+                  {
+                    "label": "ΔP",
+                    "format": "num"
+                  }
+                ],
+                "rows": [
+                  {
+                    "label": "Acceptor gain",
+                    "values": [
+                      "spliceai.ds_acceptor_gain",
+                      "spliceai.dp_acceptor_gain"
+                    ]
+                  },
+                  {
+                    "label": "Acceptor loss",
+                    "values": [
+                      "spliceai.ds_acceptor_loss",
+                      "spliceai.dp_acceptor_loss"
+                    ]
+                  },
+                  {
+                    "label": "Donor gain",
+                    "values": [
+                      "spliceai.ds_donor_gain",
+                      "spliceai.dp_donor_gain"
+                    ]
+                  },
+                  {
+                    "label": "Donor loss",
+                    "values": [
+                      "spliceai.ds_donor_loss",
+                      "spliceai.dp_donor_loss"
+                    ]
+                  }
+                ]
               }
             ]
           }
