@@ -49,7 +49,7 @@ def test_bundled_merged_spec_is_consistent():
     # load_merged_spec runs the consistency check; a bad spec would raise here.
     spec = load_merged_spec("human_grch38")
     assert len(spec.config_entries()) == 35
-    assert len(spec.parse_plugins()) == 31
+    assert len(spec.parse_plugins()) == 32
 
 
 # --- reference integrity ----------------------------------------------------

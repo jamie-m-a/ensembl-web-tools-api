@@ -54,6 +54,7 @@ def test_bundled_spec_validates():
         "spdi",
         "loeuf",
         "nmd",
+        "nearest_gene",
         "phenotype_data",
         "dosage_sensitivity",
         "intact",
@@ -256,6 +257,36 @@ def test_clinvar_sv_reports_significance_and_origin():
 def test_clinvar_sv_empty_is_none():
     # No CLNSIG (no SV overlap) -> the plugin produces nothing (require_any_input).
     assert run("clinvar_sv", EMPTY) is None
+
+
+# --- NearestGene: id:distance[:direction], &-joined -------------------------
+
+
+def test_nearest_gene_both_directions_splits_and_types():
+    result = run(
+        "nearest_gene",
+        row_list(
+            NearestGene="ENSG00000269981:19457:upstream&ENSG00000279928:25274:downstream"
+        ),
+    )
+    assert result == {
+        "nearest_genes": [
+            {"gene_id": "ENSG00000269981", "distance": 19457, "direction": "upstream"},
+            {"gene_id": "ENSG00000279928", "distance": 25274, "direction": "downstream"},
+        ]
+    }
+
+
+def test_nearest_gene_single_without_direction():
+    # Non-both_directions mode omits the direction suffix (upstream is the default).
+    result = run("nearest_gene", row_list(NearestGene="ENSG00000186092:7522"))
+    assert result["nearest_genes"] == [
+        {"gene_id": "ENSG00000186092", "distance": 7522, "direction": None}
+    ]
+
+
+def test_nearest_gene_empty_is_none():
+    assert run("nearest_gene", EMPTY) is None
 
 
 # --- gnomAD / All of Us: pattern_map -----------------------------------------
