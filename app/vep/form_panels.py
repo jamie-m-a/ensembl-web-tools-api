@@ -220,9 +220,9 @@ def _gnomad_sex_suboptions(option_id: str) -> list[dict]:
     """Both / Female / Male toggles for one ancestry option (Both on = combined
     sexes). `option_id` is the ancestry option's id, e.g. `gnomad_exomes_afr`."""
     return [
-        {"id": f"{option_id}_both", "label": "Both", "type": "boolean", "default": True},
-        {"id": f"{option_id}_female", "label": "Female", "type": "boolean", "default": False},
-        {"id": f"{option_id}_male", "label": "Male", "type": "boolean", "default": False},
+        {"id": f"{option_id}_both", "label": "Combined", "type": "boolean", "default": True},
+        {"id": f"{option_id}_female", "label": "XX", "type": "boolean", "default": False},
+        {"id": f"{option_id}_male", "label": "XY", "type": "boolean", "default": False},
     ]
 
 
@@ -483,8 +483,9 @@ _GNOMAD_CNV_POPULATION_LABELS = {
     code: label for code, label in _GNOMAD_CNV_POPULATIONS if code != ""
 }
 
-# gnomAD sex-split suffixes.
-_SEX_LABELS = {"XX": "Female", "XY": "Male"}
+# gnomAD sex-split suffixes — shown as the chromosomal notation (matching the
+# form's XX/XY sub-option labels).
+_SEX_LABELS = {"XX": "XX", "XY": "XY"}
 
 
 def _gnomad_population_label(code: str) -> str:
