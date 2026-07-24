@@ -2838,7 +2838,8 @@
                     "item": {
                       "label": {
                         "from": "significance",
-                        "format": "humanize"
+                        "format": "humanize",
+                        "wrap": "Studies reporting \"{}\""
                       },
                       "cells": [
                         {
