@@ -568,6 +568,35 @@ class DisplayOptionSpec(BaseModel):
 
         yield from walk(self.blocks)
 
+    def plugin_refs(self) -> set[str]:
+        """The parse plugins this option reads — the `<plugin>` half of every
+        scalar `plugin.field` ref plus each block's `requires`. Used to select
+        which options a genome offers: an option belongs in an assembled spec
+        only when every plugin it reads is present. Mirrors the scalar refs the
+        display↔parsing consistency check resolves (item-relative cell/column
+        refs are element fields, not plugins, so they are not counted)."""
+        refs: set[str] = set()
+        for block in self.iter_blocks():
+            if block.when:
+                refs.add(block.when.field_ref.partition(".")[0])
+            if isinstance(block, DisplayGroupBlock):
+                continue
+            if block.requires:
+                refs.add(block.requires)
+            if isinstance(block, DisplayRowsBlock):
+                for row in block.rows:
+                    for ref in row.field_refs():
+                        refs.add(ref.partition(".")[0])
+            elif isinstance(block, DisplayListBlock):
+                refs.add(block.list_ref()[0])
+            elif isinstance(block, DisplayTableBlock):
+                if block.rows is not None:
+                    for ref in block.matrix_value_refs():
+                        refs.add(ref.partition(".")[0])
+                else:
+                    refs.add(block.list_ref()[0])
+        return refs
+
 
 class DisplaySpec(BaseModel):
     """The display half of the merged document: every laid-out option."""
