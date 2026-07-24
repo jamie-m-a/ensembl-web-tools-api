@@ -1,0 +1,3125 @@
+{
+  "genome": {
+    "species_taxonomy_id": "9606",
+    "assembly": "GRCh38"
+  },
+  "config": {
+    "entries": [
+      {
+        "id": "updownstream_distance",
+        "order": 5,
+        "parsed_as": [],
+        "config": {
+          "emit": "setting",
+          "keyword": "distance",
+          "value": {
+            "from_option": "updownstream_distance_bp",
+            "as": "value"
+          }
+        }
+      },
+      {
+        "id": "hgvs",
+        "order": 10,
+        "parsed_as": [
+          "hgvs"
+        ],
+        "config": {
+          "emit": "flag",
+          "keyword": "hgvs"
+        }
+      },
+      {
+        "id": "hgvsg",
+        "order": 11,
+        "parsed_as": [
+          "hgvs",
+          "hgvsg"
+        ],
+        "config": {
+          "emit": "flag",
+          "keyword": "hgvsg"
+        }
+      },
+      {
+        "id": "spdi",
+        "order": 12,
+        "parsed_as": [
+          "spdi"
+        ],
+        "config": {
+          "emit": "flag",
+          "keyword": "spdi"
+        }
+      },
+      {
+        "id": "protein",
+        "order": 13,
+        "parsed_as": [
+          "protein"
+        ],
+        "config": {
+          "emit": "flag",
+          "keyword": "protein"
+        }
+      },
+      {
+        "id": "mavedb",
+        "order": 20,
+        "parsed_as": [
+          "mavedb"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "MaveDB",
+          "params": {
+            "file": "{path}/MaveDB_variants.tsv.gz"
+          }
+        }
+      },
+      {
+        "id": "riboseqorfs",
+        "order": 21,
+        "parsed_as": [
+          "riboseq_orfs"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "RiboseqORFs",
+          "params": {
+            "file": "{path}/Ribo-seq_ORFs.phase2.comprehensive.v1like.final.bed.gz"
+          }
+        }
+      },
+      {
+        "id": "nmd",
+        "order": 48,
+        "parsed_as": [
+          "nmd"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "NMD"
+        }
+      },
+      {
+        "id": "opentargets",
+        "order": 22,
+        "parsed_as": [
+          "opentargets"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "OpenTargets",
+          "params": {
+            "file": "{path}/open_targets_vep.tsv.gz"
+          }
+        }
+      },
+      {
+        "id": "eve",
+        "order": 23,
+        "parsed_as": [
+          "eve",
+          "popeve"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "EVE",
+          "params": {
+            "file": "{path}/eve_merged.vcf.gz",
+            "popeve_file": "{path}/grch38_popEVE_ukbb.vcf.gz"
+          }
+        }
+      },
+      {
+        "id": "protvar",
+        "order": 26,
+        "parsed_as": [
+          "protvar"
+        ],
+        "forces_on": [
+          "hgvsg"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "ProtVar",
+          "params": {
+            "db": "{path}/ProtVar_data.db",
+            "stability": {
+              "from_option": "protvar_stability",
+              "as": "int"
+            },
+            "pocket": {
+              "from_option": "protvar_pocket",
+              "as": "int"
+            },
+            "int": {
+              "from_option": "protvar_int",
+              "as": "int"
+            }
+          }
+        }
+      },
+      {
+        "id": "intact",
+        "order": 27,
+        "parsed_as": [
+          "intact"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "IntAct",
+          "params": {
+            "mutation_file": "{path}/mutations.tsv",
+            "mapping_file": "{path}/mutation_gc_map.txt.gz"
+          },
+          "flags": {
+            "all_shortcut": "all",
+            "options": [
+              {
+                "option": "intact_feature_ac",
+                "keyword": "feature_ac"
+              },
+              {
+                "option": "intact_feature_short_label",
+                "keyword": "feature_short_label"
+              },
+              {
+                "option": "intact_feature_annotation",
+                "keyword": "feature_annotation"
+              },
+              {
+                "option": "intact_ap_ac",
+                "keyword": "ap_ac"
+              },
+              {
+                "option": "intact_interaction_participants",
+                "keyword": "interaction_participants"
+              },
+              {
+                "option": "intact_pmid",
+                "keyword": "pmid"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "mutfunc",
+        "order": 28,
+        "parsed_as": [
+          "mutfunc"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "mutfunc",
+          "params": {
+            "motif": {
+              "from_option": "mutfunc_motif",
+              "as": "int"
+            },
+            "int": {
+              "from_option": "mutfunc_int",
+              "as": "int"
+            },
+            "mod": {
+              "from_option": "mutfunc_mod",
+              "as": "int"
+            },
+            "exp": {
+              "from_option": "mutfunc_exp",
+              "as": "int"
+            },
+            "extended": "1",
+            "db": "{path}/mutfunc_data.db"
+          }
+        }
+      },
+      {
+        "id": "dosage_sensitivity",
+        "order": 29,
+        "parsed_as": [
+          "dosage_sensitivity"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "DosageSensitivity",
+          "params": {
+            "file": "{path}/Collins_rCNV_2022.dosage_sensitivity_scores.tsv.gz",
+            "cover": {
+              "from_option": "dosage_sensitivity_cover",
+              "as": "int"
+            }
+          }
+        }
+      },
+      {
+        "id": "phenotypes",
+        "order": 30,
+        "parsed_as": [
+          "phenotype_data"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "Phenotypes",
+          "params": {
+            "file": "{path}/Phenotypes.pm_homo_sapiens_116_GRCh38.gvf.gz"
+          }
+        }
+      },
+      {
+        "id": "go",
+        "order": 31,
+        "parsed_as": [
+          "go"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "GO",
+          "params": {
+            "file": "{path}/GO.pm_homo_sapiens_116_GRCh38.gff.gz"
+          }
+        }
+      },
+      {
+        "id": "alphamissense",
+        "order": 40,
+        "parsed_as": [
+          "alphamissense"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "AlphaMissense",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/AlphaMissense_hg38.tsv.gz",
+                "GRCh37": "{path}/AlphaMissense_hg19.tsv.gz"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "cadd",
+        "order": 41,
+        "parsed_as": [
+          "cadd"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "CADD",
+          "params": {
+            "snv": {
+              "by_assembly": {
+                "GRCh38": "{path}/CADD_GRCh38_1.7_whole_genome_SNVs.tsv.gz",
+                "GRCh37": "{path}/CADD_GRCh37_1.7_whole_genome_SNVs.tsv.gz"
+              }
+            },
+            "indels": {
+              "by_assembly": {
+                "GRCh38": "{path}/CADD_GRCh38_1.7_InDels.tsv.gz",
+                "GRCh37": "{path}/CADD_GRCh37_1.7_InDels.tsv.gz"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "revel",
+        "order": 42,
+        "parsed_as": [
+          "revel"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "REVEL",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/new_tabbed_revel_grch38.tsv.gz",
+                "GRCh37": "{path}/new_tabbed_revel_grch37.tsv.gz"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "clinpred",
+        "order": 45,
+        "parsed_as": [
+          "clinpred"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "ClinPred",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/ClinPred_hg38_sorted_tabbed.tsv.gz",
+                "GRCh37": "{path}/ClinPred_hg37_sorted_tabbed.tsv.gz"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "loeuf",
+        "order": 43,
+        "parsed_as": [
+          "loeuf"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "LOEUF",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/loeuf_dataset_grch38.tsv.gz",
+                "GRCh37": "{path}/loeuf_dataset_grch37.tsv.gz"
+              }
+            },
+            "match_by": "gene"
+          }
+        }
+      },
+      {
+        "id": "geno2mp",
+        "order": 44,
+        "parsed_as": [],
+        "config": {
+          "emit": "plugin",
+          "name": "Geno2MP",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/Geno2MP.variants_GRCh38.vcf.gz",
+                "GRCh37": "{path}/Geno2MP.variants_GRCh37.vcf.gz"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "spliceai",
+        "order": 46,
+        "parsed_as": [
+          "spliceai"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "SpliceAI",
+          "params": {
+            "snv": {
+              "by_assembly": {
+                "GRCh38": "{path}/spliceai_scores.masked.snv.hg38.vcf.gz",
+                "GRCh37": "{path}/spliceai_scores.masked.snv.hg19.vcf.gz"
+              }
+            },
+            "indel": {
+              "by_assembly": {
+                "GRCh38": "{path}/spliceai_scores.masked.indel.hg38.vcf.gz",
+                "GRCh37": "{path}/spliceai_scores.masked.indel.hg19.vcf.gz"
+              }
+            },
+            "snv_ensembl": {
+              "by_assembly": {
+                "GRCh38": "{path}/spliceai_scores.raw.snv.ensembl_mane.grch38.110.vcf.gz"
+              },
+              "omit_if_absent": true
+            }
+          }
+        }
+      },
+      {
+        "id": "utrannotator",
+        "order": 47,
+        "parsed_as": [
+          "utr_annotation"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "UTRAnnotator",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/uORF_5UTR_GRCh38_PUBLIC.txt",
+                "GRCh37": "{path}/uORF_5UTR_GRCh37_PUBLIC.txt"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "tss_distance",
+        "order": 50,
+        "parsed_as": [],
+        "config": {
+          "emit": "plugin",
+          "name": "TSSDistance"
+        }
+      },
+      {
+        "id": "nearest_gene",
+        "order": 51,
+        "parsed_as": [
+          "nearest_gene"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "NearestGene",
+          "params": {
+            "gff3": "{gff}",
+            "regulatory": "0",
+            "vep_filter": "1"
+          },
+          "flags": {
+            "options": [
+              {
+                "option": "nearest_gene_both_directions",
+                "keyword": "both_directions"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "nearest_exon_jb",
+        "order": 52,
+        "parsed_as": [
+          "nearest_exon_jb"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "NearestExonJB",
+          "params": {
+            "gff3": "{gff}",
+            "vep_filter": "1",
+            "max_range": {
+              "from_option": "nearest_exon_jb_max_range",
+              "as": "value"
+            }
+          },
+          "flags": {
+            "options": [
+              {
+                "option": "nearest_exon_jb_intronic",
+                "keyword": "intronic"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "gnomad_exomes",
+        "order": 55,
+        "parsed_as": [
+          "gnomad_exomes"
+        ],
+        "config": {
+          "emit": "custom",
+          "omit_if_no_fields": true,
+          "params": {
+            "file": "{path}/gnomad.exomes.v4.1.sites.chr###CHR###.vcf.bgz",
+            "short_name": "gnomAD_exomes",
+            "format": "vcf",
+            "type": "exact"
+          },
+          "fields": {
+            "builder": "gnomad_ancestry_sex",
+            "base": "AF",
+            "include_ukb_option": "gnomad_exomes_include_ukb",
+            "ancestries": [
+              {
+                "option": "gnomad_exomes_all",
+                "code": ""
+              },
+              {
+                "option": "gnomad_exomes_afr",
+                "code": "afr"
+              },
+              {
+                "option": "gnomad_exomes_amr",
+                "code": "amr"
+              },
+              {
+                "option": "gnomad_exomes_asj",
+                "code": "asj"
+              },
+              {
+                "option": "gnomad_exomes_eas",
+                "code": "eas"
+              },
+              {
+                "option": "gnomad_exomes_fin",
+                "code": "fin"
+              },
+              {
+                "option": "gnomad_exomes_mid",
+                "code": "mid"
+              },
+              {
+                "option": "gnomad_exomes_nfe",
+                "code": "nfe"
+              }
+            ],
+            "sexes": [
+              {
+                "suffix": "both",
+                "code": ""
+              },
+              {
+                "suffix": "female",
+                "code": "XX"
+              },
+              {
+                "suffix": "male",
+                "code": "XY"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "gnomad_genomes",
+        "order": 56,
+        "parsed_as": [
+          "gnomad_genomes"
+        ],
+        "config": {
+          "emit": "custom",
+          "omit_if_no_fields": true,
+          "params": {
+            "file": "{path}/gnomad.genomes.v4.1.sites.chr###CHR###.vcf.bgz",
+            "short_name": "gnomAD_genomes",
+            "format": "vcf",
+            "type": "exact"
+          },
+          "fields": {
+            "builder": "gnomad_ancestry_sex",
+            "base": "AF",
+            "ancestries": [
+              {
+                "option": "gnomad_genomes_all",
+                "code": ""
+              },
+              {
+                "option": "gnomad_genomes_afr",
+                "code": "afr"
+              },
+              {
+                "option": "gnomad_genomes_amr",
+                "code": "amr"
+              },
+              {
+                "option": "gnomad_genomes_asj",
+                "code": "asj"
+              },
+              {
+                "option": "gnomad_genomes_eas",
+                "code": "eas"
+              },
+              {
+                "option": "gnomad_genomes_fin",
+                "code": "fin"
+              },
+              {
+                "option": "gnomad_genomes_mid",
+                "code": "mid"
+              },
+              {
+                "option": "gnomad_genomes_nfe",
+                "code": "nfe"
+              },
+              {
+                "option": "gnomad_genomes_ami",
+                "code": "ami"
+              },
+              {
+                "option": "gnomad_genomes_remaining",
+                "code": "remaining"
+              },
+              {
+                "option": "gnomad_genomes_grpmax",
+                "code": "grpmax",
+                "sex_split": false
+              }
+            ],
+            "sexes": [
+              {
+                "suffix": "both",
+                "code": ""
+              },
+              {
+                "suffix": "female",
+                "code": "XX"
+              },
+              {
+                "suffix": "male",
+                "code": "XY"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "allofus",
+        "order": 57,
+        "parsed_as": [
+          "all_of_us"
+        ],
+        "config": {
+          "emit": "custom",
+          "omit_if_no_fields": true,
+          "params": {
+            "file": "{path}/AllOfUs_chr###CHR###.vcf.gz",
+            "short_name": "AoU",
+            "format": "vcf",
+            "type": "exact"
+          },
+          "fields": {
+            "builder": "allofus_populations",
+            "populations": [
+              {
+                "option": "allofus_all",
+                "codes": [
+                  "gvs_all_af"
+                ]
+              },
+              {
+                "option": "allofus_max",
+                "codes": [
+                  "gvs_max_af",
+                  "gvs_max_subpop"
+                ]
+              },
+              {
+                "option": "allofus_afr",
+                "codes": [
+                  "gvs_afr_af"
+                ]
+              },
+              {
+                "option": "allofus_amr",
+                "codes": [
+                  "gvs_amr_af"
+                ]
+              },
+              {
+                "option": "allofus_eas",
+                "codes": [
+                  "gvs_eas_af"
+                ]
+              },
+              {
+                "option": "allofus_eur",
+                "codes": [
+                  "gvs_eur_af"
+                ]
+              },
+              {
+                "option": "allofus_mid",
+                "codes": [
+                  "gvs_mid_af"
+                ]
+              },
+              {
+                "option": "allofus_sas",
+                "codes": [
+                  "gvs_sas_af"
+                ]
+              },
+              {
+                "option": "allofus_oth",
+                "codes": [
+                  "gvs_oth_af"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "gnomad_sv",
+        "order": 58,
+        "parsed_as": [
+          "gnomad_sv"
+        ],
+        "config": {
+          "emit": "custom",
+          "params": {
+            "file": "{path}/gnomad.v4.1.sv.sites_AF.vcf.gz",
+            "type": "exact",
+            "short_name": "gnomAD_SV",
+            "format": "vcf",
+            "overlap_cutoff": {
+              "from_option": "gnomad_sv_overlap_cutoff",
+              "as": "value"
+            }
+          },
+          "fields": {
+            "builder": "gnomad_structural",
+            "join": "%",
+            "populations": [
+              { "option": "gnomad_sv", "codes": ["SVTYPE"] },
+              { "option": "gnomad_sv_af", "codes": ["AF"] },
+              { "option": "gnomad_sv_af_afr", "codes": ["AF_afr"] },
+              { "option": "gnomad_sv_af_ami", "codes": ["AF_ami"] },
+              { "option": "gnomad_sv_af_amr", "codes": ["AF_amr"] },
+              { "option": "gnomad_sv_af_asj", "codes": ["AF_asj"] },
+              { "option": "gnomad_sv_af_eas", "codes": ["AF_eas"] },
+              { "option": "gnomad_sv_af_fin", "codes": ["AF_fin"] },
+              { "option": "gnomad_sv_af_mid", "codes": ["AF_mid"] },
+              { "option": "gnomad_sv_af_nfe", "codes": ["AF_nfe"] },
+              { "option": "gnomad_sv_af_rmi", "codes": ["AF_rmi"] },
+              { "option": "gnomad_sv_af_sas", "codes": ["AF_sas"] }
+            ]
+          },
+          "fields_after": "format"
+        }
+      },
+      {
+        "id": "gnomad_cnv",
+        "order": 59,
+        "parsed_as": [
+          "gnomad_cnv"
+        ],
+        "config": {
+          "emit": "custom",
+          "params": {
+            "file": "{path}/gnomad.v4.1.cnv.all_SF.vcf.gz",
+            "type": "exact",
+            "short_name": "gnomAD_CNV",
+            "format": "vcf",
+            "overlap_cutoff": {
+              "from_option": "gnomad_cnv_overlap_cutoff",
+              "as": "value"
+            }
+          },
+          "fields": {
+            "builder": "gnomad_structural",
+            "join": "%",
+            "populations": [
+              { "option": "gnomad_cnv", "codes": ["SVTYPE"] },
+              { "option": "gnomad_cnv_sf", "codes": ["SF"] },
+              { "option": "gnomad_cnv_sf_afr", "codes": ["SF_afr"] },
+              { "option": "gnomad_cnv_sf_amr", "codes": ["SF_amr"] },
+              { "option": "gnomad_cnv_sf_asj", "codes": ["SF_asj"] },
+              { "option": "gnomad_cnv_sf_eas", "codes": ["SF_eas"] },
+              { "option": "gnomad_cnv_sf_fin", "codes": ["SF_fin"] },
+              { "option": "gnomad_cnv_sf_mid", "codes": ["SF_mid"] },
+              { "option": "gnomad_cnv_sf_nfe", "codes": ["SF_nfe"] },
+              { "option": "gnomad_cnv_sf_sas", "codes": ["SF_sas"] },
+              { "option": "gnomad_cnv_sf_remaining", "codes": ["SF_remaining"] }
+            ]
+          },
+          "fields_after": "format"
+        }
+      },
+      {
+        "id": "clinvar_short",
+        "order": 60,
+        "parsed_as": [
+          "clinvar"
+        ],
+        "requires": [
+          "clinvar"
+        ],
+        "config": {
+          "emit": "custom",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/clinvar_GRCh38.vcf.gz",
+                "GRCh37": "{path}/clinvar_GRCh37.vcf.gz"
+              }
+            },
+            "short_name": "ClinVar",
+            "format": "vcf",
+            "type": "exact"
+          },
+          "fields": {
+            "literal": [
+              "CLNSIG",
+              "CLNSIGCONF"
+            ]
+          }
+        }
+      },
+      {
+        "id": "clinvar_sv",
+        "order": 61,
+        "parsed_as": [
+          "clinvar_sv"
+        ],
+        "requires": [
+          "clinvar"
+        ],
+        "config": {
+          "emit": "custom",
+          "params": {
+            "file": "{path}/nstd102.GRCh38.variant_call.combined.sorted.vcf.gz",
+            "short_name": "ClinVar_SV",
+            "format": "vcf",
+            "type": "exact"
+          },
+          "fields": {
+            "literal": [
+              "CLNSIG",
+              "ORIGIN"
+            ]
+          }
+        }
+      },
+      {
+        "id": "gencode_promoters",
+        "order": 65,
+        "parsed_as": [
+          "gencode_promoter"
+        ],
+        "config": {
+          "emit": "custom",
+          "params": {
+            "file": "{path}/gencode.v49.promoter_windows.sorted.gff3.gz",
+            "gff_type": "gencode_promoter",
+            "format": "gff",
+            "short_name": "GENCODE_Promoter",
+            "type": "overlap"
+          }
+        }
+      }
+    ]
+  },
+  "parsing": {
+    "plugins": [
+      {
+        "plugin": "mutfunc",
+        "scope": "transcript",
+        "output": "mutfunc",
+        "csq_fields": [
+          "mutfunc_motif",
+          "mutfunc_int",
+          "mutfunc_mod",
+          "mutfunc_exp"
+        ],
+        "require_any_input": [
+          "mutfunc_motif",
+          "mutfunc_int",
+          "mutfunc_mod",
+          "mutfunc_exp"
+        ],
+        "targets": [
+          {
+            "field": "linear_motifs",
+            "from": "mutfunc_motif",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "protein_interactions",
+            "from": "mutfunc_int",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "protein_structure",
+            "from": "mutfunc_mod",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "protein_structure_experimental",
+            "from": "mutfunc_exp",
+            "transform": "scalar",
+            "type": "float"
+          }
+        ]
+      },
+      {
+        "plugin": "mavedb",
+        "scope": "transcript",
+        "output": "mavedb",
+        "csq_fields": [
+          "MaveDB_score",
+          "MaveDB_urn",
+          "MaveDB_doi",
+          "MaveDB_nt",
+          "MaveDB_pro"
+        ],
+        "require_any_input": [
+          "MaveDB_score",
+          "MaveDB_urn",
+          "MaveDB_pro"
+        ],
+        "require_any_output": [
+          "assays"
+        ],
+        "targets": [
+          {
+            "field": "protein_variant",
+            "from": "MaveDB_pro",
+            "transform": "first",
+            "type": "string"
+          },
+          {
+            "field": "assays",
+            "from": [
+              "MaveDB_score",
+              "MaveDB_urn"
+            ],
+            "transform": "zip",
+            "align": "max",
+            "as": [
+              {
+                "field": "score",
+                "type": "float"
+              },
+              {
+                "field": "urn",
+                "type": "string"
+              }
+            ],
+            "drop_when": {
+              "all_null": true
+            },
+            "item_fields": [
+              "score",
+              "urn"
+            ]
+          }
+        ]
+      },
+      {
+        "plugin": "protvar",
+        "scope": "transcript",
+        "output": "protvar",
+        "csq_fields": [
+          "ProtVar_stability",
+          "ProtVar_pocket",
+          "ProtVar_int"
+        ],
+        "require_any_input": [
+          "ProtVar_stability",
+          "ProtVar_pocket",
+          "ProtVar_int"
+        ],
+        "targets": [
+          {
+            "field": "structure_stability_score",
+            "from": "ProtVar_stability",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "pockets",
+            "from": "ProtVar_pocket",
+            "transform": "chunk",
+            "size": 7,
+            "as": [
+              {
+                "field": "pocket_id",
+                "type": "string"
+              },
+              {
+                "field": "energy",
+                "type": "float"
+              },
+              {
+                "field": "energy_per_volume",
+                "type": "float"
+              },
+              {
+                "field": "score",
+                "type": "float"
+              },
+              {
+                "field": "buriedness",
+                "type": "float"
+              },
+              {
+                "field": "radius_of_gyration",
+                "type": "float"
+              },
+              {
+                "field": "raw",
+                "type": "raw"
+              }
+            ],
+            "item_fields": [
+              "pocket_id",
+              "score"
+            ]
+          },
+          {
+            "field": "interaction_interfaces",
+            "from": "ProtVar_int",
+            "transform": "chunk",
+            "size": 2,
+            "as": [
+              {
+                "field": "partner",
+                "type": "string"
+              },
+              {
+                "field": "score",
+                "type": "float"
+              },
+              {
+                "field": "raw",
+                "type": "raw"
+              }
+            ],
+            "item_fields": [
+              "partner",
+              "score"
+            ]
+          }
+        ]
+      },
+      {
+        "plugin": "clinvar",
+        "scope": "allele",
+        "output": "clinvar",
+        "csq_fields": [
+          "ClinVar_CLNSIG",
+          "ClinVar_CLNSIGCONF"
+        ],
+        "require_any_input": [
+          "ClinVar_CLNSIG"
+        ],
+        "targets": [
+          {
+            "field": "significance",
+            "from": "ClinVar_CLNSIG",
+            "transform": "list"
+          },
+          {
+            "field": "conflicting_breakdown",
+            "from": "ClinVar_CLNSIGCONF",
+            "transform": "regex",
+            "each": true,
+            "pattern": "^(?P<significance>.+)_\\((?P<count>\\d+)\\)$",
+            "as": [
+              {
+                "field": "significance",
+                "type": "string"
+              },
+              {
+                "field": "count",
+                "type": "int"
+              }
+            ],
+            "when": {
+              "field": "ClinVar_CLNSIG",
+              "includes": "Conflicting_classifications_of_pathogenicity"
+            },
+            "item_fields": [
+              "significance",
+              "count"
+            ]
+          }
+        ]
+      },
+      {
+        "plugin": "clinvar_sv",
+        "scope": "allele",
+        "output": "clinvar_sv",
+        "csq_fields": [
+          "ClinVar_SV_CLNSIG",
+          "ClinVar_SV_ORIGIN"
+        ],
+        "require_any_input": [
+          "ClinVar_SV_CLNSIG"
+        ],
+        "targets": [
+          {
+            "field": "significance",
+            "from": "ClinVar_SV_CLNSIG",
+            "transform": "list"
+          },
+          {
+            "field": "origin",
+            "from": "ClinVar_SV_ORIGIN",
+            "transform": "list"
+          }
+        ]
+      },
+      {
+        "plugin": "gencode_promoter",
+        "scope": "allele",
+        "output": "gencode_promoter",
+        "csq_fields": [
+          "GENCODE_Promoter",
+          "GENCODE_Promoter_feature_id"
+        ],
+        "require_any_output": [
+          "region"
+        ],
+        "targets": [
+          {
+            "field": "region",
+            "from": "GENCODE_Promoter",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "feature_id",
+            "from": "GENCODE_Promoter_feature_id",
+            "transform": "scalar",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "plugin": "gnomad_exomes",
+        "scope": "allele",
+        "output": "frequencies.gnomad_exomes",
+        "csq_fields": [
+          "gnomAD_exomes_AF"
+        ],
+        "require_any_output": [
+          "overall",
+          "populations"
+        ],
+        "targets": [
+          {
+            "field": "overall",
+            "from": "gnomAD_exomes_AF",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "populations",
+            "from_pattern": "gnomAD_exomes_AF_{pop}",
+            "transform": "pattern_map",
+            "type": "float",
+            "exclude": [
+              "gnomAD_exomes_AF"
+            ]
+          }
+        ]
+      },
+      {
+        "plugin": "gnomad_genomes",
+        "scope": "allele",
+        "output": "frequencies.gnomad_genomes",
+        "csq_fields": [
+          "gnomAD_genomes_AF"
+        ],
+        "require_any_output": [
+          "overall",
+          "populations"
+        ],
+        "targets": [
+          {
+            "field": "overall",
+            "from": "gnomAD_genomes_AF",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "populations",
+            "from_pattern": "gnomAD_genomes_AF_{pop}",
+            "transform": "pattern_map",
+            "type": "float",
+            "exclude": [
+              "gnomAD_genomes_AF"
+            ]
+          }
+        ]
+      },
+      {
+        "plugin": "all_of_us",
+        "scope": "allele",
+        "output": "frequencies.all_of_us",
+        "csq_fields": [
+          "AoU_gvs_all_af"
+        ],
+        "require_any_output": [
+          "overall",
+          "populations"
+        ],
+        "targets": [
+          {
+            "field": "overall",
+            "from": "AoU_gvs_all_af",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "populations",
+            "from_pattern": "AoU_gvs_{pop}_af",
+            "transform": "pattern_map",
+            "type": "float",
+            "exclude": [
+              "AoU_gvs_all_af"
+            ]
+          },
+          {
+            "field": "max_subpopulation",
+            "from": "AoU_gvs_max_subpop",
+            "transform": "scalar",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "plugin": "gnomad_sv",
+        "scope": "allele",
+        "output": "frequencies.gnomad_sv",
+        "csq_fields": [
+          "gnomAD_SV",
+          "gnomAD_SV_SVTYPE",
+          "gnomAD_SV_AF"
+        ],
+        "require_any_output": [
+          "id"
+        ],
+        "targets": [
+          {
+            "field": "id",
+            "from": "gnomAD_SV",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "svtype",
+            "from": "gnomAD_SV_SVTYPE",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "overall",
+            "from": "gnomAD_SV_AF",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "populations",
+            "transform": "pattern_map",
+            "type": "float",
+            "from_pattern": "gnomAD_SV_AF_{pop}",
+            "exclude": [
+              "gnomAD_SV_AF"
+            ]
+          }
+        ]
+      },
+      {
+        "plugin": "gnomad_cnv",
+        "scope": "allele",
+        "output": "frequencies.gnomad_cnv",
+        "csq_fields": [
+          "gnomAD_CNV",
+          "gnomAD_CNV_SVTYPE",
+          "gnomAD_CNV_SF"
+        ],
+        "require_any_output": [
+          "id"
+        ],
+        "targets": [
+          {
+            "field": "id",
+            "from": "gnomAD_CNV",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "svtype",
+            "from": "gnomAD_CNV_SVTYPE",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "overall",
+            "from": "gnomAD_CNV_SF",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "populations",
+            "transform": "pattern_map",
+            "type": "float",
+            "from_pattern": "gnomAD_CNV_SF_{pop}",
+            "exclude": [
+              "gnomAD_CNV_SF"
+            ]
+          }
+        ]
+      },
+      {
+        "plugin": "opentargets",
+        "scope": "allele",
+        "output": "open_targets",
+        "csq_fields": [
+          "OpenTargets_gwasDiseases",
+          "OpenTargets_gwasGeneId",
+          "OpenTargets_gwasLocusToGeneScore",
+          "OpenTargets_qtlGeneId",
+          "OpenTargets_qtlBiosampleName"
+        ],
+        "require_any_output": [
+          "gwas_associations",
+          "qtl_associations"
+        ],
+        "targets": [
+          {
+            "field": "gwas_associations",
+            "from": [
+              "OpenTargets_gwasDiseases",
+              "OpenTargets_gwasGeneId",
+              "OpenTargets_gwasLocusToGeneScore"
+            ],
+            "transform": "zip",
+            "align": "min",
+            "as": [
+              {
+                "field": "disease",
+                "type": "string"
+              },
+              {
+                "field": "gene_id",
+                "type": "string"
+              },
+              {
+                "field": "l2g_score",
+                "type": "float"
+              }
+            ],
+            "drop_when": {
+              "null": "disease"
+            },
+            "post": [
+              {
+                "op": "dedup"
+              },
+              {
+                "op": "sort",
+                "by": "l2g_score",
+                "desc": true,
+                "nulls": "last"
+              }
+            ],
+            "item_fields": [
+              "disease",
+              "gene_id",
+              "l2g_score"
+            ]
+          },
+          {
+            "field": "qtl_associations",
+            "from": [
+              "OpenTargets_qtlGeneId",
+              "OpenTargets_qtlBiosampleName"
+            ],
+            "transform": "zip",
+            "align": "min",
+            "as": [
+              {
+                "field": "gene_id",
+                "type": "string"
+              },
+              {
+                "field": "biosample",
+                "type": "string"
+              }
+            ],
+            "drop_when": {
+              "null": "gene_id"
+            },
+            "post": [
+              {
+                "op": "dedup"
+              }
+            ],
+            "item_fields": [
+              "gene_id",
+              "biosample"
+            ]
+          }
+        ]
+      },
+      {
+        "plugin": "go",
+        "scope": "transcript",
+        "output": "go_terms",
+        "csq_fields": [
+          "GO"
+        ],
+        "targets": [
+          {
+            "field": "go_terms",
+            "from": "GO",
+            "transform": "regex",
+            "each": true,
+            "pattern": "^(?P<id>[^:]+:[^:]+):(?P<name>.*)$",
+            "as": [
+              {
+                "field": "id",
+                "type": "string"
+              },
+              {
+                "field": "name",
+                "type": "string",
+                "replace": {
+                  "_": " "
+                },
+                "strip": true
+              }
+            ],
+            "item_fields": [
+              "id",
+              "name"
+            ]
+          }
+        ],
+        "require_any_output": [
+          "go_terms"
+        ]
+      },
+      {
+        "plugin": "nearest_gene",
+        "scope": "allele",
+        "output": "nearest_genes",
+        "csq_fields": [
+          "NearestGene"
+        ],
+        "targets": [
+          {
+            "field": "nearest_genes",
+            "from": "NearestGene",
+            "transform": "regex",
+            "each": true,
+            "pattern": "^(?P<gene_id>[^:]+):(?P<distance>\\d+)(?::(?P<direction>.+))?$",
+            "as": [
+              {
+                "field": "gene_id",
+                "type": "string"
+              },
+              {
+                "field": "distance",
+                "type": "int"
+              },
+              {
+                "field": "direction",
+                "type": "string"
+              }
+            ],
+            "item_fields": [
+              "gene_id",
+              "distance",
+              "direction"
+            ]
+          }
+        ],
+        "require_any_output": [
+          "nearest_genes"
+        ]
+      },
+      {
+        "plugin": "nearest_exon_jb",
+        "scope": "transcript",
+        "output": "boundaries",
+        "csq_fields": [
+          "NearestExonJB"
+        ],
+        "targets": [
+          {
+            "field": "boundaries",
+            "from": "NearestExonJB",
+            "transform": "regex",
+            "each": true,
+            "pattern": "^(?P<exon_id>[^+]+)\\+(?P<distance>-?\\d+)\\+(?P<boundary_type>[^+]+)\\+(?P<exon_length>\\d+)$",
+            "as": [
+              {
+                "field": "exon_id",
+                "type": "string"
+              },
+              {
+                "field": "distance",
+                "type": "int"
+              },
+              {
+                "field": "boundary_type",
+                "type": "string"
+              },
+              {
+                "field": "exon_length",
+                "type": "int"
+              }
+            ],
+            "item_fields": [
+              "exon_id",
+              "distance",
+              "boundary_type",
+              "exon_length"
+            ]
+          }
+        ],
+        "require_any_output": [
+          "boundaries"
+        ]
+      },
+      {
+        "plugin": "spliceai",
+        "scope": "transcript",
+        "output": "spliceai",
+        "csq_fields": [
+          "SpliceAI_pred_DS_AG"
+        ],
+        "require_any_output": [
+          "ds_acceptor_gain",
+          "ds_acceptor_loss",
+          "ds_donor_gain",
+          "ds_donor_loss",
+          "dp_acceptor_gain",
+          "dp_acceptor_loss",
+          "dp_donor_gain",
+          "dp_donor_loss"
+        ],
+        "targets": [
+          {
+            "field": "symbol",
+            "from": "SpliceAI_pred_SYMBOL",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "ds_acceptor_gain",
+            "from": "SpliceAI_pred_DS_AG",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "ds_acceptor_loss",
+            "from": "SpliceAI_pred_DS_AL",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "ds_donor_gain",
+            "from": "SpliceAI_pred_DS_DG",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "ds_donor_loss",
+            "from": "SpliceAI_pred_DS_DL",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "dp_acceptor_gain",
+            "from": "SpliceAI_pred_DP_AG",
+            "transform": "scalar",
+            "type": "int"
+          },
+          {
+            "field": "dp_acceptor_loss",
+            "from": "SpliceAI_pred_DP_AL",
+            "transform": "scalar",
+            "type": "int"
+          },
+          {
+            "field": "dp_donor_gain",
+            "from": "SpliceAI_pred_DP_DG",
+            "transform": "scalar",
+            "type": "int"
+          },
+          {
+            "field": "dp_donor_loss",
+            "from": "SpliceAI_pred_DP_DL",
+            "transform": "scalar",
+            "type": "int"
+          }
+        ]
+      },
+      {
+        "plugin": "riboseq_orfs",
+        "scope": "transcript",
+        "output": "riboseq_orfs",
+        "csq_fields": [
+          "RiboseqORFs_id",
+          "RiboseqORFs_consequences",
+          "RiboseqORFs_impact",
+          "RiboseqORFs_protein_position",
+          "RiboseqORFs_codons",
+          "RiboseqORFs_amino_acids",
+          "RiboseqORFs_publications"
+        ],
+        "require_any_output": [
+          "orf_id",
+          "consequences",
+          "impact",
+          "protein_position",
+          "codons",
+          "amino_acids",
+          "publications"
+        ],
+        "targets": [
+          {
+            "field": "orf_id",
+            "from": "RiboseqORFs_id",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "consequences",
+            "from": "RiboseqORFs_consequences",
+            "transform": "list"
+          },
+          {
+            "field": "impact",
+            "from": "RiboseqORFs_impact",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "protein_position",
+            "from": "RiboseqORFs_protein_position",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "codons",
+            "from": "RiboseqORFs_codons",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "amino_acids",
+            "from": "RiboseqORFs_amino_acids",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "publications",
+            "from": "RiboseqORFs_publications",
+            "transform": "list"
+          }
+        ]
+      },
+      {
+        "plugin": "hgvs",
+        "scope": "transcript",
+        "output": "hgvs",
+        "csq_fields": [
+          "HGVSg",
+          "HGVSc",
+          "HGVSp"
+        ],
+        "require_any_input": [
+          "HGVSg",
+          "HGVSc",
+          "HGVSp"
+        ],
+        "targets": [
+          {
+            "field": "genomic",
+            "from": "HGVSg",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "transcript",
+            "from": "HGVSc",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "protein",
+            "from": "HGVSp",
+            "transform": "scalar",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "plugin": "phenotype_data",
+        "scope": "allele",
+        "output": "phenotype_data",
+        "csq_fields": [
+          "PHENOTYPES"
+        ],
+        "require_any_output": [
+          "phenotypes"
+        ],
+        "targets": [
+          {
+            "field": "phenotypes",
+            "from": "PHENOTYPES",
+            "transform": "list"
+          }
+        ]
+      },
+      {
+        "plugin": "dosage_sensitivity",
+        "scope": "transcript",
+        "output": "dosage_sensitivity",
+        "csq_fields": [
+          "pHaplo",
+          "pTriplo"
+        ],
+        "require_any_input": [
+          "pHaplo",
+          "pTriplo"
+        ],
+        "targets": [
+          {
+            "field": "phaplo",
+            "from": "pHaplo",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "ptriplo",
+            "from": "pTriplo",
+            "transform": "scalar",
+            "type": "float"
+          }
+        ]
+      },
+      {
+        "plugin": "intact",
+        "scope": "transcript",
+        "output": "intact",
+        "csq_fields": [
+          "IntAct_feature_type",
+          "IntAct_interaction_ac",
+          "IntAct_feature_ac"
+        ],
+        "require_any_input": [
+          "IntAct_feature_type",
+          "IntAct_interaction_ac",
+          "IntAct_feature_ac",
+          "IntAct_feature_short_label",
+          "IntAct_feature_annotation",
+          "IntAct_ap_ac",
+          "IntAct_interaction_participants",
+          "IntAct_pmid"
+        ],
+        "targets": [
+          {
+            "field": "feature_type",
+            "from": "IntAct_feature_type",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "interaction_ac",
+            "from": "IntAct_interaction_ac",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "feature_ac",
+            "from": "IntAct_feature_ac",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "feature_short_label",
+            "from": "IntAct_feature_short_label",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "feature_annotation",
+            "from": "IntAct_feature_annotation",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "ap_ac",
+            "from": "IntAct_ap_ac",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "interaction_participants",
+            "from": "IntAct_interaction_participants",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "pmid",
+            "from": "IntAct_pmid",
+            "transform": "scalar",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "plugin": "popeve",
+        "scope": "transcript",
+        "output": "popeve",
+        "csq_fields": [
+          "popEVE_SCORE",
+          "popEVE_EVE",
+          "popEVE_mutant"
+        ],
+        "require_any_input": [
+          "popEVE_SCORE",
+          "popEVE_EVE",
+          "popEVE_mutant"
+        ],
+        "targets": [
+          {
+            "field": "score",
+            "from": "popEVE_SCORE",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "eve",
+            "from": "popEVE_EVE",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "esm1v",
+            "from": "popEVE_ESM1v",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "pop_adjusted_eve",
+            "from": "popEVE_pop_adjusted_EVE",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "pop_adjusted_esm1v",
+            "from": "popEVE_pop_adjusted_ESM1v",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "gene",
+            "from": "popEVE_gene",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "protein",
+            "from": "popEVE_protein",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "mutant",
+            "from": "popEVE_mutant",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "gap_frequency",
+            "from": "popEVE_gap_frequency",
+            "transform": "scalar",
+            "type": "float"
+          }
+        ]
+      },
+      {
+        "plugin": "revel",
+        "scope": "transcript",
+        "output": "revel",
+        "csq_fields": [
+          "REVEL"
+        ],
+        "require_any_output": [
+          "score"
+        ],
+        "targets": [
+          {
+            "field": "score",
+            "from": "REVEL",
+            "transform": "scalar",
+            "type": "float"
+          }
+        ]
+      },
+      {
+        "plugin": "clinpred",
+        "scope": "transcript",
+        "output": "clinpred",
+        "csq_fields": [
+          "ClinPred"
+        ],
+        "require_any_output": [
+          "score"
+        ],
+        "targets": [
+          {
+            "field": "score",
+            "from": "ClinPred",
+            "transform": "scalar",
+            "type": "float"
+          }
+        ]
+      },
+      {
+        "plugin": "alphamissense",
+        "scope": "transcript",
+        "output": "alphamissense",
+        "csq_fields": [
+          "am_class",
+          "am_pathogenicity"
+        ],
+        "require_any_output": [
+          "classification",
+          "score"
+        ],
+        "targets": [
+          {
+            "field": "classification",
+            "from": "am_class",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "score",
+            "from": "am_pathogenicity",
+            "transform": "scalar",
+            "type": "float"
+          }
+        ]
+      },
+      {
+        "plugin": "cadd",
+        "scope": "allele",
+        "output": "cadd",
+        "csq_fields": [
+          "CADD_PHRED",
+          "CADD_RAW"
+        ],
+        "require_any_output": [
+          "phred",
+          "raw"
+        ],
+        "targets": [
+          {
+            "field": "phred",
+            "from": "CADD_PHRED",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "raw",
+            "from": "CADD_RAW",
+            "transform": "scalar",
+            "type": "float"
+          }
+        ]
+      },
+      {
+        "plugin": "eve",
+        "scope": "transcript",
+        "output": "eve",
+        "csq_fields": [
+          "EVE_CLASS",
+          "EVE_SCORE"
+        ],
+        "require_any_output": [
+          "classification",
+          "score"
+        ],
+        "targets": [
+          {
+            "field": "classification",
+            "from": "EVE_CLASS",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "score",
+            "from": "EVE_SCORE",
+            "transform": "scalar",
+            "type": "float"
+          }
+        ]
+      },
+      {
+        "plugin": "utr_annotation",
+        "scope": "transcript",
+        "output": "utr_annotation",
+        "csq_fields": [
+          "5UTR_consequence",
+          "5UTR_annotation",
+          "Existing_uORFs",
+          "Existing_InFrame_oORFs",
+          "Existing_OutOfFrame_oORFs"
+        ],
+        "require_any_input": [
+          "5UTR_consequence",
+          "5UTR_annotation",
+          "Existing_uORFs",
+          "Existing_InFrame_oORFs",
+          "Existing_OutOfFrame_oORFs"
+        ],
+        "targets": [
+          {
+            "field": "consequence",
+            "from": "5UTR_consequence",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "annotation",
+            "from": "5UTR_annotation",
+            "transform": "key_value",
+            "pair_delimiter": ":",
+            "kv_delimiter": "="
+          },
+          {
+            "field": "existing_uorfs",
+            "from": "Existing_uORFs",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "existing_inframe_oorfs",
+            "from": "Existing_InFrame_oORFs",
+            "transform": "scalar",
+            "type": "string"
+          },
+          {
+            "field": "existing_outofframe_oorfs",
+            "from": "Existing_OutOfFrame_oORFs",
+            "transform": "scalar",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "plugin": "loeuf",
+        "scope": "transcript",
+        "output": "loeuf",
+        "csq_fields": [
+          "LOEUF"
+        ],
+        "require_any_output": [
+          "score"
+        ],
+        "targets": [
+          {
+            "field": "score",
+            "from": "LOEUF",
+            "transform": "scalar",
+            "type": "float"
+          }
+        ]
+      },
+      {
+        "plugin": "nmd",
+        "scope": "transcript",
+        "output": "nmd",
+        "csq_fields": [
+          "NMD"
+        ],
+        "require_any_output": [
+          "prediction"
+        ],
+        "targets": [
+          {
+            "field": "prediction",
+            "from": "NMD",
+            "transform": "scalar",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "plugin": "spdi",
+        "scope": "allele",
+        "output": "spdi",
+        "csq_fields": [
+          "SPDI"
+        ],
+        "require_any_output": [
+          "spdi"
+        ],
+        "targets": [
+          {
+            "field": "spdi",
+            "from": "SPDI",
+            "transform": "scalar",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "plugin": "protein",
+        "scope": "transcript",
+        "output": "protein",
+        "csq_fields": [
+          "ENSP"
+        ],
+        "require_any_output": [
+          "ensembl_protein_id"
+        ],
+        "targets": [
+          {
+            "field": "ensembl_protein_id",
+            "from": "ENSP",
+            "transform": "scalar",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "plugin": "hgvsg",
+        "scope": "allele",
+        "output": "hgvsg",
+        "csq_fields": [
+          "HGVSg"
+        ],
+        "require_any_output": [
+          "genomic"
+        ],
+        "targets": [
+          {
+            "field": "genomic",
+            "from": "HGVSg",
+            "transform": "scalar",
+            "type": "string"
+          }
+        ]
+      }
+    ]
+  },
+  "display": {
+    "options": [
+      {
+        "option_id": "hgvs",
+        "blocks": [
+          {
+            "kind": "group",
+            "heading": "HGVS",
+            "blocks": [
+              {
+                "kind": "rows",
+                "requires_selected": {
+                  "id": "hgvs",
+                  "default": false
+                },
+                "rows": [
+                  {
+                    "key": "c",
+                    "label": "HGVSc",
+                    "from": "hgvs.transcript",
+                    "mono": true
+                  },
+                  {
+                    "key": "p",
+                    "label": "HGVSp",
+                    "from": "hgvs.protein",
+                    "mono": true
+                  }
+                ]
+              },
+              {
+                "kind": "rows",
+                "requires_selected": {
+                  "id": "hgvsg",
+                  "default": false
+                },
+                "rows": [
+                  {
+                    "label": "HGVSg",
+                    "from": "hgvsg.genomic",
+                    "mono": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "spdi",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "SPDI",
+                "from": "spdi.spdi",
+                "mono": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "alphamissense",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "AlphaMissense",
+                "compose": {
+                  "format": "with_score",
+                  "classification": "alphamissense.classification",
+                  "score": "alphamissense.score"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "revel",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "REVEL",
+                "from": "revel.score",
+                "format": "num"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "clinpred",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "ClinPred",
+                "from": "clinpred.score",
+                "format": "num"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "cadd",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "CADD (PHRED)",
+                "from": "cadd.phred",
+                "format": "num"
+              },
+              {
+                "label": "CADD (RAW)",
+                "from": "cadd.raw",
+                "format": "num"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "spliceai",
+        "blocks": [
+          {
+            "kind": "group",
+            "heading": "SpliceAI",
+            "blocks": [
+              {
+                "kind": "rows",
+                "requires": "spliceai",
+                "rows": [
+                  {
+                    "key": "symbol",
+                    "label": "Gene",
+                    "from": "spliceai.symbol"
+                  }
+                ]
+              },
+              {
+                "kind": "table",
+                "requires": "spliceai",
+                "columns": [
+                  {
+                    "label": "Splicing event"
+                  },
+                  {
+                    "label": "ΔS",
+                    "format": "num"
+                  },
+                  {
+                    "label": "ΔP",
+                    "format": "num"
+                  }
+                ],
+                "rows": [
+                  {
+                    "label": "Acceptor gain",
+                    "values": [
+                      "spliceai.ds_acceptor_gain",
+                      "spliceai.dp_acceptor_gain"
+                    ]
+                  },
+                  {
+                    "label": "Acceptor loss",
+                    "values": [
+                      "spliceai.ds_acceptor_loss",
+                      "spliceai.dp_acceptor_loss"
+                    ]
+                  },
+                  {
+                    "label": "Donor gain",
+                    "values": [
+                      "spliceai.ds_donor_gain",
+                      "spliceai.dp_donor_gain"
+                    ]
+                  },
+                  {
+                    "label": "Donor loss",
+                    "values": [
+                      "spliceai.ds_donor_loss",
+                      "spliceai.dp_donor_loss"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "eve",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "key": "eve",
+                "label": "EVE",
+                "compose": {
+                  "format": "with_score",
+                  "classification": "eve.classification",
+                  "score": "eve.score"
+                }
+              }
+            ]
+          },
+          {
+            "kind": "rows",
+            "heading": "popEVE",
+            "rows": [
+              {
+                "key": "score",
+                "label": "Score",
+                "from": "popeve.score",
+                "format": "num"
+              },
+              {
+                "key": "pop",
+                "label": "Population-adjusted EVE",
+                "from": "popeve.pop_adjusted_eve",
+                "format": "num"
+              },
+              {
+                "key": "gap",
+                "label": "Gap frequency",
+                "from": "popeve.gap_frequency",
+                "format": "num",
+                "help": "Authors recommend filtering if > 0.5"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "loeuf",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "LOEUF",
+                "from": "loeuf.score",
+                "format": "num"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "nmd",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "NMD",
+                "from": "nmd.prediction",
+                "format": "humanize"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "dosage_sensitivity",
+        "blocks": [
+          {
+            "kind": "rows",
+            "heading": "Dosage sensitivity",
+            "rows": [
+              {
+                "key": "ph",
+                "label": "pHaplo",
+                "from": "dosage_sensitivity.phaplo",
+                "format": "num"
+              },
+              {
+                "key": "pt",
+                "label": "pTriplo",
+                "from": "dosage_sensitivity.ptriplo",
+                "format": "num"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "utrannotator",
+        "blocks": [
+          {
+            "kind": "rows",
+            "heading": "UTRAnnotator",
+            "rows": [
+              {
+                "key": "cons",
+                "label": "Consequence",
+                "from": "utr_annotation.consequence"
+              },
+              {
+                "key": "uorf",
+                "label": "Existing uORFs",
+                "from": "utr_annotation.existing_uorfs"
+              },
+              {
+                "key": "inf",
+                "label": "In-frame oORFs",
+                "from": "utr_annotation.existing_inframe_oorfs"
+              },
+              {
+                "key": "oof",
+                "label": "Out-of-frame oORFs",
+                "from": "utr_annotation.existing_outofframe_oorfs"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "riboseqorfs",
+        "blocks": [
+          {
+            "kind": "rows",
+            "heading": "RiboSeqORFs",
+            "rows": [
+              {
+                "key": "id",
+                "label": "ORF",
+                "from": "riboseq_orfs.orf_id"
+              },
+              {
+                "key": "cons",
+                "label": "Consequences",
+                "from": "riboseq_orfs.consequences",
+                "format": "join"
+              },
+              {
+                "key": "imp",
+                "label": "Impact",
+                "from": "riboseq_orfs.impact"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "phenotypes",
+        "blocks": [
+          {
+            "kind": "list",
+            "heading": "Phenotypes",
+            "from": "phenotype_data.phenotypes",
+            "truncate": {
+              "visible_count": 3
+            },
+            "item": {
+              "cells": [
+                {
+                  "format": "phenotype"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "option_id": "go",
+        "blocks": [
+          {
+            "kind": "list",
+            "heading": "Gene Ontology",
+            "from": "go.go_terms",
+            "truncate": {
+              "visible_count": 3
+            },
+            "item": {
+              "cells": [
+                {
+                  "from": "id",
+                  "link": {
+                    "kind": "external",
+                    "template": "https://amigo.geneontology.org/amigo/term/{id}"
+                  }
+                },
+                {
+                  "from": "name"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "option_id": "nearest_gene",
+        "blocks": [
+          {
+            "kind": "list",
+            "heading": "Nearest gene",
+            "from": "nearest_gene.nearest_genes",
+            "item": {
+              "cells": [
+                {
+                  "from": "gene_id"
+                },
+                {
+                  "from": "distance"
+                },
+                {
+                  "from": "direction"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "option_id": "nearest_exon_jb",
+        "blocks": [
+          {
+            "kind": "list",
+            "heading": "Nearest exon junction boundary",
+            "from": "nearest_exon_jb.boundaries",
+            "item": {
+              "rows": [
+                {
+                  "label": "Exon",
+                  "from": "exon_id"
+                },
+                {
+                  "label": "Distance to exon boundary",
+                  "from": "distance"
+                },
+                {
+                  "label": "Boundary type",
+                  "from": "boundary_type"
+                },
+                {
+                  "label": "Exon length",
+                  "from": "exon_length"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "option_id": "mavedb",
+        "heading": "MaveDB",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "key": "variant",
+                "label": "Variant",
+                "from": "mavedb.protein_variant"
+              }
+            ]
+          },
+          {
+            "kind": "list",
+            "from": "mavedb.assays",
+            "truncate": {
+              "visible_count": 3
+            },
+            "item": {
+              "cells": [
+                {
+                  "from": "urn",
+                  "link": {
+                    "kind": "external",
+                    "template": "https://www.mavedb.org/score-sets/{urn}"
+                  }
+                },
+                {
+                  "from": "score",
+                  "format": "num"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "option_id": "mutfunc",
+        "blocks": [
+          {
+            "kind": "rows",
+            "heading": "mutfunc",
+            "rows": [
+              {
+                "key": "motif",
+                "label": "Linear motifs",
+                "from": "mutfunc.linear_motifs",
+                "format": "num",
+                "sub_option": {
+                  "id": "mutfunc_motif"
+                }
+              },
+              {
+                "key": "int",
+                "label": "Protein interactions",
+                "from": "mutfunc.protein_interactions",
+                "format": "num",
+                "sub_option": {
+                  "id": "mutfunc_int"
+                }
+              },
+              {
+                "key": "mod",
+                "label": "Protein structure",
+                "from": "mutfunc.protein_structure",
+                "format": "num",
+                "sub_option": {
+                  "id": "mutfunc_mod"
+                }
+              },
+              {
+                "key": "exp",
+                "label": "Protein structure (exp.)",
+                "from": "mutfunc.protein_structure_experimental",
+                "format": "num",
+                "sub_option": {
+                  "id": "mutfunc_exp"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "opentargets",
+        "heading": "OpenTargets",
+        "blocks": [
+          {
+            "kind": "list",
+            "heading": "GWAS gene associations",
+            "from": "opentargets.gwas_associations",
+            "truncate": {
+              "visible_count": 3
+            },
+            "item": {
+              "cells": [
+                {
+                  "from": "disease",
+                  "mono": true,
+                  "link": {
+                    "kind": "external",
+                    "template": "https://platform.opentargets.org/disease/{disease}"
+                  }
+                },
+                {
+                  "from": "gene_id",
+                  "mono": true,
+                  "link": {
+                    "kind": "external",
+                    "template": "https://platform.opentargets.org/target/{gene_id}"
+                  }
+                },
+                {
+                  "label": "L2G",
+                  "from": "l2g_score",
+                  "format": "num"
+                }
+              ]
+            }
+          },
+          {
+            "kind": "list",
+            "heading": "QTL gene associations",
+            "from": "opentargets.qtl_associations",
+            "item": {
+              "cells": [
+                {
+                  "from": "gene_id",
+                  "mono": true,
+                  "link": {
+                    "kind": "external",
+                    "template": "https://platform.opentargets.org/target/{gene_id}"
+                  }
+                },
+                {
+                  "from": "biosample"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "option_id": "clinvar",
+        "blocks": [
+          {
+            "kind": "group",
+            "requires_selected": {
+              "id": "clinvar_short",
+              "default": false
+            },
+            "blocks": [
+              {
+                "kind": "rows",
+                "when": {
+                  "empty": "clinvar.conflicting_breakdown"
+                },
+                "rows": [
+                  {
+                    "label": "Clinical significance",
+                    "from": "clinvar.significance",
+                    "format": "humanize_join"
+                  }
+                ]
+              },
+              {
+                "kind": "group",
+                "heading": "Clinical significance",
+                "when": {
+                  "present": "clinvar.conflicting_breakdown"
+                },
+                "blocks": [
+                  {
+                    "kind": "rows",
+                    "rows": [
+                      {
+                        "label": "Classification",
+                        "from": "clinvar.significance",
+                        "format": "humanize_join"
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "table",
+                    "from": "clinvar.conflicting_breakdown",
+                    "columns": [
+                      {
+                        "label": "Classifier",
+                        "from": "significance",
+                        "format": "humanize"
+                      },
+                      {
+                        "label": "Studies reporting",
+                        "from": "count"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "group",
+            "heading": "Structural variant",
+            "requires_selected": {
+              "id": "clinvar_sv",
+              "default": false
+            },
+            "blocks": [
+              {
+                "kind": "rows",
+                "requires": "clinvar_sv",
+                "rows": [
+                  {
+                    "label": "Clinical significance",
+                    "from": "clinvar_sv.significance",
+                    "format": "humanize_join"
+                  },
+                  {
+                    "label": "Origin",
+                    "from": "clinvar_sv.origin",
+                    "format": "humanize_join"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "protvar",
+        "heading": "ProtVar",
+        "blocks": [
+          {
+            "kind": "rows",
+            "view": "default",
+            "rows": [
+              {
+                "label": "Stability",
+                "from": "protvar.structure_stability_score",
+                "format": "num",
+                "link": {
+                  "kind": "external",
+                  "builder": "protvar"
+                }
+              }
+            ]
+          },
+          {
+            "kind": "list",
+            "view": "default",
+            "from": "protvar.pockets",
+            "item": {
+              "label": {
+                "template": "Pocket {pocket_id}"
+              },
+              "cells": [
+                {
+                  "from": "score",
+                  "format": "num"
+                }
+              ],
+              "link": {
+                "kind": "external",
+                "builder": "protvar"
+              }
+            }
+          },
+          {
+            "kind": "list",
+            "view": "default",
+            "from": "protvar.interaction_interfaces",
+            "item": {
+              "label": {
+                "template": "Interface {partner}"
+              },
+              "cells": [
+                {
+                  "from": "score",
+                  "format": "num"
+                }
+              ],
+              "link": {
+                "kind": "external",
+                "builder": "protvar"
+              }
+            }
+          },
+          {
+            "kind": "rows",
+            "view": "show_all",
+            "rows": [
+              {
+                "label": "Protein Structure Stability",
+                "from": "protvar.structure_stability_score",
+                "format": "num",
+                "sub_option": {
+                  "id": "protvar_stability",
+                  "default": true
+                },
+                "link": {
+                  "kind": "external",
+                  "builder": "protvar"
+                }
+              },
+              {
+                "label": "Protein Pockets",
+                "from": "protvar.pockets",
+                "format": "count",
+                "sub_option": {
+                  "id": "protvar_pocket",
+                  "default": true
+                },
+                "link": {
+                  "kind": "external",
+                  "builder": "protvar"
+                }
+              },
+              {
+                "label": "Protein-Protein Interaction Interface",
+                "from": "protvar.interaction_interfaces",
+                "format": "count",
+                "sub_option": {
+                  "id": "protvar_int",
+                  "default": true
+                },
+                "link": {
+                  "kind": "external",
+                  "builder": "protvar"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "protein",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "Protein ID",
+                "from": "protein.ensembl_protein_id",
+                "mono": true,
+                "link": {
+                  "kind": "app_popup",
+                  "builder": "protein_popup"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "intact",
+        "blocks": [
+          {
+            "kind": "rows",
+            "view": "default",
+            "when": {
+              "present": "intact.interaction_ac"
+            },
+            "rows": [
+              {
+                "label": "IntAct",
+                "from": "intact.interaction_ac",
+                "format": "count"
+              }
+            ]
+          },
+          {
+            "kind": "rows",
+            "view": "default",
+            "when": {
+              "empty": "intact.interaction_ac"
+            },
+            "rows": [
+              {
+                "label": "IntAct",
+                "from": "intact.feature_type"
+              }
+            ]
+          },
+          {
+            "kind": "rows",
+            "view": "show_all",
+            "heading": "IntAct",
+            "rows": [
+              {
+                "label": "Interactions",
+                "from": "intact.interaction_ac",
+                "format": "count",
+                "placeholder": "—"
+              },
+              {
+                "label": "Feature AC",
+                "from": "intact.feature_ac",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_feature_ac",
+                  "default": false
+                }
+              },
+              {
+                "label": "Feature short label",
+                "from": "intact.feature_short_label",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_feature_short_label",
+                  "default": false
+                }
+              },
+              {
+                "label": "Feature annotation",
+                "from": "intact.feature_annotation",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_feature_annotation",
+                  "default": false
+                }
+              },
+              {
+                "label": "Affected protein AC",
+                "from": "intact.ap_ac",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_ap_ac",
+                  "default": false
+                }
+              },
+              {
+                "label": "Interaction participants",
+                "from": "intact.interaction_participants",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_interaction_participants",
+                  "default": false
+                }
+              },
+              {
+                "label": "PubMed ID",
+                "from": "intact.pmid",
+                "format": "count",
+                "sub_option": {
+                  "id": "intact_pmid",
+                  "default": false
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "option_id": "gencode_promoters",
+        "blocks": [
+          {
+            "kind": "rows",
+            "heading": "GENCODE promoter",
+            "rows": [
+              {
+                "label": "Region",
+                "from": "gencode_promoter.region",
+                "mono": true
+              },
+              {
+                "label": "Feature ID",
+                "from": "gencode_promoter.feature_id",
+                "mono": true
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -66,18 +66,26 @@ def _content_digest(payload: dict) -> str:
 
 
 def load_merged_spec_file(path: Path) -> MergedSpec:
-    """Parse and validate a merged spec document, raising if it does not conform
-    (including the config↔parsing consistency check in MergedSpec).
-
-    `spec_version` is computed here, not read from the file: the version is a
-    property of the content. The digest is taken from the *validated model's*
-    canonical dump, and the nested `parsing.spec_version` is excluded before
-    hashing (the top-level one is stripped by `_content_digest`) so a round-trip
-    through the sidecar — where both are stamped — hashes to the same value. The
-    computed digest is stamped on both the document and its `.parsing` view, so
-    the pinned parse half reports the unified id.
+    """Parse and validate a *self-contained* merged spec document — a pinned job
+    sidecar, or a fully-authored spec — raising if it does not conform (including
+    the config↔parsing consistency check in MergedSpec). A bundled genome spec is
+    assembled from its library first; see `load_merged_spec` / `_assemble_payload`.
+    The content digest is computed at load, not read from the file (see
+    `_finalize`).
     """
-    payload = json.loads(path.read_text())
+    return _finalize(json.loads(path.read_text()))
+
+
+def _finalize(payload: dict) -> MergedSpec:
+    """Validate a full merged-spec payload and stamp its computed content digest
+    onto both spec_version fields.
+
+    The version is a property of the content (see load_merged_spec_file): the
+    digest is taken from the validated model's canonical dump with the nested
+    `parsing.spec_version` excluded (the top-level one is stripped by
+    `_content_digest`), so a round-trip through the sidecar hashes to the same
+    value, and the computed digest is mirrored onto the parsing view.
+    """
     payload.setdefault("spec_version", "")  # satisfy the field before it's computed
     spec = MergedSpec.model_validate(payload)
     canonical_dump = spec.model_dump(
@@ -89,9 +97,33 @@ def load_merged_spec_file(path: Path) -> MergedSpec:
     return spec
 
 
+def _assemble_payload(name: str) -> dict:
+    """The full merged-spec payload for a bundled genome, assembled from the
+    shared library it references.
+
+    A genome document is thin: its own identity + `config` (availability and file
+    paths), plus a `library` naming the shared `parsing` / `display` document
+    that holds the ~species-agnostic plugin and option definitions. Assembling
+    them here — rather than authoring one monolith per genome — keeps the shared
+    half in one place, while everything downstream still receives the same
+    self-contained MergedSpec (the config↔parsing↔display consistency check, the
+    content digest, the job pin and results parsing all run on the assembled
+    document). A document with no `library` (a fully-authored spec, or a pinned
+    sidecar loaded via `load_merged_spec_file`) is returned unchanged.
+    """
+    doc = json.loads((SPEC_DIR / f"{name}.json").read_text())
+    library_name = doc.pop("library", None)
+    if library_name is None:
+        return doc
+    library = json.loads((SPEC_DIR / f"{library_name}.json").read_text())
+    return {**doc, "parsing": library["parsing"], "display": library["display"]}
+
+
 def load_merged_spec(name: str) -> MergedSpec:
-    """The named merged spec from the bundled spec directory, e.g. "human_grch38"."""
-    return load_merged_spec_file(SPEC_DIR / f"{name}.json")
+    """The named merged spec from the bundled spec directory, e.g. "human_grch38"
+    — assembled from the shared library it references (see _assemble_payload),
+    then validated and digested like any full document."""
+    return _finalize(_assemble_payload(name))
 
 
 # Assembly-name prefixes, mirroring ConfigIniParams' own is_human_grch38 /
