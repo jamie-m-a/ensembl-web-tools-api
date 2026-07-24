@@ -379,19 +379,29 @@ def test_nearest_gene_both_directions_appended_only_when_selected(monkeypatch, t
     )
 
 
-def test_nearest_exon_jb_range_intronic_and_gff3(monkeypatch, tmp_path):
+def test_nearest_exon_jb_base_line(monkeypatch, tmp_path):
+    # Default: gff3 + vep_filter=1 + max_range (default 10000), no intronic clause.
+    line = find_line(
+        build_lines(monkeypatch, tmp_path, nearest_exon_jb=True), "plugin NearestExonJB"
+    )
+    assert line == f"plugin NearestExonJB,gff3={GFF},vep_filter=1,max_range=10000"
+
+
+def test_nearest_exon_jb_range_and_intronic(monkeypatch, tmp_path):
+    # A custom max_range plus the intronic flag (appended only when selected).
     line = find_line(
         build_lines(
             monkeypatch,
             tmp_path,
             nearest_exon_jb=True,
+            nearest_exon_jb_max_range=25000,
             nearest_exon_jb_intronic=True,
         ),
         "plugin NearestExonJB",
     )
-    assert "max_range=10000" in line  # default
-    assert "intronic=1" in line
-    assert line.endswith(f"gff3={GFF}")
+    assert line == (
+        f"plugin NearestExonJB,gff3={GFF},vep_filter=1,max_range=25000,intronic=1"
+    )
 
 
 # --- 10. disabled options omitted -------------------------------------------

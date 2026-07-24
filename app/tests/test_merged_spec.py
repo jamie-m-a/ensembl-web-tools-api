@@ -49,7 +49,7 @@ def test_bundled_merged_spec_is_consistent():
     # load_merged_spec runs the consistency check; a bad spec would raise here.
     spec = load_merged_spec("human_grch38")
     assert len(spec.config_entries()) == 35
-    assert len(spec.parse_plugins()) == 32
+    assert len(spec.parse_plugins()) == 33
 
 
 # --- reference integrity ----------------------------------------------------
@@ -301,6 +301,41 @@ def test_display_list_unknown_list_field_raises():
     doc = _go_like_doc([{"from": "id"}])
     doc["display"]["options"][0]["blocks"][0]["from"] = "go.not_a_target"
     with pytest.raises(ValidationError, match="not_a_target"):
+        MergedSpec.model_validate(doc)
+
+
+def _set_item(doc, item):
+    doc["display"]["options"][0]["blocks"][0]["item"] = item
+    return doc
+
+
+def test_display_list_item_rows_valid_refs_load():
+    doc = _set_item(
+        _go_like_doc([{"from": "id"}]),
+        {"rows": [{"label": "Id", "from": "id"}, {"label": "Name", "from": "name"}]},
+    )
+    MergedSpec.model_validate(doc)  # no raise
+
+
+def test_display_list_item_rows_unknown_field_raises():
+    doc = _set_item(
+        _go_like_doc([{"from": "id"}]), {"rows": [{"label": "X", "from": "bogus"}]}
+    )
+    with pytest.raises(ValidationError, match="item field 'bogus'"):
+        MergedSpec.model_validate(doc)
+
+
+def test_display_list_item_needs_exactly_one_of_cells_or_rows():
+    # both cells and rows
+    doc = _set_item(
+        _go_like_doc([{"from": "id"}]),
+        {"cells": [{"from": "id"}], "rows": [{"label": "Id", "from": "id"}]},
+    )
+    with pytest.raises(ValidationError, match="exactly one of `cells` or `rows`"):
+        MergedSpec.model_validate(doc)
+    # neither
+    doc = _set_item(_go_like_doc([{"from": "id"}]), {})
+    with pytest.raises(ValidationError, match="exactly one of `cells` or `rows`"):
         MergedSpec.model_validate(doc)
 
 
