@@ -457,25 +457,7 @@
         "parsed_as": [],
         "config": {
           "emit": "plugin",
-          "name": "TSSDistance",
-          "params": {
-            "upstream": {
-              "from_option": "tss_distance_direction",
-              "equals": "upstream",
-              "as": "int"
-            },
-            "downstream": {
-              "from_option": "tss_distance_direction",
-              "equals": "downstream",
-              "as": "int"
-            },
-            "both": {
-              "from_option": "tss_distance_direction",
-              "equals": "both",
-              "as": "int"
-            },
-            "gff3": "{gff}"
-          }
+          "name": "TSSDistance"
         }
       },
       {

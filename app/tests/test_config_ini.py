@@ -346,26 +346,13 @@ def test_intact_partial_sub_options_lists_selected_in_order(monkeypatch, tmp_pat
 # --- 9. gff3-based Genes & transcripts plugins -------------------------------
 
 
-@pytest.mark.parametrize(
-    "direction,expected",
-    [
-        ("upstream", "upstream=1,downstream=0,both=0"),
-        ("downstream", "upstream=0,downstream=1,both=0"),
-        ("both", "upstream=0,downstream=0,both=1"),
-    ],
-)
-def test_tss_distance_direction(monkeypatch, tmp_path, direction, expected):
+def test_tss_distance_is_a_plain_on_off_plugin(monkeypatch, tmp_path):
+    # Simplified to a bare on/off: `plugin TSSDistance`, no params (always upstream).
+    assert find_line(build_lines(monkeypatch, tmp_path), "plugin TSSDistance") is None
     line = find_line(
-        build_lines(
-            monkeypatch,
-            tmp_path,
-            tss_distance=True,
-            tss_distance_direction=direction,
-        ),
-        "plugin TSSDistance",
+        build_lines(monkeypatch, tmp_path, tss_distance=True), "plugin TSSDistance"
     )
-    assert expected in line
-    assert line.endswith(f"gff3={GFF}")
+    assert line == "plugin TSSDistance"
 
 
 def test_nearest_gene_both_directions_and_gff3(monkeypatch, tmp_path):

@@ -167,8 +167,7 @@ class ConfigIniParams(BaseModel):
     # Protein ID (VEP --protein, adds the Ensembl protein id). Flag line.
     protein: bool = False
     # Distance to TSS (TSSDistance plugin); direction radio defaults to upstream.
-    tss_distance: bool = False
-    tss_distance_direction: str = "upstream"  # upstream | downstream | both
+    tss_distance: bool = False  # TSSDistance plugin (upstream distance to TSS)
     # Nearest gene (NearestGene plugin).
     nearest_gene: bool = False
     nearest_gene_both_directions: bool = False
