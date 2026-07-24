@@ -526,7 +526,7 @@ def test_af_source_descriptor():
     assert rf.af_source_descriptor("AoU_gvs_afr_af")["population"] == "afr"
     assert rf.af_source_descriptor("AoU_gvs_afr_af")["label"] == "African"
     assert rf.af_source_descriptor("gnomAD_exomes_AF_nfe_XX")["label"] == (
-        "Non-Finnish European · Female"
+        "Non-Finnish European · XX"
     )
     # gnomAD SV: the AF columns are AF sources; the SV id / SVTYPE columns are not.
     assert rf.af_source_descriptor("gnomAD_SV_AF") == {

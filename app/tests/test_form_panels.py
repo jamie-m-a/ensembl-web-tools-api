@@ -421,13 +421,13 @@ def test_af_label_gnomad_bare_ancestry():
 
 
 def test_af_label_gnomad_sex_suffix():
-    assert label("gnomad_exomes", "nfe_XX") == "Non-Finnish European · Female"
-    assert label("gnomad_genomes", "afr_XY") == "African & African-American · Male"
+    assert label("gnomad_exomes", "nfe_XX") == "Non-Finnish European · XX"
+    assert label("gnomad_genomes", "afr_XY") == "African & African-American · XY"
 
 
 def test_af_label_gnomad_bare_sex_is_all_that_sex():
-    assert label("gnomad_exomes", "XX") == "All · Female"
-    assert label("gnomad_exomes", "XY") == "All · Male"
+    assert label("gnomad_exomes", "XX") == "All · XX"
+    assert label("gnomad_exomes", "XY") == "All · XY"
 
 
 def test_af_label_gnomad_non_ukb_subset():
@@ -436,7 +436,7 @@ def test_af_label_gnomad_non_ukb_subset():
         "African & African-American · excl. UK Biobank"
     )
     assert label("gnomad_exomes", "non_ukb_nfe_XX") == (
-        "Non-Finnish European · Female · excl. UK Biobank"
+        "Non-Finnish European · XX · excl. UK Biobank"
     )
 
 
