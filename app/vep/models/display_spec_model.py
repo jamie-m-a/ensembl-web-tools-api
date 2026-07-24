@@ -397,6 +397,56 @@ class DisplayListBlock(BaseModel):
         return plugin, field
 
 
+class TableColumn(BaseModel):
+    """One column of a `table` block: a header `label` and a value read from the
+    list element's `from` field. Like a `CellSpec`, but the header is mandatory
+    and there is no link (a table is a plain grid of values)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    label: str
+    # `from` is a Python keyword, hence the alias. Omit for a scalar list whose
+    # elements are the value themselves.
+    source: str | None = Field(default=None, alias="from")
+    format: RowFormat | None = None
+    mono: bool = False
+
+    def item_field_refs(self) -> Iterator[str]:
+        if self.source:
+            yield self.source
+
+
+class DisplayTableBlock(BaseModel):
+    """A small table over a list-valued field: a header row of column labels,
+    then one body row per list element. For a breakdown that reads better as a
+    grid than as repeated label/value rows — ClinVar's conflicting
+    classifications (Classifier | Studies reporting).
+
+    `from` is the `<plugin>.<listField>` the rows come from (as `DisplayListBlock`);
+    each column reads one of that target's `item_fields`.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    kind: Literal["table"]
+    heading: str | None = None
+    requires: str | None = None
+    requires_selected: SelectedGate | None = None
+    when: WhenSpec | None = None
+    view: BlockView | None = None
+    source: str = Field(alias="from")
+    columns: list[TableColumn] = Field(min_length=1)
+
+    def list_ref(self) -> tuple[str, str]:
+        """The `(plugin, listField)` this block iterates."""
+        plugin, _, field = self.source.partition(".")
+        return plugin, field
+
+    def column_field_refs(self) -> Iterator[str]:
+        for column in self.columns:
+            yield from column.item_field_refs()
+
+
 class DisplayGroupBlock(BaseModel):
     """A run of sub-blocks under one optional heading, gated as a whole by `when`.
 
@@ -417,10 +467,15 @@ class DisplayGroupBlock(BaseModel):
     blocks: list["DisplayBlock"]
 
 
-# A block is a fixed set of rows, a repeated list, or a group of sub-blocks,
-# discriminated on `kind`.
+# A block is a fixed set of rows, a repeated list, a table, or a group of
+# sub-blocks, discriminated on `kind`.
 DisplayBlock = Annotated[
-    Union[DisplayRowsBlock, DisplayListBlock, DisplayGroupBlock],
+    Union[
+        DisplayRowsBlock,
+        DisplayListBlock,
+        DisplayTableBlock,
+        DisplayGroupBlock,
+    ],
     Field(discriminator="kind"),
 ]
 

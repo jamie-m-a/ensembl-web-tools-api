@@ -35,6 +35,7 @@ from vep.models.display_spec_model import (
     DisplayPayload,
     DisplayRowsBlock,
     DisplaySpec,
+    DisplayTableBlock,
 )
 from vep.models.parsing_spec_model import ParsingSpec, PluginSpec
 from vep.utils.config_interpreter import build_fields
@@ -377,6 +378,24 @@ class MergedSpec(BaseModel):
                                 f"{plugin}.{list_field} references item field "
                                 f"{item_field!r} not in its target's item_fields"
                             )
+                elif isinstance(block, DisplayTableBlock):
+                    # A table iterates a list target like a list block; each
+                    # column reads one of that target's item_fields.
+                    plugin, list_field = block.list_ref()
+                    err = field_error(oid, plugin, list_field)
+                    if err:
+                        errors.append(err)
+                        continue
+                    item_fields = set(
+                        targets_by_plugin[plugin][list_field].item_fields or []
+                    )
+                    for item_field in block.column_field_refs():
+                        if item_field not in item_fields:
+                            errors.append(
+                                f"display option {oid!r} table "
+                                f"{plugin}.{list_field} references item field "
+                                f"{item_field!r} not in its target's item_fields"
+                            )
                 elif isinstance(block, DisplayRowsBlock):
                     for row in block.rows:
                         for ref in row.field_refs():
@@ -462,6 +481,20 @@ class MergedSpec(BaseModel):
                                 field_row.format,
                                 shape,
                             )
+                elif isinstance(block, DisplayTableBlock):
+                    plugin, list_field = block.list_ref()
+                    list_target = targets_by_plugin.get(plugin, {}).get(list_field)
+                    if list_target is None:
+                        continue  # unresolved list ref -> reported by _check_display_refs
+                    for column in block.columns:
+                        if not column.format:
+                            continue
+                        shape = _item_field_shape(list_target, column.source)
+                        if shape is not None:
+                            ref = f"{plugin}.{list_field}" + (
+                                f".{column.source}" if column.source else ""
+                            )
+                            check(oid, ref, column.format, shape)
         return errors
 
     def _check_custom_columns(
