@@ -265,6 +265,40 @@ def test_item_label_needs_exactly_one_of_from_or_template():
         MergedSpec.model_validate(doc)
 
 
+def _clinvar_label_doc(label):
+    return _doc(
+        {
+            "options": [
+                {
+                    "option_id": "revel",
+                    "blocks": [
+                        {
+                            "kind": "list",
+                            "from": "revel.score",
+                            "item": {"label": label, "cells": [{"from": "count"}]},
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+
+def test_item_label_wrap_needs_a_from():
+    """`wrap` surrounds a formatted `from` value — there is nothing to wrap
+    around a free-text `template`."""
+    doc = _clinvar_label_doc({"template": "y", "wrap": "Studies reporting \"{}\""})
+    with pytest.raises(ValidationError, match="`wrap` needs `from`"):
+        MergedSpec.model_validate(doc)
+
+
+def test_item_label_wrap_needs_a_placeholder():
+    """`wrap` without a `{}` slot would drop the value entirely — reject it."""
+    doc = _clinvar_label_doc({"from": "significance", "wrap": "Studies reporting"})
+    with pytest.raises(ValidationError, match="`wrap` needs a `\\{\\}` placeholder"):
+        MergedSpec.model_validate(doc)
+
+
 def test_row_needs_exactly_one_of_from_or_compose():
     with pytest.raises(ValidationError, match="exactly one of `from` or `compose`"):
         MergedSpec.model_validate(_doc(_display({"label": "REVEL"})))

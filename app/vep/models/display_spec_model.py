@@ -251,6 +251,11 @@ class DisplayItemLabel(BaseModel):
     `from` reads one item field (ClinVar's per-class significance); `template`
     interpolates item fields into text ("Pocket {pocket_id}"). `format` applies
     to a `from` value (e.g. humanize).
+
+    `wrap` surrounds the *formatted* `from` value with fixed text via a single
+    `{}` slot — ClinVar's conflicting counts read `Studies reporting
+    "Pathogenic"` from the humanised class. It only combines with `from` (there
+    is a value to wrap), never `template` (already free text).
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -258,6 +263,7 @@ class DisplayItemLabel(BaseModel):
     source: str | None = Field(default=None, alias="from")
     template: str | None = None
     format: RowFormat | None = None
+    wrap: str | None = None
 
     @model_validator(mode="after")
     def _source_xor_template(self) -> "DisplayItemLabel":
@@ -265,6 +271,11 @@ class DisplayItemLabel(BaseModel):
             raise ValueError(
                 "item label needs exactly one of `from` or `template`"
             )
+        if self.wrap is not None:
+            if not self.source:
+                raise ValueError("item label `wrap` needs `from`")
+            if "{}" not in self.wrap:
+                raise ValueError("item label `wrap` needs a `{}` placeholder")
         return self
 
     def item_field_refs(self) -> Iterator[str]:
