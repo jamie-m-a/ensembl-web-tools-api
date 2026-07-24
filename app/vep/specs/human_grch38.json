@@ -463,16 +463,24 @@
       {
         "id": "nearest_gene",
         "order": 51,
-        "parsed_as": [],
+        "parsed_as": [
+          "nearest_gene"
+        ],
         "config": {
           "emit": "plugin",
           "name": "NearestGene",
           "params": {
-            "both_directions": {
-              "from_option": "nearest_gene_both_directions",
-              "as": "int"
-            },
-            "gff3": "{gff}"
+            "gff3": "{gff}",
+            "regulatory": "0",
+            "vep_filter": "1"
+          },
+          "flags": {
+            "options": [
+              {
+                "option": "nearest_gene_both_directions",
+                "keyword": "both_directions"
+              }
+            ]
           }
         }
       },
@@ -1461,6 +1469,45 @@
         ],
         "require_any_output": [
           "go_terms"
+        ]
+      },
+      {
+        "plugin": "nearest_gene",
+        "scope": "allele",
+        "output": "nearest_genes",
+        "csq_fields": [
+          "NearestGene"
+        ],
+        "targets": [
+          {
+            "field": "nearest_genes",
+            "from": "NearestGene",
+            "transform": "regex",
+            "each": true,
+            "pattern": "^(?P<gene_id>[^:]+):(?P<distance>\\d+)(?::(?P<direction>.+))?$",
+            "as": [
+              {
+                "field": "gene_id",
+                "type": "string"
+              },
+              {
+                "field": "distance",
+                "type": "int"
+              },
+              {
+                "field": "direction",
+                "type": "string"
+              }
+            ],
+            "item_fields": [
+              "gene_id",
+              "distance",
+              "direction"
+            ]
+          }
+        ],
+        "require_any_output": [
+          "nearest_genes"
         ]
       },
       {
@@ -2483,6 +2530,29 @@
                 },
                 {
                   "from": "name"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "option_id": "nearest_gene",
+        "blocks": [
+          {
+            "kind": "list",
+            "heading": "Nearest gene",
+            "from": "nearest_gene.nearest_genes",
+            "item": {
+              "cells": [
+                {
+                  "from": "gene_id"
+                },
+                {
+                  "from": "distance"
+                },
+                {
+                  "from": "direction"
                 }
               ]
             }

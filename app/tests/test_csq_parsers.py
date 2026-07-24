@@ -66,6 +66,8 @@ ALL_COLS = [
     "ClinVar_CLNSIG", "ClinVar_CLNSIGCONF",
     # ClinVar structural variants
     "ClinVar_SV", "ClinVar_SV_CLNSIG", "ClinVar_SV_ORIGIN",
+    # NearestGene
+    "NearestGene",
 ]
 
 HEADER = "Consequence annotations from Ensembl VEP. Format: " + "|".join(ALL_COLS)
