@@ -1,0 +1,454 @@
+{
+  "genome": {
+    "species_taxonomy_id": "9606",
+    "assembly": "GRCh37"
+  },
+  "config": {
+    "entries": [
+      {
+        "id": "updownstream_distance",
+        "order": 5,
+        "parsed_as": [],
+        "config": {
+          "emit": "setting",
+          "keyword": "distance",
+          "value": {
+            "from_option": "updownstream_distance_bp",
+            "as": "value"
+          }
+        }
+      },
+      {
+        "id": "hgvs",
+        "order": 10,
+        "parsed_as": [
+          "hgvs"
+        ],
+        "config": {
+          "emit": "flag",
+          "keyword": "hgvs"
+        }
+      },
+      {
+        "id": "hgvsg",
+        "order": 11,
+        "parsed_as": [
+          "hgvs",
+          "hgvsg"
+        ],
+        "config": {
+          "emit": "flag",
+          "keyword": "hgvsg"
+        }
+      },
+      {
+        "id": "spdi",
+        "order": 12,
+        "parsed_as": [
+          "spdi"
+        ],
+        "config": {
+          "emit": "flag",
+          "keyword": "spdi"
+        }
+      },
+      {
+        "id": "protein",
+        "order": 13,
+        "parsed_as": [
+          "protein"
+        ],
+        "config": {
+          "emit": "flag",
+          "keyword": "protein"
+        }
+      },
+      {
+        "id": "nmd",
+        "order": 48,
+        "parsed_as": [
+          "nmd"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "NMD"
+        }
+      },
+      {
+        "id": "intact",
+        "order": 27,
+        "parsed_as": [
+          "intact"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "IntAct",
+          "params": {
+            "mutation_file": "{path}/mutations.tsv",
+            "mapping_file": "{path}/mutation_gc_map.txt.gz"
+          },
+          "flags": {
+            "all_shortcut": "all",
+            "options": [
+              {
+                "option": "intact_feature_ac",
+                "keyword": "feature_ac"
+              },
+              {
+                "option": "intact_feature_short_label",
+                "keyword": "feature_short_label"
+              },
+              {
+                "option": "intact_feature_annotation",
+                "keyword": "feature_annotation"
+              },
+              {
+                "option": "intact_ap_ac",
+                "keyword": "ap_ac"
+              },
+              {
+                "option": "intact_interaction_participants",
+                "keyword": "interaction_participants"
+              },
+              {
+                "option": "intact_pmid",
+                "keyword": "pmid"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "dosage_sensitivity",
+        "order": 29,
+        "parsed_as": [
+          "dosage_sensitivity"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "DosageSensitivity",
+          "params": {
+            "file": "{path}/Collins_rCNV_2022.dosage_sensitivity_scores.tsv.gz",
+            "cover": {
+              "from_option": "dosage_sensitivity_cover",
+              "as": "int"
+            }
+          }
+        }
+      },
+      {
+        "id": "phenotypes",
+        "order": 30,
+        "parsed_as": [
+          "phenotype_data"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "Phenotypes",
+          "params": {
+            "file": "{path}/Phenotypes.pm_homo_sapiens_116_GRCh37.gvf.gz"
+          }
+        }
+      },
+      {
+        "id": "go",
+        "order": 31,
+        "parsed_as": [
+          "go"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "GO",
+          "params": {
+            "file": "{path}/GO.pm_homo_sapiens_116_GRCh37.gff.gz"
+          }
+        }
+      },
+      {
+        "id": "alphamissense",
+        "order": 40,
+        "parsed_as": [
+          "alphamissense"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "AlphaMissense",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/AlphaMissense_hg38.tsv.gz",
+                "GRCh37": "{path}/AlphaMissense_hg19.tsv.gz"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "cadd",
+        "order": 41,
+        "parsed_as": [
+          "cadd"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "CADD",
+          "params": {
+            "snv": {
+              "by_assembly": {
+                "GRCh38": "{path}/CADD_GRCh38_1.7_whole_genome_SNVs.tsv.gz",
+                "GRCh37": "{path}/CADD_GRCh37_1.7_whole_genome_SNVs.tsv.gz"
+              }
+            },
+            "indels": {
+              "by_assembly": {
+                "GRCh38": "{path}/CADD_GRCh38_1.7_InDels.tsv.gz",
+                "GRCh37": "{path}/CADD_GRCh37_1.7_InDels.tsv.gz"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "revel",
+        "order": 42,
+        "parsed_as": [
+          "revel"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "REVEL",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/new_tabbed_revel_grch38.tsv.gz",
+                "GRCh37": "{path}/new_tabbed_revel_grch37.tsv.gz"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "clinpred",
+        "order": 45,
+        "parsed_as": [
+          "clinpred"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "ClinPred",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/ClinPred_hg38_sorted_tabbed.tsv.gz",
+                "GRCh37": "{path}/ClinPred_hg37_sorted_tabbed.tsv.gz"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "loeuf",
+        "order": 43,
+        "parsed_as": [
+          "loeuf"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "LOEUF",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/loeuf_dataset_grch38.tsv.gz",
+                "GRCh37": "{path}/loeuf_dataset_grch37.tsv.gz"
+              }
+            },
+            "match_by": "gene"
+          }
+        }
+      },
+      {
+        "id": "geno2mp",
+        "order": 44,
+        "parsed_as": [],
+        "config": {
+          "emit": "plugin",
+          "name": "Geno2MP",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/Geno2MP.variants_GRCh38.vcf.gz",
+                "GRCh37": "{path}/Geno2MP.variants_GRCh37.vcf.gz"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "spliceai",
+        "order": 46,
+        "parsed_as": [
+          "spliceai"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "SpliceAI",
+          "params": {
+            "snv": {
+              "by_assembly": {
+                "GRCh38": "{path}/spliceai_scores.masked.snv.hg38.vcf.gz",
+                "GRCh37": "{path}/spliceai_scores.masked.snv.hg19.vcf.gz"
+              }
+            },
+            "indel": {
+              "by_assembly": {
+                "GRCh38": "{path}/spliceai_scores.masked.indel.hg38.vcf.gz",
+                "GRCh37": "{path}/spliceai_scores.masked.indel.hg19.vcf.gz"
+              }
+            },
+            "snv_ensembl": {
+              "by_assembly": {
+                "GRCh38": "{path}/spliceai_scores.raw.snv.ensembl_mane.grch38.110.vcf.gz"
+              },
+              "omit_if_absent": true
+            }
+          }
+        }
+      },
+      {
+        "id": "utrannotator",
+        "order": 47,
+        "parsed_as": [
+          "utr_annotation"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "UTRAnnotator",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/uORF_5UTR_GRCh38_PUBLIC.txt",
+                "GRCh37": "{path}/uORF_5UTR_GRCh37_PUBLIC.txt"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "tss_distance",
+        "order": 50,
+        "parsed_as": [],
+        "config": {
+          "emit": "plugin",
+          "name": "TSSDistance"
+        }
+      },
+      {
+        "id": "nearest_gene",
+        "order": 51,
+        "parsed_as": [
+          "nearest_gene"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "NearestGene",
+          "params": {
+            "gff3": "{gff}",
+            "regulatory": "0",
+            "vep_filter": "1"
+          },
+          "flags": {
+            "options": [
+              {
+                "option": "nearest_gene_both_directions",
+                "keyword": "both_directions"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "nearest_exon_jb",
+        "order": 52,
+        "parsed_as": [
+          "nearest_exon_jb"
+        ],
+        "config": {
+          "emit": "plugin",
+          "name": "NearestExonJB",
+          "params": {
+            "gff3": "{gff}",
+            "vep_filter": "1",
+            "max_range": {
+              "from_option": "nearest_exon_jb_max_range",
+              "as": "value"
+            }
+          },
+          "flags": {
+            "options": [
+              {
+                "option": "nearest_exon_jb_intronic",
+                "keyword": "intronic"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "clinvar_short",
+        "order": 60,
+        "parsed_as": [
+          "clinvar"
+        ],
+        "requires": [
+          "clinvar"
+        ],
+        "config": {
+          "emit": "custom",
+          "params": {
+            "file": {
+              "by_assembly": {
+                "GRCh38": "{path}/clinvar_GRCh38.vcf.gz",
+                "GRCh37": "{path}/clinvar_GRCh37.vcf.gz"
+              }
+            },
+            "short_name": "ClinVar",
+            "format": "vcf",
+            "type": "exact"
+          },
+          "fields": {
+            "literal": [
+              "CLNSIG",
+              "CLNSIGCONF"
+            ]
+          }
+        }
+      },
+      {
+        "id": "clinvar_sv",
+        "order": 61,
+        "parsed_as": [
+          "clinvar_sv"
+        ],
+        "requires": [
+          "clinvar"
+        ],
+        "config": {
+          "emit": "custom",
+          "params": {
+            "file": "{path}/nstd102.GRCh37.variant_call.combined.sorted.vcf.gz",
+            "short_name": "ClinVar_SV",
+            "format": "vcf",
+            "type": "exact"
+          },
+          "fields": {
+            "literal": [
+              "CLNSIG",
+              "ORIGIN"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "library": "annotation_library"
+}

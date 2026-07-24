@@ -23,6 +23,7 @@ from vep.models.display_panels_model import (
     dump_display_panels,
     to_display_panels,
 )
+from vep.models.display_spec_model import DisplayOptionSpec
 from vep.models.merged_spec_model import MergedSpec
 
 SPEC_DIR = Path(__file__).resolve().parent.parent / "specs"
@@ -97,15 +98,48 @@ def _finalize(payload: dict) -> MergedSpec:
     return spec
 
 
+def _select_library(library: dict, config_entries: list[dict]) -> dict:
+    """The subset of the shared library a genome offers, chosen from its config.
+
+    A genome's `config` entries name the parse plugins they emit columns for (via
+    `parsed_as`); those are the plugins it runs. A display option belongs only
+    when *every* plugin it reads is among them — so an assembled spec never
+    advertises an option the genome has no data for, and the display↔parsing
+    consistency check still resolves (no dangling plugin ref). GRCh38 enables all
+    of them, so it selects the whole library unchanged (the Phase 0 baseline
+    holds); a genome with fewer entries gets a smaller spec.
+    """
+    enabled_plugins = {
+        plugin
+        for entry in config_entries
+        for plugin in entry.get("parsed_as", [])
+    }
+    plugins = [
+        plugin
+        for plugin in library["parsing"]["plugins"]
+        if plugin["plugin"] in enabled_plugins
+    ]
+    options = [
+        option
+        for option in library["display"]["options"]
+        if DisplayOptionSpec.model_validate(option).plugin_refs() <= enabled_plugins
+    ]
+    return {
+        "parsing": {**library["parsing"], "plugins": plugins},
+        "display": {**library["display"], "options": options},
+    }
+
+
 def _assemble_payload(name: str) -> dict:
     """The full merged-spec payload for a bundled genome, assembled from the
     shared library it references.
 
     A genome document is thin: its own identity + `config` (availability and file
     paths), plus a `library` naming the shared `parsing` / `display` document
-    that holds the ~species-agnostic plugin and option definitions. Assembling
-    them here — rather than authoring one monolith per genome — keeps the shared
-    half in one place, while everything downstream still receives the same
+    that holds the ~species-agnostic plugin and option definitions. The genome's
+    config selects which of them it offers (see `_select_library`); assembling
+    here — rather than authoring one monolith per genome — keeps the shared half
+    in one place, while everything downstream still receives the same
     self-contained MergedSpec (the config↔parsing↔display consistency check, the
     content digest, the job pin and results parsing all run on the assembled
     document). A document with no `library` (a fully-authored spec, or a pinned
@@ -116,7 +150,7 @@ def _assemble_payload(name: str) -> dict:
     if library_name is None:
         return doc
     library = json.loads((SPEC_DIR / f"{library_name}.json").read_text())
-    return {**doc, "parsing": library["parsing"], "display": library["display"]}
+    return {**doc, **_select_library(library, doc["config"]["entries"])}
 
 
 def load_merged_spec(name: str) -> MergedSpec:
@@ -129,10 +163,11 @@ def load_merged_spec(name: str) -> MergedSpec:
 # Assembly-name prefixes, mirroring ConfigIniParams' own is_human_grch38 /
 # is_human_grch37 / is_mouse_reference checks (pipeline_model.py) so a spec is
 # picked using the same notion of "which genome is this" as the ini builder.
-# Only GRCh38 has a spec today; a submission for any other assembly fails
+# Human GRCh38 and GRCh37 have specs; a submission for any other assembly fails
 # loudly here rather than being silently parsed with the wrong one.
 _ASSEMBLY_SPECS = {
     "GRCh38": "human_grch38",
+    "GRCh37": "human_grch37",
 }
 
 

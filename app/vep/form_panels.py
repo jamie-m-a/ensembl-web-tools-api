@@ -178,6 +178,15 @@ def is_human_grch38(
     )
 
 
+def is_human_grch37(
+    species_taxonomy_id: str | None, assembly_name: str | None
+) -> bool:
+    """True for human GRCh37."""
+    return species_taxonomy_id == "9606" and (assembly_name or "").startswith(
+        "GRCh37"
+    )
+
+
 # Human GRCh38-only sub-options.
 _PROTVAR_SUBOPTIONS = [
     {"id": "protvar_stability", "label": "Protein Structure Stability", "type": "boolean", "default": True},
@@ -620,6 +629,45 @@ def _add_human_grch38_options(panels: list[dict]) -> None:
     })
 
 
+def _add_human_grch37_options(panels: list[dict]) -> None:
+    """Layer the reuse-tier options that exist for human GRCh37 too onto the
+    (already human 37/38) panels: Gene Ontology, Phenotypes, IntAct, and
+    ClinVar's structural-variant sub-option — the counterpart to the larger
+    GRCh38-only set. (go/phenotypes are really multi-species; gated on human
+    until the other-species specs exist. gnomAD v2 has its own shape and joins
+    later.) The GRCh38 form keeps its own layout/order in
+    `_add_human_grch38_options`; these are deliberately the small overlapping
+    set, so a couple of option dicts are stated in both.
+    """
+    by_id = {panel["id"]: panel for panel in panels}
+
+    by_id["genes_and_transcripts"]["options"].append(
+        {"id": "go", "label": "Gene Ontology", "type": "boolean", "default": False}
+    )
+
+    protein_panel = by_id["protein_and_functional"]
+    for option in protein_panel["options"]:
+        if option["id"] == "protein":
+            option["category"] = "Protein"
+    protein_panel["options"].append(
+        {"id": "intact", "label": "IntAct", "type": "boolean", "default": False,
+         "category": "Functional", "sub_options": copy.deepcopy(_INTACT_SUBOPTIONS)}
+    )
+
+    if "variant_associations" in by_id:
+        by_id["variant_associations"]["options"].append(
+            {"id": "phenotypes", "label": "Phenotypes", "type": "boolean", "default": False}
+        )
+        clinvar = next(
+            (o for o in by_id["variant_associations"]["options"] if o["id"] == "clinvar"),
+            None,
+        )
+        if clinvar is not None:
+            clinvar.setdefault("sub_options", []).append(
+                {"id": "clinvar_sv", "label": "Structural variants", "type": "boolean", "default": False}
+            )
+
+
 def get_visible_panels(
     attributes: dict | None = None,
     *,
@@ -644,5 +692,7 @@ def get_visible_panels(
 
     if is_human_grch38(species_taxonomy_id, assembly_name):
         _add_human_grch38_options(panels)
+    elif is_human_grch37(species_taxonomy_id, assembly_name):
+        _add_human_grch37_options(panels)
 
     return panels

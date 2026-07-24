@@ -105,6 +105,65 @@ def test_assembled_grch38_matches_the_pre_split_baseline():
     )
 
 
+# --- Phase 1: library selection (the subset a genome offers) ----------------
+
+
+def _rows_option(option_id: str, *plugins: str) -> dict:
+    """A minimal valid display option that reads `<plugin>.score` for each of
+    `plugins`, so its plugin_refs are exactly those plugins."""
+    return {
+        "option_id": option_id,
+        "blocks": [
+            {
+                "kind": "rows",
+                "rows": [{"label": p, "from": f"{p}.score"} for p in plugins],
+            }
+        ],
+    }
+
+
+def test_select_library_keeps_the_configs_plugins_and_covered_options():
+    from app.vep.utils.spec_loader import _select_library
+
+    library = {
+        "parsing": {"plugins": [{"plugin": "revel"}, {"plugin": "cadd"}, {"plugin": "eve"}]},
+        "display": {
+            "options": [
+                _rows_option("revel", "revel"),
+                _rows_option("cadd", "cadd"),
+                _rows_option("combo", "revel", "eve"),
+            ]
+        },
+    }
+    # config offers revel + eve, not cadd
+    config = [
+        {"id": "revel", "parsed_as": ["revel"]},
+        {"id": "eve", "parsed_as": ["eve"]},
+    ]
+    selected = _select_library(library, config)
+
+    assert sorted(p["plugin"] for p in selected["parsing"]["plugins"]) == ["eve", "revel"]
+    # revel kept; cadd dropped (plugin absent); combo kept (revel + eve both present)
+    assert sorted(o["option_id"] for o in selected["display"]["options"]) == [
+        "combo",
+        "revel",
+    ]
+
+
+def test_select_library_drops_an_option_missing_one_of_its_plugins():
+    from app.vep.utils.spec_loader import _select_library
+
+    library = {
+        "parsing": {"plugins": [{"plugin": "revel"}, {"plugin": "cadd"}]},
+        "display": {"options": [_rows_option("combo", "revel", "cadd")]},
+    }
+    config = [{"id": "revel", "parsed_as": ["revel"]}]  # cadd not offered
+    selected = _select_library(library, config)
+
+    assert [p["plugin"] for p in selected["parsing"]["plugins"]] == ["revel"]
+    assert selected["display"]["options"] == []  # combo needs cadd -> dropped
+
+
 # --- resolve_merged_spec -------------------------------------------------
 
 
@@ -126,11 +185,39 @@ def test_resolve_matches_by_prefix_not_exact_string():
     )
 
 
+def test_resolve_grch37_returns_the_human_grch37_spec():
+    resolved = resolve_merged_spec("GRCh37.p13")
+    bundled = load_merged_spec("human_grch37")
+    assert resolved.spec_version == bundled.spec_version
+
+
+def test_grch37_is_the_reuse_tier_without_gnomad_or_grch38_only():
+    """GRCh37 assembles a subset of the shared library: the reuse tier, with no
+    gnomAD v2 AF sources (their own overrides come later) and none of the
+    GRCh38-only datasets (opentargets, protvar, eve, ...)."""
+    spec = load_merged_spec("human_grch37")
+    plugins = {p.plugin for p in spec.parse_plugins()}
+    options = {o.option_id for o in spec.display.options}
+    assert {
+        "revel", "cadd", "spliceai", "clinvar", "clinvar_sv", "go", "phenotype_data"
+    } <= plugins
+    assert plugins.isdisjoint(
+        {
+            "gnomad_exomes", "gnomad_genomes", "gnomad_sv", "gnomad_cnv",
+            "all_of_us", "opentargets", "protvar", "eve", "mavedb",
+            "mutfunc", "gencode_promoter",
+        }
+    )
+    assert options.isdisjoint(
+        {"opentargets", "protvar", "eve", "mavedb", "gencode_promoters"}
+    )
+
+
 def test_resolve_unknown_assembly_raises():
-    """No spec exists yet for other assemblies. This must fail loudly rather
-    than silently falling back to human_grch38 for, say, a mouse submission."""
-    with pytest.raises(ValueError, match="GRCh37"):
-        resolve_merged_spec("GRCh37.p13")
+    """No spec exists yet for non-human assemblies. This must fail loudly rather
+    than silently falling back to a human spec for, say, a mouse submission."""
+    with pytest.raises(ValueError, match="GRCm39"):
+        resolve_merged_spec("GRCm39")
 
 
 def test_resolve_empty_assembly_raises():
