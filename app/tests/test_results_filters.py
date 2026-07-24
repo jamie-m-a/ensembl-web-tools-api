@@ -14,6 +14,7 @@ from pydantic import FilePath
 from app.vep.utils import results_filters as rf
 from app.vep.utils import vcf_results
 from app.vep.utils.vcf_results import get_results_from_path
+from app.vep.utils.spec_loader import load_merged_spec
 from app.vep.models import vcf_results_model as model
 
 CSQ_DESC = (
@@ -548,6 +549,58 @@ def test_af_source_descriptor():
     assert rf.af_source_descriptor("gnomAD_CNV_SF_remaining")["label"] == "Remaining"
     assert rf.af_source_descriptor("gnomAD_CNV") is None
     assert rf.af_source_descriptor("SYMBOL") is None
+
+
+def test_af_source_descriptor_spec_driven_matches_legacy_for_grch38():
+    # Passing the GRCh38 (v4) spec produces exactly what the spec-less path does —
+    # the spec-driven derivation is a superset, not a behaviour change.
+    spec = load_merged_spec("human_grch38").parsing
+    for column in (
+        "gnomAD_exomes_AF", "gnomAD_exomes_AF_nfe_XX", "gnomAD_genomes_AF_grpmax",
+        "gnomAD_SV_AF", "gnomAD_SV_AF_rmi", "gnomAD_SV", "gnomAD_CNV_SF",
+        "AoU_gvs_all_af", "AoU_gvs_afr_af", "AoU_gvs_max_subpop", "SYMBOL",
+    ):
+        assert rf.af_source_descriptor(column, spec) == rf.af_source_descriptor(column)
+
+
+def test_af_source_descriptor_grch37_v2_grammar():
+    # gnomAD v2 (GRCh37): the population code is the whole field after the source
+    # prefix (subset included) — the same key the parse stores it under — and
+    # decodes to a compound label.
+    spec = load_merged_spec("human_grch37").parsing
+    assert rf.af_source_descriptor("gnomAD_exomes_controls_AF_afr_male", spec) == {
+        "key": "gnomAD_exomes_controls_AF_afr_male",
+        "source": "gnomad_exomes",
+        "population": "controls_AF_afr_male",
+        "label": "African & African-American · XY · Controls",
+    }
+    assert rf.af_source_descriptor("gnomAD_exomes_AF", spec)["population"] == ""
+    assert rf.af_source_descriptor("gnomAD_exomes_AF_nfe_seu", spec)["label"] == (
+        "Non-Finnish European › Southern European"
+    )
+    assert rf.af_source_descriptor("gnomAD_exomes_AF_popmax", spec)["label"] == (
+        "Maximum across populations"
+    )
+    # SV/CNV/All of Us aren't in the GRCh37 spec, so their columns are unrecognised.
+    assert rf.af_source_descriptor("gnomAD_SV_AF", spec) is None
+
+
+def test_af_columns_discovers_v2_subset_columns():
+    # v2's subset-prefixed AF columns (which the old `gnomAD_exomes_AF` prefix
+    # missed) are found both spec-driven and by the spec-less filter-path fallback.
+    spec = load_merged_spec("human_grch37").parsing
+    index_map = {
+        name: i
+        for i, name in enumerate((
+            "Allele", "gnomAD_exomes_AF", "gnomAD_exomes_controls_AF_afr",
+            "gnomAD_exomes_AF_popmax", "SYMBOL",
+        ))
+    }
+    expected = [
+        "gnomAD_exomes_AF", "gnomAD_exomes_controls_AF_afr", "gnomAD_exomes_AF_popmax",
+    ]
+    assert rf.af_columns(index_map, spec) == expected
+    assert rf.af_columns(index_map) == expected  # spec-less fallback
 
 
 def test_af_le_any_keeps_when_one_meets():

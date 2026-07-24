@@ -281,6 +281,34 @@ class ConfigIniParams(BaseModel):
     gnomad_exomes_nfe_both: bool = True
     gnomad_exomes_nfe_female: bool = False
     gnomad_exomes_nfe_male: bool = False
+    # gnomAD exomes v2 (human GRCh37) extra fields. v2 differs from v4: prefix
+    # subsets chosen from a list (not the UK-Biobank toggle), Other + South Asian
+    # ancestries, a plain popmax, and NFE/EAS sub-populations. The shared
+    # ancestry/sex fields above (all/afr/amr/asj/eas/fin/nfe + their sexes) are
+    # reused; these are the v2-only additions (ignored by the v4 builder).
+    gnomad_exomes_subset_full: bool = True  # the full dataset (no subset prefix)
+    gnomad_exomes_subset_controls: bool = False
+    gnomad_exomes_subset_non_neuro: bool = False
+    gnomad_exomes_subset_non_topmed: bool = False
+    gnomad_exomes_subset_non_cancer: bool = False
+    gnomad_exomes_popmax: bool = False  # plain toggle, no sex split
+    gnomad_exomes_oth: bool = False
+    gnomad_exomes_oth_both: bool = True
+    gnomad_exomes_oth_female: bool = False
+    gnomad_exomes_oth_male: bool = False
+    gnomad_exomes_sas: bool = False
+    gnomad_exomes_sas_both: bool = True
+    gnomad_exomes_sas_female: bool = False
+    gnomad_exomes_sas_male: bool = False
+    gnomad_exomes_eas_kor: bool = False  # EAS sub-populations (no sex split)
+    gnomad_exomes_eas_jpn: bool = False
+    gnomad_exomes_eas_oea: bool = False
+    gnomad_exomes_nfe_seu: bool = False  # NFE sub-populations (no sex split)
+    gnomad_exomes_nfe_bgr: bool = False
+    gnomad_exomes_nfe_onf: bool = False
+    gnomad_exomes_nfe_swe: bool = False
+    gnomad_exomes_nfe_nwe: bool = False
+    gnomad_exomes_nfe_est: bool = False
     # gnomAD genomes v4.1 frequencies (human GRCh38). Same custom-line grammar as
     # exomes but with no UK Biobank subset (no _non_ukb), extra ancestry groups
     # (Amish, Remaining) and grpmax (max across groups; no XX/XY split).
@@ -329,6 +357,23 @@ class ConfigIniParams(BaseModel):
     gnomad_genomes_remaining_both: bool = True
     gnomad_genomes_remaining_female: bool = False
     gnomad_genomes_remaining_male: bool = False
+    # gnomAD genomes v2 (human GRCh37) extra fields. As exomes v2 but with fewer
+    # values: no non_cancer subset, no South Asian, only four NFE sub-pops and no
+    # EAS sub-pops. Shared ancestry/sex fields above (all/afr/amr/asj/eas/fin/nfe)
+    # are reused; these are the v2-only additions.
+    gnomad_genomes_subset_full: bool = True
+    gnomad_genomes_subset_controls: bool = False
+    gnomad_genomes_subset_non_neuro: bool = False
+    gnomad_genomes_subset_non_topmed: bool = False
+    gnomad_genomes_popmax: bool = False
+    gnomad_genomes_oth: bool = False
+    gnomad_genomes_oth_both: bool = True
+    gnomad_genomes_oth_female: bool = False
+    gnomad_genomes_oth_male: bool = False
+    gnomad_genomes_nfe_seu: bool = False
+    gnomad_genomes_nfe_onf: bool = False
+    gnomad_genomes_nfe_nwe: bool = False
+    gnomad_genomes_nfe_est: bool = False
     # NIH All of Us frequencies (human GRCh38). A VEP `custom` line whose `fields`
     # list is built from the selected population toggles (no sex split).
     allofus: bool = False
