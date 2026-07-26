@@ -111,3 +111,20 @@ GENOME_METADATA_LIVE: bool = config(
 GENOME_METADATA_API = (
     GENOME_METADATA_API_LIVE if GENOME_METADATA_LIVE else GENOME_METADATA_API_STAGING
 )
+
+# Outbound HTTP timeouts, as requests' (connect, read) pairs. Without these a
+# hung upstream holds a worker forever: the status poll is the worst case, since
+# it runs every 15s for every active job. Read budgets differ by call — a
+# workflow launch legitimately takes longer than a metadata lookup.
+HTTP_CONNECT_TIMEOUT: float = config("HTTP_CONNECT_TIMEOUT", cast=float, default=5.0)
+METADATA_READ_TIMEOUT: float = config("METADATA_READ_TIMEOUT", cast=float, default=15.0)
+SEQERA_LAUNCH_READ_TIMEOUT: float = config(
+    "SEQERA_LAUNCH_READ_TIMEOUT", cast=float, default=30.0
+)
+SEQERA_STATUS_READ_TIMEOUT: float = config(
+    "SEQERA_STATUS_READ_TIMEOUT", cast=float, default=15.0
+)
+
+METADATA_TIMEOUT = (HTTP_CONNECT_TIMEOUT, METADATA_READ_TIMEOUT)
+SEQERA_LAUNCH_TIMEOUT = (HTTP_CONNECT_TIMEOUT, SEQERA_LAUNCH_READ_TIMEOUT)
+SEQERA_STATUS_TIMEOUT = (HTTP_CONNECT_TIMEOUT, SEQERA_STATUS_READ_TIMEOUT)
