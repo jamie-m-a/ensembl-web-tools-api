@@ -127,8 +127,13 @@ async def submit_vep(request: Request):
             write_expected_columns_sidecar(DUMP_INI_DIR, expected_columns)
             write_display_panels_sidecar(DUMP_INI_DIR, display_panels)
             return {"submission_id": dump_config_ini(ini_parameters, merged_spec.config)}
-        ini_file = ini_parameters.create_config_ini_file(
-            request_streamer.temp_dir, merged_spec.config
+        # Blocking: writes the ini AND calls the metadata API for the genome's
+        # gff/fasta paths (get_vep_support_location). Off the event loop, so a
+        # slow metadata API cannot stall every other in-flight request.
+        ini_file = await run_in_threadpool(
+            ini_parameters.create_config_ini_file,
+            request_streamer.temp_dir,
+            merged_spec.config,
         )
         write_spec_sidecar(request_streamer.temp_dir, merged_spec)
         write_expected_columns_sidecar(request_streamer.temp_dir, expected_columns)
@@ -144,7 +149,7 @@ async def submit_vep(request: Request):
         )
         pipeline_params = PipelineParams(launch=launch_params)
         if stream_result:
-            workflow_id = launch_workflow(pipeline_params)
+            workflow_id = await run_in_threadpool(launch_workflow, pipeline_params)
             return {"submission_id": workflow_id}
         else:
             raise Exception("Failed to upload VEP input files")
