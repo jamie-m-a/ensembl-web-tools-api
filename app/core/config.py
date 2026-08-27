@@ -73,3 +73,30 @@ WEB_METADATA_API = config(
 VEP_SUPPORT_PATH_ROOT = config("VEP_SUPPORT_PATH", default="/tmpdir")
 VEP_SUPPORT_PATH = os.path.join(VEP_SUPPORT_PATH_ROOT, "organisms")
 VEP_PLUGIN_DATA_PATH = os.path.join(VEP_SUPPORT_PATH_ROOT, "vep-plugins-data")
+
+# ---------------------------------------------------------------------------
+# LOCAL DEV HARNESS — not for upstream.
+#
+# Upstream removed these in 68898ea ("Remove dev mode, cleanup"). They are kept
+# on this fork only so the frontend can be developed against a local backend
+# without Seqera credentials or a pipeline run. Nothing in production reads
+# them: both are off unless explicitly set, and the branches they gate are
+# guarded on the values below rather than on DEBUG.
+#
+# Drop this block, `vep/utils/dump_ini.py`, the `dev` service in
+# docker-compose.yaml and the branches in `vep_resources.py` if upstream ever
+# ships a supported local-development path.
+# ---------------------------------------------------------------------------
+
+# When enabled, a submission builds the VEP config.ini, writes it to
+# DUMP_INI_DIR and returns a fake submission id, instead of launching the
+# pipeline. Lets the form -> ini stage be inspected end to end.
+DUMP_INI: bool = config("DUMP_INI", cast=bool, default=False)
+_default_dump_dir = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "output")
+)
+DUMP_INI_DIR: str = config("DUMP_INI_DIR", default=_default_dump_dir)
+
+# When set to a VEP output VCF path, the results and download endpoints parse
+# that file directly instead of resolving the submission via Seqera.
+LOCAL_RESULTS_VCF: str = config("LOCAL_RESULTS_VCF", default="")
