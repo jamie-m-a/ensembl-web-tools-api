@@ -189,7 +189,6 @@ class DisplayRow(BaseModel):
     source: str | None = Field(default=None, alias="from")
     compose: ComposeSpec | None = None
     format: RowFormat | None = None
-    mono: bool = False
     # What to show when the value is absent. Unset drops the row entirely; set
     # keeps it and shows this (SpliceAI's deltas always read as a set of eight).
     placeholder: str | None = None
@@ -282,7 +281,6 @@ class ValuePiece(BaseModel):
     # `from` is a Python keyword, hence the alias.
     source: str | None = Field(default=None, alias="from")
     format: RowFormat | None = None
-    mono: bool = False
     link: LinkSpec | None = None
     # Build the link from a *sibling* field of the element rather than from the
     # value's own text. A condition's URL is resolved in the parse (see the
@@ -783,11 +781,11 @@ class TableColumn(ValuePiece):
     with this column's `format` applied to that value.
 
     A column *is* a value, so it is a `ValuePiece`: it had its own copies of
-    `from`/`format`/`mono`/`link`/`split`/`link_prefix`/`link_from`, which is
-    how it came to be the only one of the three that could strip a link prefix
-    and the only one that could not carry a rating. What stays here is what a
-    column has and a value does not — a heading, and how the column behaves
-    within its table.
+    `from`/`format`/`link`/`split`/`link_prefix`/`link_from`, which is how it
+    came to be the only one of the three that could strip a link prefix and the
+    only one that could not carry a rating. What stays here is what a column has
+    and a value does not — a heading, and how the column behaves within its
+    table.
     """
 
     # The heading over the column.

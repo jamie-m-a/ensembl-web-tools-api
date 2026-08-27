@@ -3683,14 +3683,12 @@
                   {
                     "key": "c",
                     "label": "HGVSc",
-                    "from": "hgvs.transcript",
-                    "mono": true
+                    "from": "hgvs.transcript"
                   },
                   {
                     "key": "p",
                     "label": "HGVSp",
-                    "from": "hgvs.protein",
-                    "mono": true
+                    "from": "hgvs.protein"
                   }
                 ]
               }
@@ -3706,8 +3704,7 @@
             "rows": [
               {
                 "label": "SPDI",
-                "from": "spdi.spdi",
-                "mono": true
+                "from": "spdi.spdi"
               }
             ]
           }
@@ -4597,8 +4594,7 @@
               },
               {
                 "label": "Gene",
-                "from": "gene_id",
-                "mono": true
+                "from": "gene_id"
               },
               {
                 "label": "Lead variant p-value",
@@ -4631,8 +4627,7 @@
               },
               {
                 "label": "Gene",
-                "from": "gene_id",
-                "mono": true
+                "from": "gene_id"
               },
               {
                 "label": "Lead variant p-value",
@@ -4788,7 +4783,6 @@
               {
                 "label": "Protein ID",
                 "from": "protein.ensembl_protein_id",
-                "mono": true,
                 "link": {
                   "kind": "app_popup",
                   "builder": "protein_popup"
@@ -4880,13 +4874,11 @@
             "rows": [
               {
                 "label": "Region",
-                "from": "gencode_promoter.region",
-                "mono": true
+                "from": "gencode_promoter.region"
               },
               {
                 "label": "Feature ID",
-                "from": "gencode_promoter.feature_id",
-                "mono": true
+                "from": "gencode_promoter.feature_id"
               }
             ]
           }
@@ -4964,8 +4956,7 @@
               {
                 "key": "sv_id",
                 "label": "Structural variant",
-                "from": "gnomad_sv.id",
-                "mono": true
+                "from": "gnomad_sv.id"
               },
               {
                 "key": "sv_type",
@@ -4994,8 +4985,7 @@
               {
                 "key": "cnv_id",
                 "label": "Structural variant",
-                "from": "gnomad_cnv.id",
-                "mono": true
+                "from": "gnomad_cnv.id"
               },
               {
                 "key": "cnv_type",
