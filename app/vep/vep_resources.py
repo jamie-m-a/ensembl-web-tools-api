@@ -33,6 +33,7 @@ from starlette.responses import (
 )
 from starlette.concurrency import run_in_threadpool
 
+from core.config import DUMP_INI, DUMP_INI_DIR, LOCAL_RESULTS_VCF
 from core.error_response import response_error_handler
 from core.logging import InterceptHandler
 from vep.models.pipeline_model import (
@@ -63,6 +64,8 @@ from vep.utils.spec_loader import (
 )
 from vep.models.display_panels_model import to_display_panels
 from vep.form_panels import get_visible_panels
+# LOCAL DEV HARNESS (fork only) — see core/config.py
+from vep.utils.dump_ini import dump_config_ini
 
 logging.getLogger().handlers = [InterceptHandler()]
 
@@ -114,6 +117,19 @@ async def submit_vep(request: Request):
                 assembly_name=ini_parameters.assembly_name,
             )
         )
+        # LOCAL DEV HARNESS (fork only): dump the generated config.ini and
+        # return a fake id, without building launch params or contacting the
+        # runner. DUMP_INI_DIR has no per-job subdirectory (unlike the real
+        # outdir below), so the sidecars written here are overwritten by the
+        # next submission — matching how this harness works: one manually-run
+        # job at a time.
+        if DUMP_INI:
+            write_spec_sidecar(DUMP_INI_DIR, merged_spec)
+            write_expected_columns_sidecar(DUMP_INI_DIR, expected_columns)
+            write_display_panels_sidecar(DUMP_INI_DIR, display_panels)
+            return {
+                "submission_id": dump_config_ini(ini_parameters, merged_spec.config)
+            }
 
         ini_file = await run_in_threadpool(
             ini_parameters.create_config_ini_file,
@@ -159,6 +175,18 @@ async def submit_vep(request: Request):
 @router.get("/submissions/{submission_id}/status", name="submission_status")
 async def vep_status(request: Request, submission_id: str):
     try:
+        # LOCAL DEV HARNESS (fork only): there is no real pipeline run to poll
+        # (submit returned a fake id), so report SUCCEEDED straight away and let
+        # the results endpoint serve the local VCF.
+        if DUMP_INI or LOCAL_RESULTS_VCF:
+            return JSONResponse(
+                content={
+                    "submission_id": submission_id,
+                    "status": VepStatus.succeeded.value,
+                },
+                headers={"Cache-Control": "no-store"},
+            )
+
         workflow_status = await get_workflow_status(submission_id)
         submission_status = PipelineStatus(
             submission_id=submission_id, status=workflow_status
@@ -251,6 +279,13 @@ async def download_results(
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     try:
+        # LOCAL DEV HARNESS (fork only): serve the VEP output VCF on disk
+        # directly, bypassing the Seqera status lookup.
+        if LOCAL_RESULTS_VCF:
+            return _results_download_response(
+                FilePath(LOCAL_RESULTS_VCF), format, active_filters
+            )
+
         workflow_status = await get_workflow_status(submission_id)
         submission_status = PipelineStatus(
             submission_id=submission_id, status=workflow_status
@@ -352,6 +387,20 @@ async def fetch_results(
                     content={"details": f"Invalid filters: {exc}"},
                     status_code=status.HTTP_400_BAD_REQUEST,
                 )
+
+        # LOCAL DEV HARNESS (fork only): parse the VEP output VCF on disk
+        # directly, bypassing the Seqera status lookup. Reading and (for a
+        # filtered request) scanning it is blocking and CPU-bound, so run it in
+        # a worker thread rather than stalling the event loop.
+        if LOCAL_RESULTS_VCF:
+            return await run_in_threadpool(
+                _results,
+                vcf_path=FilePath(LOCAL_RESULTS_VCF),
+                page=page,
+                page_size=per_page,
+                filters=active_filters,
+            )
+
         workflow_status = await get_workflow_status(submission_id)
         submission_status = PipelineStatus(
             submission_id=submission_id, status=workflow_status
