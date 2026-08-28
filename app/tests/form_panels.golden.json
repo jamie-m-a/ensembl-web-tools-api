@@ -99,6 +99,16 @@
           }
         },
         {
+          "id": "avi",
+          "label": "AVI",
+          "type": "boolean",
+          "default": false,
+          "category": "Genome wide",
+          "help": {
+            "description": "AlphaGenome Variant Impact scores from Google DeepMind."
+          }
+        },
+        {
           "id": "cadd",
           "label": "CADD",
           "type": "boolean",

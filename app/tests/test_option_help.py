@@ -24,7 +24,7 @@ def _options(assembly: str = "GRCh38.p14", taxon: str = HUMAN) -> dict[str, dict
 def test_the_library_carries_help():
     spec = load_merged_spec("human_grch38")
     assert spec.help is not None
-    assert len(spec.help.options) == 34
+    assert len(spec.help.options) == 35
 
 
 def test_a_served_option_carries_its_help():
@@ -205,3 +205,52 @@ def test_gnomad_sv_is_described_as_allele_frequencies():
     assert "Allele frequencies for structural variants" in (
         _options()["gnomad_sv"]["help"]["description"]
     )
+
+
+# --- form-only help -----------------------------------------------------------
+
+
+def test_form_only_help_is_served_to_the_form():
+    """It is ordinary help there — the flag only decides where it is shown."""
+    assert _options()["avi"]["help"]["description"].startswith("AlphaGenome")
+
+
+def test_the_flag_itself_is_never_served():
+    """It says where the help goes, not what it says."""
+    assert "form_only" not in json.dumps(_options())
+
+
+def test_the_results_panels_drop_it():
+    """An option whose rows carry their own help would otherwise show two (?)
+    buttons on the row the option's help anchors to."""
+    from app.vep.models.display_panels_model import (
+        dump_display_panels,
+        to_display_panels,
+    )
+    from app.vep.utils.vcf_results import _drop_form_only_help
+    from app.vep.form_panels import get_visible_panels
+
+    merged = load_merged_spec("human_grch38")
+    raw = get_visible_panels(species_taxonomy_id=HUMAN, assembly_name="GRCh38.p14")
+    panels = _drop_form_only_help(to_display_panels(raw), merged)
+    served = {o["id"]: o for p in dump_display_panels(panels) for o in p["options"]}
+    assert "help" not in served["avi"]
+    # and only that option
+    assert "help" in served["cadd"]
+
+
+def test_an_unflagged_option_is_untouched_by_the_pass():
+    from app.vep.models.display_panels_model import (
+        dump_display_panels,
+        to_display_panels,
+    )
+    from app.vep.utils.vcf_results import _drop_form_only_help
+    from app.vep.form_panels import get_visible_panels
+
+    merged = load_merged_spec("human_grch38")
+    raw = get_visible_panels(species_taxonomy_id=HUMAN, assembly_name="GRCh38.p14")
+    before = {o["id"]: dict(o) for p in raw for o in p["options"] if o["id"] != "avi"}
+    panels = _drop_form_only_help(to_display_panels(raw), merged)
+    after = {o["id"]: o for p in dump_display_panels(panels) for o in p["options"]}
+    for option_id, option in before.items():
+        assert after[option_id] == option, option_id

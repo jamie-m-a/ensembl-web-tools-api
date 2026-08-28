@@ -42,7 +42,7 @@ SPEC = load_merged_spec("human_grch38")
 
 # The options moved off the frontend switch in this change.
 SPEC_DRIVEN_OPTIONS = {
-    "hgvs", "spdi", "alphamissense", "revel", "clinpred", "cadd", "spliceai",
+    "hgvs", "spdi", "alphamissense", "revel", "clinpred", "cadd", "avi", "spliceai",
     "loeuf", "pli", "dosage_sensitivity", "utrannotator", "nmd", "riboseqorfs",
         "tss_distance", "eve", "gerp",
     # `list`-block options (repeat + truncate, migrated off frontend overrides)

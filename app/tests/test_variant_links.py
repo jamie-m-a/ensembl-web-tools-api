@@ -6,6 +6,7 @@ the annotation belongs to, so what reaches the frontend is an ordinary parsed
 field that a display row links to with `link_from`.
 """
 
+from app.vep.utils.spec_loader import load_merged_spec
 from app.vep.utils.vcf_results import _resolve_variant_links
 
 TOKENS = {
@@ -40,3 +41,16 @@ def test_one_bad_template_does_not_lose_the_others():
         TOKENS,
     )
     assert resolved == {"good": "https://x.org/17"}
+
+
+def test_avi_declares_its_link_and_the_display_reads_it():
+    """The mechanism's first user, and the two halves have to agree: the parse
+    produces `avi.link`, and the rows point at it. The spec's own consistency
+    check covers the reverse — a row naming a field nothing produces fails to
+    load."""
+    spec = load_merged_spec("human_grch38")
+    assert set(spec.parsing.plugin("avi").variant_links) == {"link"}
+    option = next(o for o in spec.display.options if o.option_id == "avi")
+    rows = option.blocks[0].rows
+    assert [row.link_from for row in rows] == ["avi.link"] * 3
+    assert all(row.link.template == "{value}" for row in rows)
