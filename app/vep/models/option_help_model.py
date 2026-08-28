@@ -47,6 +47,12 @@ class OptionHelp(BaseModel):
     # a plain string rather than markup the backend has to escape.
     description: str
     links: list[OptionHelpLink] = []
+    # Help that belongs to the input form alone. The results view reads the same
+    # option payload and hangs an option's help on whichever node turns out to
+    # be its visible title — which, for an option whose rows carry help of their
+    # own, is a row that already has a (?) button. Set this where the rows say
+    # everything the option would.
+    form_only: bool = False
 
     def as_payload(self, label: str) -> dict:
         """The finished `help` object served on a form option.
@@ -69,7 +75,9 @@ class OptionHelp(BaseModel):
             mode="json",
             by_alias=True,
             exclude_none=True,
-            exclude={"option_id", "links"},
+            # `form_only` says where the help goes, not what it says, and is
+            # acted on before this — never sent.
+            exclude={"option_id", "links", "form_only"},
         )
         payload["description"] = _VERSION_PLACEHOLDER.sub(
             f" {version}" if version else "", self.description
@@ -96,6 +104,10 @@ class HelpSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     options: list[OptionHelp] = []
+
+    def form_only_options(self) -> set[str]:
+        """Options whose help the results view should not show."""
+        return {o.option_id for o in self.options if o.form_only}
 
     def payload_for(self, option_id: str, label: str) -> dict | None:
         """This option's finished help payload, or None when it has none.

@@ -1011,6 +1011,28 @@ def _resolve_display_payload(spec: MergedSpec | None) -> DisplayPayload | None:
     return current_payload.model_copy(update={"plugin_scopes": spec.plugin_scopes()})
 
 
+def _drop_form_only_help(
+    panels: list[DisplayPanel] | None, merged: MergedSpec | None
+) -> list[DisplayPanel] | None:
+    """The panels with form-only help removed from their options.
+
+    The pin stays lossless — it records what was submitted — so this happens on
+    the way out rather than on the way in. An option marked `form_only` keeps
+    its (?) on the input form and loses it here, where its rows already carry
+    help of their own.
+    """
+    if panels is None or merged is None or merged.help is None:
+        return panels
+    form_only = merged.help.form_only_options()
+    if not form_only:
+        return panels
+    for panel in panels:
+        for option in panel.options:
+            if option.id in form_only:
+                option.help = None
+    return panels
+
+
 def _with_display_panels(
     response: model.VepResultsResponse,
     panels: list[DisplayPanel] | None,
@@ -1192,7 +1214,9 @@ def get_results_from_path(
     # a CSQ column the submitted options required. Non-fatal (dev warns only).
     _check_expected_columns(vcf_path, expected_columns)
     # The option panels this job was submitted against (None for older jobs).
-    display_panels = _load_pinned_display_panels(vcf_path)
+    display_panels = _drop_form_only_help(
+        _load_pinned_display_panels(vcf_path), merged
+    )
     # How those options lay out, from the pin (or the current spec for jobs
     # pinned before the display section existed).
     display = _resolve_display_payload(merged)
