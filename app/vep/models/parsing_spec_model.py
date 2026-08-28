@@ -798,6 +798,16 @@ class PluginSpec(BaseModel):
 
     plugin: str
     scope: Literal["allele", "transcript"]
+    # Fields whose value is a URL built from the variant rather than read from a
+    # CSQ column, as `{field: template}`. The tokens are `chromosome`,
+    # `position`, `reference` and `alternative`; a template naming anything else,
+    # or a variant missing a part, yields no field.
+    #
+    # For a resource that keys its pages on the variant when the plugin emits no
+    # URL of its own. The result is an ordinary parsed field, so a display row
+    # points at it with `link_from` exactly as it does at Geno2MP's own
+    # `Geno2MP_URL` column.
+    variant_links: dict[str, str] | None = None
     # Where the result attaches on the response model, e.g. "mavedb".
     output: str
     csq_fields: list[str]
