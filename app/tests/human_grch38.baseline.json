@@ -1549,6 +1549,30 @@
             "{path}/gerp_conservation_scores.homo_sapiens.GRCh38.bw"
           ]
         }
+      },
+      {
+        "id": "avi",
+        "order": 67,
+        "parsed_as": [
+          "avi"
+        ],
+        "form": {
+          "panel": "variant_impact_predictions",
+          "category": "Genome wide",
+          "order": 300,
+          "label": "AVI",
+          "type": "boolean",
+          "default": false
+        },
+        "config": {
+          "emit": "plugin",
+          "name": "AVI",
+          "params": {
+            "file": "/nfs/production/flicek/ensembl/variation/enseweb-data_tools/beta_plugins/grch38/avi_dummy_scores.tsv.gz",
+            "raw": "1",
+            "quantile": "1"
+          }
+        }
       }
     ]
   },
@@ -3369,6 +3393,44 @@
         ]
       },
       {
+        "plugin": "avi",
+        "scope": "allele",
+        "output": "avi",
+        "csq_fields": [
+          "AVI_AG_PATHOGENICITY",
+          "AVI_PHRED",
+          "AVI_QUANTILE"
+        ],
+        "require_any_output": [
+          "phred",
+          "raw",
+          "quantile"
+        ],
+        "targets": [
+          {
+            "field": "phred",
+            "from": "AVI_PHRED",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "raw",
+            "from": "AVI_AG_PATHOGENICITY",
+            "transform": "scalar",
+            "type": "float"
+          },
+          {
+            "field": "quantile",
+            "from": "AVI_QUANTILE",
+            "transform": "scalar",
+            "type": "float"
+          }
+        ],
+        "variant_links": {
+          "link": "https://gnomad.broadinstitute.org/variant/{chromosome}-{position}-{reference}-{alternative}?dataset=gnomad_r4"
+        }
+      },
+      {
         "plugin": "eve",
         "scope": "transcript",
         "output": "eve",
@@ -3775,6 +3837,50 @@
                 "format": "num"
               }
             ]
+          }
+        ]
+      },
+      {
+        "option_id": "avi",
+        "blocks": [
+          {
+            "kind": "rows",
+            "rows": [
+              {
+                "label": "PHRED",
+                "from": "avi.phred",
+                "format": "num",
+                "help": "PHRED-scaled quantile. A phred of 20 means the variant is among the top 1% most deleterious substitutions genome-wide. Higher = more deleterious.",
+                "link": {
+                  "kind": "external",
+                  "template": "{value}"
+                },
+                "link_from": "avi.link"
+              },
+              {
+                "label": "Raw score",
+                "from": "avi.raw",
+                "format": "num",
+                "help": "Raw score. Higher = more deleterious.",
+                "link": {
+                  "kind": "external",
+                  "template": "{value}"
+                },
+                "link_from": "avi.link"
+              },
+              {
+                "label": "Tail probability",
+                "from": "avi.quantile",
+                "format": "num",
+                "help": "Tail probability: fraction of all genome-wide SNVs with an equal or higher raw score. Lower = more deleterious.",
+                "link": {
+                  "kind": "external",
+                  "template": "{value}"
+                },
+                "link_from": "avi.link"
+              }
+            ],
+            "heading": "AVI"
           }
         ]
       },
@@ -5173,6 +5279,10 @@
             "href": "https://cadd.bihealth.org/"
           }
         ]
+      },
+      {
+        "option_id": "avi",
+        "description": "Variant Impact scores from Google DeepMind."
       },
       {
         "option_id": "gerp",

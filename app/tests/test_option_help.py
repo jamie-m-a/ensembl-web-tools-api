@@ -24,7 +24,7 @@ def _options(assembly: str = "GRCh38.p14", taxon: str = HUMAN) -> dict[str, dict
 def test_the_library_carries_help():
     spec = load_merged_spec("human_grch38")
     assert spec.help is not None
-    assert len(spec.help.options) == 34
+    assert len(spec.help.options) == 35
 
 
 def test_a_served_option_carries_its_help():

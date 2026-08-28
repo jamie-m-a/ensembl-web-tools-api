@@ -867,7 +867,7 @@ def test_gerp_sits_with_cadd_under_genome_wide():
     for option in impact["options"]:
         grouped.setdefault(option.get("category"), []).append(option["id"])
 
-    assert grouped["Genome wide"] == ["cadd", "gerp"]
+    assert grouped["Genome wide"] == ["avi", "cadd", "gerp"]
     genes = next(panel for panel in panels if panel["id"] == "genes_and_transcripts")
     assert "gerp" not in {option["id"] for option in genes["options"]}
 

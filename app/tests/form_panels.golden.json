@@ -99,6 +99,17 @@
           }
         },
         {
+          "id": "avi",
+          "label": "AVI",
+          "type": "boolean",
+          "default": false,
+          "category": "Genome wide",
+          "help": {
+            "description": "Variant Impact scores from Google DeepMind.",
+            "links": []
+          }
+        },
+        {
           "id": "cadd",
           "label": "CADD",
           "type": "boolean",

@@ -442,6 +442,13 @@ class MergedSpec(BaseModel):
             plugin.plugin: {t.field: t for t in plugin.targets}
             for plugin in self.parsing.plugins
         }
+        # Fields a plugin builds from the variant rather than from a CSQ
+        # column. They have no target, so a display row naming one has to be
+        # recognised here or the consistency check reads it as a typo.
+        variant_link_fields = {
+            plugin.plugin: set(plugin.variant_links or {})
+            for plugin in self.parsing.plugins
+        }
         paths_by_plugin = self._list_element_fields()
         errors: list[str] = []
 
@@ -455,6 +462,8 @@ class MergedSpec(BaseModel):
                     f"display option {option_id!r} references unknown parse "
                     f"plugin {plugin!r}"
                 )
+            if field in variant_link_fields.get(plugin, set()):
+                return None
             if field not in targets_by_plugin[plugin]:
                 return (
                     f"display option {option_id!r} references field {field!r} "

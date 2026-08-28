@@ -100,6 +100,7 @@ def test_bundled_spec_validates():
         "clinpred",
         "alphamissense",
         "cadd",
+        "avi",
         "eve",
         "utr_annotation",
         "gnomad_exomes",

@@ -251,6 +251,26 @@ def _parse_prediction(value: str | None) -> model.PredictionWithScore | None:
     return model.PredictionWithScore(prediction=value, score=None)
 
 
+def _resolve_variant_links(
+    templates: dict[str, str], tokens: dict[str, str] | None
+) -> dict[str, str]:
+    """Each template filled from the variant, dropping any it cannot complete.
+
+    A missing token means the URL would point at a variant we cannot name, so
+    the field is omitted and the row renders as plain text — the same outcome as
+    a plugin that emitted no URL.
+    """
+    if not tokens:
+        return {}
+    resolved = {}
+    for field, template in templates.items():
+        try:
+            resolved[field] = template.format(**tokens)
+        except KeyError:
+            continue
+    return resolved
+
+
 def _spec_annotations(
     csq_values: list[str],
     index_map: dict[str, int],
@@ -258,6 +278,7 @@ def _spec_annotations(
     scope: str,
     cache: dict | None = None,
     plans: dict | None = None,
+    variant_tokens: dict[str, str] | None = None,
 ) -> list[model.Annotation]:
     """The generic annotations for one CSQ entry at the given scope, driving each
     matching spec plugin through `apply_plugin_spec`. Additive to the typed
@@ -278,6 +299,11 @@ def _spec_annotations(
         if plan is not None and not plan.runnable:
             continue
         data = apply_plugin_spec(csq_values, index_map, plugin, cache, plan)
+        if data is not None and plugin.variant_links:
+            data = {
+                **data,
+                **_resolve_variant_links(plugin.variant_links, variant_tokens),
+            }
         if data is not None:
             annotations.append(
                 model.Annotation(plugin=plugin.plugin, scope=scope, data=data)
@@ -333,6 +359,8 @@ def _get_alt_allele_details(
     spec: ParsingSpec | None = None,
     sv: dict | None = None,
     plans: dict | None = None,
+    chromosome: str | None = None,
+    position: str | None = None,
 ) -> model.AlternativeVariantAllele:
     """Creates  AlternativeVariantAllele based on
     target alt allele and CSQ entires.
@@ -361,6 +389,21 @@ def _get_alt_allele_details(
     # one gene and not its neighbour. Per allele, since that is the widest scope
     # over which the columns are guaranteed identical.
     parse_cache: dict = {}
+    # This allele, for any plugin declaring `variant_links`. Built per allele
+    # rather than per record: a multi-allelic variant would otherwise point all
+    # of its alleles at the first one's page. `alt` is VEP's CSQ `Allele` word,
+    # which is the VCF's own alternative for the substitutions these links are
+    # for; an indel's trimmed form would need the record's ALT instead.
+    variant_tokens = (
+        {
+            "chromosome": chromosome,
+            "position": position,
+            "reference": ref,
+            "alternative": alt,
+        }
+        if chromosome is not None and position is not None
+        else None
+    )
 
     for str_csq in csqs:
         csq_values = str_csq.split("|")
@@ -373,7 +416,8 @@ def _get_alt_allele_details(
                 get_csq_value(csq_values, "Existing_variation", None, index_map)
             )
             allele_annotations = _spec_annotations(
-                csq_values, index_map, spec, "allele", parse_cache, plans
+                csq_values, index_map, spec, "allele", parse_cache, plans,
+                variant_tokens,
             )
             allele_level_captured = True
 
@@ -443,7 +487,8 @@ def _get_alt_allele_details(
                     ),
                     # Generic spec-driven annotations: everything else.
                     annotations=_spec_annotations(
-                        csq_values, index_map, spec, "transcript", parse_cache, plans
+                        csq_values, index_map, spec, "transcript", parse_cache, plans,
+                        variant_tokens,
                     ),
                 )
             )
@@ -1308,7 +1353,10 @@ def _get_results_from_records(
 
             alt_alleles = [
                 _get_alt_allele_details(
-                    record.REF, alt, csq_strings, prediction_index_map, spec, sv, plans
+                    record.REF, alt, csq_strings, prediction_index_map, spec, sv,
+                    plans,
+                    str(record.CHROM),
+                    str(record.POS),
                 )
                 for alt in alt_allele_strings
             ]
